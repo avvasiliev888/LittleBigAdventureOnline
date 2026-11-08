@@ -1,9 +1,9 @@
 # State
 
-Last updated: 2026-11-08 17:55 UTC
-Last heartbeat: 2026-11-08 17:55 UTC
+Last updated: 2026-11-08 18:02 UTC
+Last heartbeat: 2026-11-08 18:02 UTC
 Current milestone: M0 — Видение и архитектурные решения
-Current task: M0 / ADR-001…ADR-007
+Current task: ожидание Human-Gate M0
 Onboarding: completed
 
 ## Onboarding: completed
@@ -14,7 +14,7 @@ Onboarding: completed
 
 | Milestone | Auto-Gate | Human-Gate | Status |
 |---|---|---|---|
-| M0 | ❌ | ⏳ | in-progress |
+| M0 | ✅ | ⏳ | awaiting human review |
 | M1 | — | — | todo |
 | M2 | — | — | todo |
 | M3 | — | — | todo |
@@ -32,9 +32,31 @@ Onboarding: completed
 
 | Task | Status | Commit | Notes |
 |---|---|---|---|
-| Проверить `docs/product-vision.md` (все 10 разделов) | in-progress | — | разделы 1–10 присутствуют, проверка по чек-листу ниже |
-| ADR-001…ADR-007 в `docs/adr/` | in-progress | — | ровно 7, по одному решению |
+| Проверить `docs/product-vision.md` (все 10 разделов) | done | — | разделы 1–10 присутствуют (проверено grep по `^## N.`) |
+| ADR-001…ADR-007 в `docs/adr/` | done | — | 7 файлов, в каждом «Контекст / Решение / Альтернативы / Последствия» |
 | Создать `docs/state.md` | done | — | |
+
+## M0 Auto-Gate (проверено локально 2026-11-08)
+
+- [x] Все ADR существуют и содержат контекст, решение, альтернативы, последствия — 7/7, проверено скриптом.
+- [x] `docs/state.md` создан.
+- [x] `docs/product-vision.md` содержит все 10 разделов (1…10).
+
+## M0 Human-Gate (ожидает оператора)
+
+**PR:** [#1 — M0: ADR-001…ADR-007 и проверка Product Vision](https://github.com/avvasiliev888/albion-prototype/pull/1), ветка `agent/M0/adr-and-vision`, коммит `2388e64`.
+
+- [ ] Оператор подтвердил ADR-001…ADR-007. После этого они **заморожены**.
+- [ ] Оператор ответил на «Вопросы к заказчику» из Product Vision (допущения 1–3 вынесены в `## Resolved Questions`, п.11).
+
+**Что смотреть оператору:**
+- ADR-001 — границы проектов и запрет `UnityEngine` в `Simulation.Core`.
+- ADR-002 — LiteNetLib 2.1.4, режимы доставки (команды ReliableOrdered, снапшоты Unreliable).
+- ADR-003 — тик 20 Гц, `dt = 0.05`, бюджет тика 50 мс.
+- ADR-004 — бинарный формат снапшота/дельты, `Protocol.Version`, handshake-отказ при несовпадении.
+- ADR-005 — JSON-конфиги, fail-fast валидация, отсутствие фолбэков, секунды→тики.
+- ADR-006 — предсказание движения, откат + повтор команд, `EPSILON = 0.01`, сглаживание, а не телепорт.
+- ADR-007 — xUnit, 4 уровня тестов, 100% покрытие `Simulation.Tick`/snapshot, флап = дефект.
 
 ## Environment
 
@@ -43,14 +65,20 @@ Onboarding: completed
 | ОС | Windows 11 (10.0.22631), PowerShell 7.5.4 |
 | .NET SDK | **10.0.403** (установлен 2026-11-08 через winget, по решению оператора) |
 | Unity | 6.3 LTS (6000.3.x) — устанавливает и активирует оператор; агент установку не трогает |
+| Репозиторий | `https://github.com/avvasiliev888/albion-prototype` (private), ветка `main`, remote `origin` |
 | GitHub CLI | авторизован как `avvasiliev888`, scopes `repo`, `workflow`, `gist`, `read:org` |
 | git identity | `Blaze <avvasiliev888@gmail.com>` |
-| Git LFS | 3.7.1, включён с первого коммита |
+| Git LFS | 3.7.1, `git lfs install --local`; бинарники > 100 KB — в LFS, `*.meta` трекаются обычным git |
 | Node.js | v24.14.1 |
 
 ## Open Questions
 
-(нет)
+1. **Branch protection на `main` невозможна на текущем плане GitHub.** `gh api ... /branches/main/protection` и `POST /rulesets` возвращают `403: Upgrade to GitHub Pro or make this repository public to enable this feature`. Варианты:
+   - (a) Оформить GitHub Pro (~$4/мес) — protection включается, репозиторий остаётся private;
+   - (b) сделать репозиторий public — protection бесплатна, но код открыт (для портфолио это, возможно, и нужно);
+   - (c) оставить как есть: правило «агент пушит только в `agent/*`, в `main` мержит только оператор» соблюдается дисциплиной агента + проверкой в PR; серверного запрета нет.
+   Вопрос блокирует только п.9 ответов оператора (branch protection), не блокирует M0/M1. Пока действует (c).
+2. **Требуемые статус-чеки CI** (require CI green) добавить в protection/ruleset после появления workflow в M1 — сейчас настраивать нечего (CI ещё нет, а required-check без воркфлоу заблокирует PR навсегда).
 
 ## Resolved Questions
 
@@ -62,7 +90,7 @@ Onboarding: completed
 6. **Монорепо и Git LFS?** → монорепо подтверждено; LFS включается сразу, до первого коммита в `/unity-client`. Правило: любой бинарный файл > 100 KB — в LFS. `*.meta` трекаются, в `.gitignore` не добавлять. (2026-11-08)
 7. **Модель доступа?** → агент пушит только в `agent/*`, PR открывает агент, мержит только оператор. (2026-11-08)
 8. **CI-раннер и лимиты?** → `ubuntu-latest`, без жёстких лимитов минут, но полный прогон только на push в `agent/*` и PR в `main`. (2026-11-08)
-9. **Branch protection?** → настраивает агент через `gh api` (require PR, require CI green, no force push в `main`), после настройки показать оператору вывод. (2026-11-08)
+9. **Branch protection?** → настраивает агент через `gh api` (require PR, require CI green, no force push в `main`), после настройки показать оператору вывод. **Частично выполнено:** GitHub отказывает на бесплатном плане для private-репо (см. Open Questions п.1). (2026-11-08)
 10. **LiteNetLib?** → NuGet, версия 2.1.4, не вендорить. Других запрещённых пакетов нет; при сомнении — спрашивать. (2026-11-08)
 11. **Допущения Product Vision?** → 10–20 CCU для нагрузочного теста подтверждено; NPC-якорей рынка НЕТ в прототипе; цифры убывающей отдачи — позже, не в прототипе. (2026-11-08)
 12. **Противоречие vision/план (экономика)?** → снято: в M1–M12 экономики, крафта, инвентаря и торговли НЕТ, осознанно — прототип проверяет архитектуру, а не контент; экономика — на следующей вехе (vertical slice). (2026-11-08)
@@ -71,10 +99,10 @@ Onboarding: completed
 
 ## Discovered Issues
 
-(нет)
+1. **CRLF-предупреждения git на Windows.** Файлы в индексе нормализованы (`core.autocrlf=false`), но `git` предупреждает о замене LF→CRLF при checkout. Косметика; при появлении `.cs` проверить, что файлы не «мигают» в diff. Приоритет: низкий.
 
 ## Next Actions (для следующей сессии)
 
-1. Завершить M0: ADR-001…ADR-007, проверка разделов Product Vision, коммит, PR.
-2. Передать оператору Human-Gate M0 (подтверждение ADR-001…007 и ответы на «Вопросы к заказчику»).
-3. Только после закрытия Human-Gate M0 — начинать M1 (структура репозитория, `.sln`, CI, интерфейсы).
+1. Дождаться Human-Gate M0: оператор подтверждает ADR-001…ADR-007 (PR `agent/M0/adr-and-vision`).
+2. Решить Open Question п.1 (branch protection: Pro / public / дисциплина).
+3. После закрытия M0 — M1: структура репозитория, `.sln`, CI (ubuntu), пустые интерфейсы с XML-док, `SimulationState`, smoke-тест.

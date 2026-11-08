@@ -1,0 +1,22 @@
+# ---- .NET ----
+bin/
+obj/
+artifacts/
+TestResults/
+coverage*.xml
+coverage*.json
+*.trx
+*.user
+*.suo
+.vs/
+
+# ---- инструменты и временные файлы агента ----
+.acl-recovery/
+.agent-lock
+STOP
+PAUSE
+
+# ---- прочее ----
+.idea/
+.DS_Store
+Thumbs.db

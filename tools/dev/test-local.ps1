@@ -32,7 +32,12 @@ try {
 
     Push-Location $tempRoot
     try {
-        & dotnet test 'src/Tests/Tests.csproj' -c $Configuration
+        & dotnet test 'src/Tests/Tests.csproj' -c $Configuration `
+            /p:CollectCoverage=true `
+            /p:CoverletOutputFormat=json `
+            /p:Include="[Simulation.Core]Simulation.Core.Simulation" `
+            /p:Threshold=100 `
+            /p:ThresholdType=line
         $exitCode = $LASTEXITCODE
     }
     finally {

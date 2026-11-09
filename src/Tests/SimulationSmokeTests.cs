@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using Simulation.Core;
 using Xunit;
@@ -8,8 +7,8 @@ using CoreSimulation = Simulation.Core.Simulation;
 namespace Tests
 {
     /// <summary>
-    /// Smoke-тесты M1: симуляция создаётся, тик не падает, снапшот восстанавливается.
-    /// Это минимум, который обязана проходить любая сборка (Auto-Gate M1).
+    /// Базовые тесты симуляции: создание, продвижение тика, валидация аргументов.
+    /// Гарантируют, что каркас M1 не сломан последующими вехами.
     /// </summary>
     public sealed class SimulationSmokeTests
     {
@@ -34,20 +33,6 @@ namespace Tests
         }
 
         [Fact]
-        public void Tick_WithCommand_IsAcceptedWithoutGameplayLogic()
-        {
-            var simulation = new CoreSimulation();
-            var commands = new List<CommandEnvelope>
-            {
-                new CommandEnvelope(1, new TestCommand(clientTick: 0, sequence: 0)),
-            };
-
-            simulation.Tick(SimulationConstants.FixedDeltaTime, commands);
-
-            Assert.Equal(1u, simulation.State.Tick);
-        }
-
-        [Fact]
         public void Tick_WithInvalidDeltaTime_Throws()
         {
             var simulation = new CoreSimulation();
@@ -56,6 +41,8 @@ namespace Tests
                 () => simulation.Tick(0f, Array.Empty<CommandEnvelope>()));
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => simulation.Tick(float.NaN, Array.Empty<CommandEnvelope>()));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => simulation.Tick(float.PositiveInfinity, Array.Empty<CommandEnvelope>()));
         }
 
         [Fact]
@@ -66,7 +53,7 @@ namespace Tests
         }
 
         [Fact]
-        public void CreateSnapshot_ThenRestore_KeepsTickAndEntities()
+        public void Simulation_WithState_KeepsEntities()
         {
             var state = new SimulationState(
                 7,
@@ -75,36 +62,14 @@ namespace Tests
                     new EntityState(10, new Vector3(1.5f, 0f, -2.5f), 100),
                     new EntityState(20, new Vector3(0f, 0f, 0f), 80),
                 });
+
             var simulation = new CoreSimulation(state);
-            simulation.State.Entities[0].Hp = 42;
 
-            var snapshot = simulation.CreateSnapshot();
-
-            Assert.Equal(7u, snapshot.Tick);
-            Assert.Equal(2, snapshot.Entities.Count);
-            Assert.Equal(42, snapshot.Entities[0].Hp);
-
-            var restored = new CoreSimulation();
-            restored.RestoreFromSnapshot(snapshot);
-
-            Assert.Equal(7u, restored.State.Tick);
-            Assert.Equal(2, restored.State.Entities.Count);
-            Assert.True(restored.State.TryGetEntity(10, out var entity));
-            Assert.Equal(42, entity!.Hp);
-            Assert.Equal(new Vector3(1.5f, 0f, -2.5f), entity.Position);
-        }
-
-        private sealed class TestCommand : ICommand
-        {
-            public TestCommand(uint clientTick, uint sequence)
-            {
-                ClientTick = clientTick;
-                Sequence = sequence;
-            }
-
-            public uint ClientTick { get; }
-
-            public uint Sequence { get; }
+            Assert.Equal(7u, simulation.State.Tick);
+            Assert.Equal(2, simulation.State.Entities.Count);
+            Assert.True(simulation.State.TryGetEntity(10, out var entity));
+            Assert.Equal(100, entity!.MaxHp);
+            Assert.False(simulation.State.TryGetEntity(999, out _));
         }
     }
 }

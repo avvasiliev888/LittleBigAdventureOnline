@@ -1,9 +1,9 @@
 # State
 
-Last updated: 2026-11-08 21:10 UTC
-Last heartbeat: 2026-11-08 21:10 UTC
-Current milestone: M1 — Walking skeleton
-Current task: ожидание Human-Gate M1
+Last updated: 2026-11-09 08:35 UTC
+Last heartbeat: 2026-11-09 08:35 UTC
+Current milestone: M2 — Симуляция: детерминированный тик и движение
+Current task: ожидание Human-Gate M2
 Onboarding: completed
 
 ## Onboarding: completed
@@ -15,8 +15,8 @@ Onboarding: completed
 | Milestone | Auto-Gate | Human-Gate | Status |
 |---|---|---|---|
 | M0 | ✅ | ✅ | done (2026-11-08, ADR заморожены) |
-| M1 | ✅ | ⏳ | awaiting human review |
-| M2 | — | — | todo |
+| M1 | ✅ | ✅ | done (2026-11-09, контракты заморожены) |
+| M2 | ✅ | ⏳ | awaiting human review |
 | M3 | — | — | todo |
 | M4 | — | — | todo |
 | M5 | — | — | todo |
@@ -28,65 +28,61 @@ Onboarding: completed
 | M11 | — | — | todo |
 | M12 | — | — | todo |
 
-## M1 tasks
+## M2 tasks
 
 | Task | Status | Commit | Notes |
 |---|---|---|---|
-| 1. Структура репозитория (`/src/*`, `/unity-client`, `/tools`, `/docs`) | done | — | только dotnet + Unity |
-| 2. `.sln` с проектами и зависимостями | done | — | `Prototype.sln`, зависимости по ADR-001 |
-| 3. CI: сборка, `dotnet test`, grep-проверка `UnityEngine` | done | — | `.github/workflows/ci.yml` + `tools/ci/check-architecture.sh` |
-| 4. Пустые интерфейсы с XML-документацией | done | — | 6 контрактов, см. ниже |
-| 5. `SimulationState` (тик, id/позиция/HP) | done | — | без игровой логики |
-| 6. Smoke-тест: симуляция создаётся, `Tick` не падает | done | — | 9 тестов, все зелёные |
-| 7. Unity-проект (пустая сцена) | done | — | Unity 6000.3.28f1, сцена + сборка Windows-плеера |
+| 1. `MoveCommand` (направление, `ClientTick`, `Sequence`) | done | — | без лишних полей |
+| 2. `Simulation.Tick`: движение с `deltaTime` и `moveSpeed` из конфига | done | — | `SimulationConfig`, без хардкода |
+| 3. `CreateSnapshot`/`RestoreFromSnapshot` (полный снапшот) | done | — | 1:1, включая `MaxHp` |
+| 4. Сортировка команд по `(ClientTick, Sequence)` | done | — | `CommandOrdering.Sort` (канонический порядок + `EntityId`) |
+| 5. Unit-тесты детерминизма, порядка, восстановления | done | — | 31 тест всего |
+| 6. Replay-тест: 1000 команд с `seed` | done | — | два прогона → идентичный снапшот |
 
-## M1: созданные контракты (замораживаются по Human-Gate)
+## M2: принятые решения (на ревью оператору)
 
-| Контракт | Проект | Состав |
-|---|---|---|
-| `ISimulation` | `Simulation.Core` | `State`, `Tick(float deltaTime, IReadOnlyList<CommandEnvelope>)`, `CreateSnapshot()`, `RestoreFromSnapshot(SimulationSnapshot)` |
-| `ICommand` | `Simulation.Core` | `ClientTick`, `Sequence` (без геймплейных полей) |
-| `ISnapshotSerializer` | `Simulation.Core` | `Serialize(SimulationSnapshot) → byte[]`, `Deserialize(ReadOnlySpan<byte>)` |
-| `ITransport` | `Client.Network` | `Start()`, `Poll()`, `Send(byte[], DeliveryMode)`, `IsConnected`, события `PacketReceived` / `Disconnected` |
-| `IInputSource` | `Client.Network` | `TryReadCommand(uint clientTick, out ICommand?)` |
-| `IView` | `Client.Network` | `ApplySnapshot(SimulationSnapshot)`, `Render(float frameDeltaTime)` |
+1. **`EntitySnapshot` получил `MaxHp`.** Без него восстановление «1:1» теряло максимальное здоровье (M2 требует 1:1). Это DTO, а не замороженный интерфейс; сигнатуры `ISimulation`/`ISnapshotSerializer` не менялись. При кодировании в байты (M4) поле попадёт в формат — `Protocol.Version` пока не поднимался, потому что провод ещё не реализован (ADR-004 требует поднимать версию при изменении формата).
+2. **`SimulationConfig` — отдельный тип в `Simulation.Core`** с единственным параметром `MoveSpeed`. Хардкод скорости запрещён: `Tick` с командами без конфига бросает `InvalidOperationException`. M3 заменит ручное создание на загрузку из JSON, тип останется тем же.
+3. **`CommandOrdering.Sort` — отдельная утилита, а не логика внутри `Tick`.** Замороженный контракт `ISimulation` говорит: команды приходят уже отсортированными, симуляция порядок не меняет. Сортировка — обязанность вызывающего кода (сервер/клиент), утилита даёт канонический порядок `(ClientTick, Sequence, EntityId)`, детерминированный при любом входном порядке.
+4. **Команда для несуществующей сущности игнорируется** (не бросает): сущность могла умереть/исчезнуть; решение о логировании — на сервере (M4), а не в симуляции.
+5. **Неизвестный тип команды бросает `NotSupportedException`** — вместо тихого игнорирования, чтобы ошибки протокола не прятались.
 
-Вспомогательные типы: `SimulationState`, `EntityState`, `CommandEnvelope` (EntityId + ICommand), `SimulationSnapshot`, `EntitySnapshot`, `SimulationConstants` (`TickRate = 20`, `FixedDeltaTime = 0.05`).
+## M2 Auto-Gate (проверено 2026-11-09)
 
-## M1 Auto-Gate (проверено 2026-11-08)
+- [x] CI зелёный: run [42578589472](https://github.com/avvasiliev888/albion-prototype/actions/runs/42578589472) (build, arch-check, tests + coverage gate) на PR #3.
+- [x] Все unit-тесты зелёные: **31/31** (движение, порядок команд, снапшоты, детерминизм, контракты).
+- [x] Replay-тест зелёный: 1000 команд с `seed=20261108`, два прогона → идентичный финальный снапшот; другой seed → другое состояние.
+- [x] CI-grep: `UnityEngine` в `Simulation.Core` отсутствует (`tools/ci/check-architecture.sh`).
+- [x] Покрытие `Simulation.Tick` и snapshot-методов — **100% line** (coverlet, порог в CI: `Threshold=100`, `Include=[Simulation.Core]Simulation.Core.Simulation`).
 
-- [x] CI зелёный: run [42522296907](https://github.com/avvasiliev888/albion-prototype/actions/runs/42522296907) (build, architecture checks, test) на PR #2.
-- [x] `dotnet build Prototype.sln -c Release` — 0 предупреждений, 0 ошибок.
-- [x] `dotnet test` — 9/9 зелёные (локально через `tools/dev/test-local.ps1`, см. Discovered Issues).
-- [x] `tools/ci/check-architecture.sh` — все 4 проверки пройдены локально.
-- [x] `Simulation.Core` не ссылается на другие проекты; `UnityEngine` отсутствует.
-- [x] Unity-проект: `6000.3.28f1`, сцена `Assets/Scenes/SampleScene.unity`, Windows-плеер собран (`BuildWindowsPlayer: result=Succeeded, errors=0`).
-- [x] `docs/state.md` обновлён: интерфейсы и контракты перечислены выше.
+## M2 Human-Gate (ожидает оператора)
 
-## M1 Human-Gate (ожидает оператора)
+**PR:** [#3 — M2: детерминированное движение и снапшоты](https://github.com/avvasiliev888/albion-prototype/pull/3), ветка `agent/M2/movement-and-snapshots`.
 
-**PR:** [#2 — M1: Walking skeleton](https://github.com/avvasiliev888/albion-prototype/pull/2), ветка `agent/M1/walking-skeleton`.
+- [ ] Оператор прогнал replay-тест дважды — результат идентичен.
+- [ ] Оператор проверил, что `MoveCommand` не содержит лишних полей (`speedMultiplier` и т.п. — только `Direction`, `ClientTick`, `Sequence`).
 
-- [ ] Оператор прочитал интерфейсы и подтвердил контракты. **После этого интерфейсы заморожены.**
-- [ ] Оператор вручную проверил, что CI краснеет при `using UnityEngine;` в `Simulation.Core`.
-- [ ] Оператор открыл `unity-client` в Unity Hub (проект должен открыться без ошибок, сцена `SampleScene` в build settings).
-
-**Как проверить CI-красноту (п.2):** в ветке `agent/M1/walking-skeleton` добавить `using UnityEngine;` в любой файл `src/Simulation.Core`, запушить — job `build-test` должен упасть на шаге «Architecture checks». Коммит с этой правкой не должен попасть в PR.
+**Как прогнать replay:**
+```
+pwsh -File tools/dev/test-local.ps1 -Configuration Release
+# или точечно, вне workspace:
+dotnet test src/Tests/Tests.csproj --filter "FullyQualifiedName~ReplayTests" -c Release
+```
+Ожидаемо: `Replay_1000SeededCommands_ProducesIdenticalFinalState` и `Replay_DifferentSeed_ProducesDifferentState` — зелёные.
 
 ## Environment
 
 | Что | Значение |
 |---|---|
 | ОС | Windows 11 (10.0.22631), PowerShell 7.5.4 |
-| .NET SDK | 10.0.403 (winget), `global.json` фиксирует версию |
-| Unity | 6000.3.28f1 LTS, `N:\Program Files\Unity Hub\Editor\6000.3.28f1` (лицензия активирована оператором) |
-| Репозиторий | `https://github.com/avvasiliev888/albion-prototype` (private), `main`, remote `origin` |
-| Git LFS | 3.7.1, `--local`; бинарники > 100 KB — в LFS (`.gitattributes`) |
-| Node.js | v24.14.1 |
+| .NET SDK | 10.0.403, `global.json` фиксирует версию |
+| Unity | 6000.3.28f1 LTS, `N:\Program Files\Unity Hub\Editor\6000.3.28f1` |
+| Репозиторий | `https://github.com/avvasiliev888/albion-prototype` (private), `main` |
+| Git LFS | 3.7.1, `--local` |
 
 ## Open Questions
 
-(нет — branch protection решена вариантом «дисциплина»: агент пушит только в `agent/*`, мержит оператор)
+(нет)
 
 ## Resolved Questions
 
@@ -97,30 +93,21 @@ Onboarding: completed
 5. **Кто создаёт репозиторий?** → агент. (2026-11-08)
 6. **Монорепо и Git LFS?** → монорепо, LFS сразу, бинарники > 100 KB, `*.meta` трекаются. (2026-11-08)
 7. **Модель доступа?** → агент пушит только в `agent/*`, PR открывает агент, мержит оператор. (2026-11-08)
-8. **CI-раннер и лимиты?** → `ubuntu-latest`, полный прогон только на push в `agent/*` и PR в `main`. (2026-11-08)
-9. **Branch protection?** → GitHub Free не даёт protection для private-репо; оператор выбрал вариант (c): репозиторий остаётся private, действует дисциплина. (2026-11-08)
+8. **CI-раннер и лимиты?** → `ubuntu-latest`, прогон на push в `agent/*` и PR в `main`. (2026-11-08)
+9. **Branch protection?** → private-репо, protection недоступна на Free; действует дисциплина. (2026-11-08)
 10. **LiteNetLib?** → NuGet 2.1.4, не вендорить. (2026-11-08)
 11. **Допущения Product Vision?** → 10–20 CCU; NPC-якорей рынка нет; цифры убывающей отдачи позже. (2026-11-08)
-12. **Экономика в прототипе?** → нет (M1–M12), только архитектура. (2026-11-08)
-13. **M1 → M2?** → строго последовательно, контракты M1 замораживаются. (2026-11-08)
+12. **Экономика в прототипе?** → нет (M1–M12). (2026-11-08)
+13. **M1 → M2?** → строго последовательно. (2026-11-08)
 14. **Namespace?** → `Simulation.Core`, `Shared`, `Server`, `Client.Network`. (2026-11-08)
-
-## Решения, принятые в M1 (на ревью оператору)
-
-1. **Мультитаргет `netstandard2.1;net10.0`** для `Simulation.Core`, `Shared`, `Client.Network`; `LangVersion 9.0` и `ImplicitUsings=disable` — иначе Unity 6.3 (netstandard2.1, C# 9) не сможет сослаться на библиотеки.
-2. **`ISnapshotSerializer` живёт в `Simulation.Core`** (сериализует тело снапшота), а `Shared` содержит только обёртку сообщения (`Protocol.Magic/Version`, `MessageType`) — так `Simulation.Core` остаётся без зависимостей (ADR-001).
-3. **`IView`/`IInputSource`/`ITransport` живут в `Client.Network`**, который ссылается на `Simulation.Core` + `Shared`: интерфейсам нужны `SimulationSnapshot` и `ICommand`. Инвариант «`Simulation.Core` ни от чего не зависит» соблюдён.
-4. **Класс `Simulation` требует полного имени `Simulation.Core.Simulation`** извне — конфликт с корневым namespace `Simulation`. В тестах используется алиас `CoreSimulation`.
-5. **Тесты: xUnit, 9 штук** (smoke + контракты), проект `src/Tests` на `net10.0`.
-6. **`Simulation.CreateSnapshot/RestoreFromSnapshot` реализованы сразу** как простое копирование состояния (без игровой логики); M2 добавляет тесты детерминизма и сортировку команд, а не «плумбинг».
-7. **Unity-проект инициализируется из CLI** (`Assets/Editor/ProjectSetup.cs`, `-executeMethod`): сцена + build settings + сборка плеера. Это же — основа для проверки Gate «Unity собирается».
 
 ## Discovered Issues
 
-1. **VSTest не работает внутри workspace на `F:`** — testhost падает с `Win32Exception (5)` на `Process.set_EnableRaisingEvents` (попытка открыть handle родительского процесса). Тот же проект из `%TEMP%` (или с `F:` вне workspace) проходит. Обход: `tools/dev/test-local.ps1` (копирует исходники во временный каталог и гоняет тесты там). CI на `ubuntu-latest` проблемы не имеет. Приоритет: низкий для проекта, требует внимания оператора (возможно ограничение песочницы хоста).
-2. **CRLF-предупреждения git** при `git add` на Windows. Файлы в индексе нормализованы (`core.autocrlf=false`); косметика. Приоритет: низкий.
+1. **VSTest не работает внутри workspace на `F:`** — testhost падает с `Win32Exception (5)` на `Process.set_EnableRaisingEvents`; тот же проект из `%TEMP%` проходит. Обход: `tools/dev/test-local.ps1`. CI не затронут. Приоритет: низкий (ограничение хоста).
+2. **Unity Package Manager не может достучаться до `packages.unity.com`** — `ETIMEDOUT` из процесса UPM, хотя хост-процесс получает `200` (проверено `Invoke-WebRequest` к тому же хосту). Причина — сетевое ограничение дочерних процессов на этом хосте (та же семья, что и п.1), не диск F: и не проект. **Не критично:** `Packages/manifest.json` и `packages-lock.json` в репозитории, все 37 пакетов разрешены из `Library/PackageCache`, проект компилируется и собирается, сцена открывается. Влияние: поиск/установка новых пакетов из registry (понадобится на M10 для URP) — тогда либо оператор ставит пакет через Hub, либо добавляем тарбол локально (`file:`), либо ищем снятие ограничения. Приоритет: средний к M10.
+3. **CRLF-предупреждения git** на Windows — косметика (`core.autocrlf=false`). Приоритет: низкий.
 
 ## Next Actions (для следующей сессии)
 
-1. Дождаться Human-Gate M1: подтверждение контрактов (после — заморозка), проверка красноты CI, открытие Unity-проекта.
-2. После подтверждения — M2: `MoveCommand`, `Tick` с движением, сортировка команд, snapshot-тесты, replay-тест.
+1. Дождаться Human-Gate M2 (replay дважды + проверка полей `MoveCommand`), после — merge PR.
+2. Затем M3: JSON-схема конфигов (`abilities`, `actors`), загрузчик с валидацией, `AbilityCommand`, урон/кулдаун/смерть/респавн, тесты «изменил JSON → изменилось поведение».

@@ -35,5 +35,12 @@ jobs:
       - name: Architecture checks
         run: bash tools/ci/check-architecture.sh
 
-      - name: Test
-        run: dotnet test src/Tests/Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
+      - name: "Test (coverage gate: Simulation 100% line)"
+        run: >
+          dotnet test src/Tests/Tests.csproj --no-build -c Release
+          --logger "console;verbosity=normal"
+          /p:CollectCoverage=true
+          /p:CoverletOutputFormat=json
+          /p:Include="[Simulation.Core]Simulation.Core.Simulation"
+          /p:Threshold=100
+          /p:ThresholdType=line

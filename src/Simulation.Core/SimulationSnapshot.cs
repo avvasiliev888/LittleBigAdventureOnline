@@ -12,12 +12,14 @@ namespace Simulation.Core
         /// <summary>Создаёт снимок сущности.</summary>
         /// <param name="id">Идентификатор сущности.</param>
         /// <param name="position">Позиция на момент снапшота.</param>
+        /// <param name="maxHp">Максимальное здоровье (нужно для восстановления 1:1).</param>
         /// <param name="hp">Текущее здоровье.</param>
         /// <param name="isDead">Признак смерти на момент снапшота.</param>
-        public EntitySnapshot(uint id, Vector3 position, int hp, bool isDead)
+        public EntitySnapshot(uint id, Vector3 position, int maxHp, int hp, bool isDead)
         {
             Id = id;
             Position = position;
+            MaxHp = maxHp;
             Hp = hp;
             IsDead = isDead;
         }
@@ -27,6 +29,9 @@ namespace Simulation.Core
 
         /// <summary>Позиция сущности.</summary>
         public Vector3 Position { get; }
+
+        /// <summary>Максимальное здоровье сущности.</summary>
+        public int MaxHp { get; }
 
         /// <summary>Текущее здоровье.</summary>
         public int Hp { get; }

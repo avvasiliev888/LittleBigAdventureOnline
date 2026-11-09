@@ -17,8 +17,10 @@ namespace Shared
         /// <remarks>
         /// Версия 2 (M4): бинарный формат реализован впервые, запись сущности в снапшоте расширена
         /// относительно эскиза ADR-004 полями actor/resource/cooldown/respawn/spawn (ADR-008).
+        /// Версия 3 (M7): в HelloAck добавлена скорость движения актора, появилось сообщение
+        /// <see cref="MessageType.ServerAck"/> с подтверждением последней обработанной команды (ADR-009).
         /// </remarks>
-        public const ushort Version = 2;
+        public const ushort Version = 3;
     }
 
     /// <summary>
@@ -43,5 +45,11 @@ namespace Shared
 
         /// <summary>Запрос полного снапшота, если база для дельты потеряна.</summary>
         FullSnapshotRequest = 6,
+
+        /// <summary>
+        /// Подтверждение сервера: какой тик и какая последняя команда клиента обработаны (M7, ADR-009).
+        /// Надёжная доставка; клиент использует пару «тик + sequence» для реконсиляции.
+        /// </summary>
+        ServerAck = 7,
     }
 }

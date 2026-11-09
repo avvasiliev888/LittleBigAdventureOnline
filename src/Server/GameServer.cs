@@ -20,7 +20,7 @@ namespace Server
         private readonly InputValidator _validator;
         private readonly BinarySnapshotSerializer _serializer = new BinarySnapshotSerializer();
         private readonly Dictionary<int, ClientSession> _sessions = new Dictionary<int, ClientSession>();
-        private readonly List<CommandEnvelope> _pendingCommands = new List<CommandEnvelope>();
+        private readonly List<PendingCommand> _pendingCommands = new List<PendingCommand>();
         private readonly List<string> _log = new List<string>();
         private readonly Action<string>? _logSink;
         private uint _nextEntityId = 1;
@@ -82,17 +82,31 @@ namespace Server
         /// <summary>Выполняет один тик: применяет накопленные команды и рассылает снапшот.</summary>
         public void Tick()
         {
-            var commands = _pendingCommands.Count == 0 ? Array.Empty<CommandEnvelope>() : _pendingCommands.ToArray();
+            var pending = _pendingCommands.Count == 0 ? Array.Empty<PendingCommand>() : _pendingCommands.ToArray();
             _pendingCommands.Clear();
+
+            var commands = new CommandEnvelope[pending.Length];
+            for (var i = 0; i < pending.Length; i++)
+            {
+                commands[i] = pending[i].Envelope;
+            }
 
             Simulation.Tick(SimulationConstants.FixedDeltaTime, commands);
 
             var snapshot = _serializer.Serialize(Simulation.CreateSnapshot());
             var packet = MessageFraming.Wrap(MessageType.Snapshot, snapshot);
+            var ackTick = Simulation.State.Tick;
 
             foreach (var session in _sessions.Values)
             {
+                // Сначала ack, потом снапшот: клиент сверяет пару «тик + sequence» и не ждёт
+                // подтверждение до следующего снапшота (M7).
+                var ack = MessageFraming.Wrap(
+                    MessageType.ServerAck,
+                    AckCodec.Encode(session.EntityId, session.AcknowledgedSequence, ackTick));
+                _transport.Send(session.ConnectionId, ack, DeliveryMode.ReliableOrdered);
                 _transport.Send(session.ConnectionId, packet, DeliveryMode.Unreliable);
+
                 session.CommandsThisTick = 0;
             }
 
@@ -200,10 +214,12 @@ namespace Server
 
             _sessions[connectionId] = new ClientSession(connectionId, entityId);
 
-            var ack = new byte[12];
+            // M7: клиенту нужна скорость актора для локального предсказания движения (ADR-009).
+            var ack = new byte[16];
             WriteUInt32(ack, 0, entityId);
             WriteUInt32(ack, 4, Simulation.State.Tick);
             WriteUInt32(ack, 8, actor.Id);
+            WriteSingle(ack, 12, actor.MoveSpeed);
             _transport.Send(connectionId, MessageFraming.Wrap(MessageType.HelloAck, ack), DeliveryMode.ReliableOrdered);
 
             Log("[t" + Simulation.State.Tick + "] conn " + connectionId + ": Hello принят, сущность " + entityId
@@ -228,13 +244,17 @@ namespace Server
             var result = _validator.Validate(Simulation.State, Simulation.State.Tick, envelope, session.CommandsThisTick);
             session.CommandsThisTick++;
 
+            // Подтверждаем и отклонённые команды: иначе клиент предсказывает то, что сервер не принял,
+            // и будет повторять её в реконсиляции бесконечно (M7).
+            session.Acknowledge(command.Sequence);
+
             if (!result.IsValid)
             {
                 Log("[t" + Simulation.State.Tick + "] conn " + connectionId + ": rejected (" + result.Reason + ") — " + result.Detail);
                 return;
             }
 
-            _pendingCommands.Add(envelope);
+            _pendingCommands.Add(new PendingCommand(connectionId, envelope));
         }
 
         private void SendSnapshot(int connectionId)
@@ -274,6 +294,12 @@ namespace Server
             buffer[offset + 3] = (byte)(value >> 24);
         }
 
+        private static void WriteSingle(byte[] buffer, int offset, float value)
+        {
+            var bits = BitConverter.SingleToInt32Bits(value);
+            WriteUInt32(buffer, offset, (uint)bits);
+        }
+
         private static uint ReadUInt32(byte[] buffer, int offset)
         {
             return (uint)(buffer[offset] | (buffer[offset + 1] << 8) | (buffer[offset + 2] << 16) | (buffer[offset + 3] << 24));
@@ -291,7 +317,31 @@ namespace Server
 
             public uint EntityId { get; }
 
+            public uint AcknowledgedSequence { get; private set; }
+
             public int CommandsThisTick { get; set; }
+
+            /// <summary>Сдвигает подтверждение только вперёд: команды приходят по порядку, а acks ретраятся.</summary>
+            public void Acknowledge(uint sequence)
+            {
+                if (sequence > AcknowledgedSequence)
+                {
+                    AcknowledgedSequence = sequence;
+                }
+            }
+        }
+
+        private readonly struct PendingCommand
+        {
+            public PendingCommand(int connectionId, CommandEnvelope envelope)
+            {
+                ConnectionId = connectionId;
+                Envelope = envelope;
+            }
+
+            public int ConnectionId { get; }
+
+            public CommandEnvelope Envelope { get; }
         }
     }
 }

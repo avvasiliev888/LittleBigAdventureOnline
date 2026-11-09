@@ -5,7 +5,8 @@ using UnityEngine;
 namespace Albion.Client
 {
     /// <summary>
-    /// Точка входа Unity-клиента (M6): создаёт мир, транспорт, конвейер клиента и крутит кадры.
+    /// Точка входа Unity-клиента (M6, M7): создаёт мир, транспорт, конвейер клиента и крутит кадры.
+    /// С M7 клиент предсказывает движение игрока и реконсилирует его по ServerAck; в HUD видно
     /// Скрипт запускается сам после загрузки сцены, поэтому отдельная сцена/префаб не нужны.
     /// Настройки берутся из переменных окружения ALBION_SERVER_HOST / ALBION_SERVER_PORT
     /// или из аргументов командной строки -serverHost / -serverPort.
@@ -56,6 +57,17 @@ namespace Albion.Client
                 _view.PlayerEntityId = entityId;
                 _status = "connected, entity " + entityId;
                 Debug.Log("ClientRuntime: сессия готова, сущность " + entityId);
+
+                if (_pipeline.Prediction != null)
+                {
+                    _pipeline.Prediction.Reconciled += reconciliation => Debug.Log(
+                        "ClientRuntime: реконсиляция tick=" + reconciliation.Tick
+                        + " error=" + reconciliation.Error.ToString("0.###")
+                        + " predicted=(" + reconciliation.Predicted.X.ToString("0.###") + ", "
+                        + reconciliation.Predicted.Z.ToString("0.###") + ")"
+                        + " server=(" + reconciliation.Server.X.ToString("0.###") + ", "
+                        + reconciliation.Server.Z.ToString("0.###") + ")");
+                }
             };
 
             _pipeline.Disconnected += reason =>
@@ -96,6 +108,17 @@ namespace Albion.Client
         {
             var snapshots = _pipeline == null ? 0 : _pipeline.SnapshotsApplied;
             GUI.Label(new Rect(12f, 12f, 900f, 24f), "Albion: " + _status + " | snapshots: " + snapshots + " | WASD — движение");
+
+            if (_pipeline?.Prediction != null)
+            {
+                var prediction = _pipeline.Prediction;
+                GUI.Label(
+                    new Rect(12f, 34f, 900f, 24f),
+                    "prediction: reconciles=" + prediction.Reconciliations
+                    + " | lastError=" + prediction.LastError.ToString("0.000")
+                    + " | pos=(" + prediction.Position.X.ToString("0.##") + ", " + prediction.Position.Z.ToString("0.##") + ")"
+                    + " | unacked=" + prediction.Unacknowledged.Count);
+            }
         }
 
         private void EnsureCamera()

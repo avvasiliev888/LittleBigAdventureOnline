@@ -156,7 +156,16 @@ namespace Tests
 
                 server.Tick();
 
-                Assert.False(inner.TryReceive(clientId, out _), "при 100% потере снапшот не должен дойти");
+                var received = new System.Collections.Generic.List<MessageType>();
+
+                while (inner.TryReceive(clientId, out var queued) && queued != null)
+                {
+                    Assert.Equal(FramingError.None, MessageFraming.TryUnwrap(queued, out var queuedFrame));
+                    received.Add(queuedFrame.Type);
+                }
+
+                Assert.DoesNotContain(MessageType.Snapshot, received);
+                Assert.Contains(MessageType.ServerAck, received);
                 Assert.Equal(1, lossy.DroppedPackets);
                 Assert.Equal(0, lossy.DelayedPackets);
             }

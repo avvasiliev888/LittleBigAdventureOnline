@@ -29,6 +29,8 @@ namespace TestClient
             var snapshots = 0;
             var commandsSent = 0;
             var fullSnapshotRequests = 0;
+            var acks = 0;
+            var lastAckSequence = 0u;
             var lastSnapshotAt = 0L;
             uint entityId = 0;
             var lastPosition = Vector3.Zero;
@@ -54,7 +56,17 @@ namespace TestClient
                         entityId = ReadUInt32(frame.Payload, 0);
                         helloAcked = true;
                         Console.WriteLine("[client] HelloAck: сущность " + entityId + ", тик " + ReadUInt32(frame.Payload, 4)
-                            + ", актор " + ReadUInt32(frame.Payload, 8));
+                            + ", актор " + ReadUInt32(frame.Payload, 8)
+                            + (frame.Payload.Length >= 16 ? ", скорость " + ReadSingle(frame.Payload, 12).ToString("0.###") : string.Empty));
+                        break;
+
+                    case MessageType.ServerAck:
+                        acks++;
+                        if (AckCodec.TryDecode(frame.Payload, out var ack))
+                        {
+                            lastAckSequence = ack.AcknowledgedSequence;
+                        }
+
                         break;
 
                     case MessageType.Snapshot:
@@ -130,10 +142,16 @@ namespace TestClient
             Console.WriteLine(
                 "[client] готово: снапшотов=" + snapshots + ", команд отправлено=" + commandsSent
                 + ", запросов полного снапшота=" + fullSnapshotRequests
+                + ", acks=" + acks + " (последний sequence=" + lastAckSequence + ")"
                 + ", последняя позиция=(" + lastPosition.X.ToString("0.##") + ", " + lastPosition.Z.ToString("0.##") + ")"
                 + ", RTT=" + transport.RoundTripTimeMs + " мс");
 
             return snapshots > 0 ? 0 : 1;
+        }
+
+        private static float ReadSingle(byte[] buffer, int offset)
+        {
+            return BitConverter.Int32BitsToSingle((int)ReadUInt32(buffer, offset));
         }
 
         private static uint ReadUInt32(byte[] buffer, int offset)

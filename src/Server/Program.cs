@@ -16,12 +16,17 @@ namespace Server
     public static class Program
     {
         /// <summary>Запускает сервер: демо с in-process клиентом или UDP-сервер.</summary>
-        /// <param name="args">`--udp [порт]` для реального UDP; иначе путь к каталогу конфигов (необязательно).</param>
+        /// <param name="args">
+        /// `--udp [порт]` для реального UDP; `--delay &lt;мс&gt;` и `--loss &lt;процент&gt;` — имитация плохой сети (M7);
+        /// иначе путь к каталогу конфигов (необязательно).
+        /// </param>
         /// <returns>Код возврата процесса.</returns>
         public static int Main(string[] args)
         {
             var positional = new List<string>();
             int? udpPort = null;
+            var delayMs = 0;
+            var lossPercent = 0;
 
             for (var i = 0; i < args.Length; i++)
             {
@@ -37,6 +42,20 @@ namespace Server
                         udpPort = 9050;
                     }
 
+                    continue;
+                }
+
+                if (args[i] == "--delay" && i + 1 < args.Length && int.TryParse(args[i + 1], out var delay))
+                {
+                    delayMs = Math.Max(0, delay);
+                    i++;
+                    continue;
+                }
+
+                if (args[i] == "--loss" && i + 1 < args.Length && int.TryParse(args[i + 1], out var loss))
+                {
+                    lossPercent = Math.Clamp(loss, 0, 100);
+                    i++;
                     continue;
                 }
 
@@ -60,7 +79,7 @@ namespace Server
 
             if (udpPort.HasValue)
             {
-                return RunUdpServer(config, udpPort.Value);
+                return RunUdpServer(config, udpPort.Value, delayMs, lossPercent);
             }
 
             using var transport = new InMemoryServerTransport();
@@ -114,14 +133,40 @@ namespace Server
             return 0;
         }
 
-        private static int RunUdpServer(SimulationConfig config, int port)
+        private static int RunUdpServer(SimulationConfig config, int port, int delayMs, int lossPercent)
         {
-            using var transport = new LiteNetLibServerTransport(port);
+            using var socket = new LiteNetLibServerTransport(port);
+            IServerTransport transport = socket;
+            GameServer? started = null;
+
+            if (delayMs > 0 || lossPercent > 0)
+            {
+                // Задержка в тиках: 50 мс на тик при 20 Гц. Задерживаем и снапшоты, и входящие команды,
+                // чтобы оператор чувствовал RTT, а предсказание клиента было видно в деле (M7).
+                var delayTicks = (int)Math.Round(delayMs / 50.0);
+
+                if (delayMs > 0 && delayTicks == 0)
+                {
+                    delayTicks = 1;
+                }
+
+                transport = new LossyServerTransport(
+                    socket,
+                    lossPercent,
+                    delayTicks,
+                    seed: 2026,
+                    currentTick: () => started?.Simulation.State.Tick ?? 0u,
+                    inboundDelayTicks: delayTicks);
+                Console.WriteLine("сеть: задержка " + delayMs + " мс (" + delayTicks + " тик(а)), потери "
+                    + lossPercent + "% ненадёжных пакетов");
+            }
+
             using var server = new GameServer(config, transport, new ServerOptions(), Console.WriteLine);
+            started = server;
             var loop = new ServerLoop(server, new SystemClock(), 20);
 
             server.Start();
-            Console.WriteLine("UDP-сервер слушает порт " + transport.LocalPort + " (protocol v" + Protocol.Version
+            Console.WriteLine("UDP-сервер слушает порт " + socket.LocalPort + " (protocol v" + Protocol.Version
                 + ", тик " + loop.TickRate + " Гц). Ctrl+C — остановка.");
 
             var running = true;

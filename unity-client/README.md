@@ -22,10 +22,11 @@
    dotnet run --project src/Server -c Release -- --udp 9050
    ```
 
-3. Открыть `unity-client` в Unity 6.3, открыть сцену `Assets/Scenes/SampleScene.unity`, нажать **Play**.
+3. Открыть `unity-client` в Unity 6.3, открыть сцену `Assets/Scenes/Arena.unity` (M10), нажать **Play**.
 
-Клиент запускается сам (`ClientRuntime` через `RuntimeInitializeOnLoadMethod`): создаёт плоскость,
-свет, камеру с `CameraFollow`, подключается к серверу, шлёт `MoveCommand` по WASD и двигает капсулы
+Клиент запускается сам (`ClientRuntime` через `RuntimeInitializeOnLoadMethod`): подхватывает сцену
+арены (пол, колонны, камни, кристаллы, свет, Volume) или, если сцены нет, создаёт окружение сам;
+подключается к серверу, шлёт `MoveCommand` по WASD и двигает стилизованных персонажей
 по интерполированным снапшотам (лаг отображения 2 тика = 100 мс).
 
 Настройки подключения:
@@ -124,13 +125,40 @@ HP предсказывается только сервером — локаль
 3. перезапустите Play (код не перекомпилируется): движение быстрее, кулдаун ~120 тиков, урон 5,
    `cfg:` хеш другой.
 
-## Ограничения M6/M7/M8/M9
-## Ограничения M6/M7/M8
+## URP, стилизация и два профиля качества (M10)
 
-- Рендер-пайплайн — встроенный (Built-in) `Standard`, URP отложен до M10 из-за недоступности
-  `packages.unity.com` из процесса Unity Package Manager на этом хосте.
+Рендер-пайплайн — URP 17.3.0 (пакет поставляется с Unity, установка не требует сети, ADR-012).
+Ассеты и сцена генерируются редакторскими скриптами и лежат в git:
+
+- `Albion/Rendering/Setup URP` (`Assets/Editor/AlbionUrpSetup.cs`) — два renderer data и два
+  `UniversalRenderPipelineAsset`: `Assets/Resources/Rendering/UrpDesktop.asset` (deferred, HDR,
+  MSAA 4x, тени 2048/60, GPU Resident Drawer, Bloom+Vignette+ColorAdjustments) и `UrpMobile.asset`
+  (forward, без HDR/MSAA/пост-обработки, render scale 0.8, тени выключены);
+- `Albion/Rendering/Validate URP` — проверяет, что профили различаются и всё грузится в рантайме;
+- `Albion/World/Rebuild Arena` (`Assets/Editor/AlbionWorldBuilder.cs`) — сцена `Arena.unity`
+  с LODGroup (8 колонн, 6 камней), static-флагами и occlusion culling;
+- `Albion/Build/Desktop|Mobile` (`Assets/Editor/AlbionBuild.cs`) — две сборки в `Builds/desktop`
+  и `Builds/mobile`; mobile получает символ `ALBION_MOBILE_DEFAULT`.
+
+Профиль выбирается в рантайме (`Assets/Scripts/Rendering/QualityProfile.cs`): `ALBION_QUALITY`,
+аргумент `-quality desktop|mobile` или дефолт сборки. В HUD видно `profile: desktop|mobile` и
+сглаженный `fps`; раз в 10 секунд FPS пишется в лог (`[fps] profile=… avg=…`).
+
+Стилизация: `Assets/Shaders/ToonLit.shader` (двухцветная рампа, мягкая тень, rim, контур
+inverted hull; проход `UniversalForwardOnly` работает и в deferred) и `ToonGround.shader`
+(шахматка без текстур). Персонажи собраны из простых форм с палитрой герой/чужие/мёртвые:
+внешние Synty POLYGON агенту недоступны (нет сети и лицензии), поэтому стилизация процедурная;
+модели можно заменить, не трогая код. Occlusion-данные запекаются в batchmode; если их нет,
+повторите `Window/Rendering/Occlusion Culling → Bake` в редакторе.
+
+## Ограничения M6–M10
+
+- Рендер-пайплайн — URP; внешние ассеты персонажей не подключены (стилизация процедурная,
+  замена — на усмотрение оператора).
 - Тестов Unity Test Framework в проекте нет (пакет не установлен); smoke-тесты клиента — xUnit
   `ClientPipelineTests` в `src/Tests` (подключение → ввод → снапшоты → отрисовка, предсказание
   и сходимость при задержке/потерях).
 - Предсказывается движение и кулдаун способности (кулдаун из конфига); урон, ресурсы и HP — серверные.
 - Таргетинга мышью нет: Space целится в ближайшую сущность, иначе в себя (M9-минимум).
+- Mobile-профиль без теней (ради FPS ≥ 30); если нужны — включим в `UrpMobile.asset` и замерим.
+- GPU Resident Drawer включается только на D3D12-железе; иначе URP предупреждает и продолжает работу.

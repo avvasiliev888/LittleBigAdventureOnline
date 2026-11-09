@@ -44,4 +44,19 @@ foreach ($assembly in $assemblies) {
     Write-Host ("  " + $assembly + " -> " + $target)
 }
 
+# M9: тот же JSON, что у сервера, кладём в StreamingAssets — Unity-клиент читает его тем же
+# загрузчиком из Shared. Файлы генерируемые (не коммитятся), поэтому копируются здесь.
+$configSource = Join-Path $root "config"
+$configTarget = Join-Path $root "unity-client/Assets/StreamingAssets/Config"
+if (Test-Path $configSource) {
+    New-Item -ItemType Directory -Force -Path $configTarget | Out-Null
+    Get-ChildItem -Path $configSource -Filter "*.json" | ForEach-Object {
+        Copy-Item -Path $_.FullName -Destination (Join-Path $configTarget $_.Name) -Force
+        Write-Host ("  " + $_.Name + " -> " + $configTarget)
+    }
+} else {
+    throw "Каталог конфигов не найден: $configSource"
+}
+
 Write-Host "Плагины для Unity обновлены: $target"
+Write-Host "Конфиги для Unity обновлены: $configTarget"

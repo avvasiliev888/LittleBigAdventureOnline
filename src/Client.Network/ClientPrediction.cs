@@ -9,9 +9,9 @@ namespace Client.Network
     /// Клиентское предсказание движения и реконсиляция (M7, ADR-009, ADR-010).
     /// </summary>
     /// <remarks>
-    /// Клиент не создаёт копию <see cref="Simulation"/>, потому что у него нет конфигурации мира:
-    /// сервер передаёт скорость актора в HelloAck. Предсказание повторяет самое простое правило
-    /// движения симуляции (<c>position += direction * moveSpeed * dt</c>) и только для перемещения.
+    /// Клиент не создаёт копию <see cref="Simulation"/>; с M9 он читает тот же JSON-конфиг, что и сервер
+    /// (<see cref="ClientContent"/>), и берёт из него скорость, радиус и кулдаун. Предсказание повторяет
+    /// правило движения симуляции (<c>position += direction * moveSpeed * dt</c>) и кулдаун способности.
     /// При расхождении состояние восстанавливается из серверного снапшота и к нему заново применяются
     /// неподтверждённые команды — клиент <b>не</b> телепортируется в серверную позицию (AI-Failure Mode M7).
     /// </remarks>
@@ -25,15 +25,43 @@ namespace Client.Network
 
         private readonly uint _entityId;
         private readonly float _moveSpeed;
+        private readonly ActorConfig? _actor;
+        private readonly AbilityConfig? _ability;
         private readonly List<ICommand> _unacknowledged = new List<ICommand>();
         private Vector3 _position;
         private bool _hasPosition;
+        private uint _cooldownUntilTick;
+        private uint _pendingAbilitySequence;
 
         /// <summary>Создаёт предсказание для сущности игрока.</summary>
         /// <param name="entityId">Идентификатор сущности, выданный сервером.</param>
         /// <param name="moveSpeed">Скорость перемещения актора, единиц в секунду.</param>
         /// <param name="tolerance">Допустимое расхождение для реконсиляции.</param>
         public ClientPrediction(uint entityId, float moveSpeed, float tolerance = DefaultTolerance)
+            : this(entityId, moveSpeed, null, null, tolerance)
+        {
+        }
+
+        /// <summary>
+        /// Создаёт предсказание из конфига клиента (M9): скорость движения, радиус и кулдаун способности
+        /// берутся из того же JSON, что и у сервера, а не из констант клиента.
+        /// </summary>
+        /// <param name="entityId">Идентификатор сущности, выданный сервером.</param>
+        /// <param name="actor">Тип актора из конфига.</param>
+        /// <param name="ability">Способность актора из конфига.</param>
+        /// <param name="tolerance">Допустимое расхождение для реконсиляции.</param>
+        /// <exception cref="ArgumentNullException">Если <paramref name="actor"/> или <paramref name="ability"/> равны <c>null</c>.</exception>
+        public ClientPrediction(uint entityId, ActorConfig actor, AbilityConfig ability, float tolerance = DefaultTolerance)
+            : this(
+                entityId,
+                (actor ?? throw new ArgumentNullException(nameof(actor))).MoveSpeed,
+                actor,
+                ability ?? throw new ArgumentNullException(nameof(ability)),
+                tolerance)
+        {
+        }
+
+        private ClientPrediction(uint entityId, float moveSpeed, ActorConfig? actor, AbilityConfig? ability, float tolerance)
         {
             if (float.IsNaN(moveSpeed) || float.IsInfinity(moveSpeed) || moveSpeed < 0f)
             {
@@ -42,14 +70,58 @@ namespace Client.Network
 
             _entityId = entityId;
             _moveSpeed = moveSpeed;
+            _actor = actor;
+            _ability = ability;
             Tolerance = tolerance;
         }
 
         /// <summary>Сущность, за которую предсказывает клиент.</summary>
         public uint EntityId => _entityId;
 
-        /// <summary>Скорость актора из HelloAck.</summary>
+        /// <summary>Скорость актора из HelloAck (или из конфига, если он передан).</summary>
         public float MoveSpeed => _moveSpeed;
+
+        /// <summary>Тип актора из конфига клиента (M9); <c>null</c>, если конфиг не передан.</summary>
+        public ActorConfig? Actor => _actor;
+
+        /// <summary>Способность актора из конфига клиента (M9); <c>null</c>, если конфиг не передан.</summary>
+        public AbilityConfig? Ability => _ability;
+
+        /// <summary>Радиус способности из конфига (M9), 0 если конфига нет.</summary>
+        public float AbilityRange => _ability?.Range ?? 0f;
+
+        /// <summary>Кулдаун способности в тиках из конфига (M9), 0 если конфига нет.</summary>
+        public int AbilityCooldownTicks =>
+            _ability == null ? 0 : (int)Math.Ceiling(_ability.CooldownSeconds / TickDelta);
+
+        /// <summary>Кулдаун, предсказанный локально (тик, до которого способность недоступна).</summary>
+        public uint CooldownUntilTick => _cooldownUntilTick;
+
+        /// <summary>Сколько тиков осталось до конца предсказанного кулдауна.</summary>
+        /// <param name="tick">Текущий тик.</param>
+        /// <returns>Число тиков; 0, если способность готова.</returns>
+        public int CooldownRemainingTicks(uint tick) => _cooldownUntilTick > tick ? (int)(_cooldownUntilTick - tick) : 0;
+
+        /// <summary>
+        /// Предсказывает кулдаун после отправки <see cref="AbilityCommand"/> (M9): длительность берётся
+        /// из конфига способности. Сервер подтвердит или отменит предсказание при реконсиляции.
+        /// </summary>
+        /// <param name="clientTick">Клиентский тик команды.</param>
+        /// <param name="sequence">Sequence команды способности.</param>
+        public void PredictAbility(uint clientTick, uint sequence)
+        {
+            if (_ability == null)
+            {
+                return;
+            }
+
+            _pendingAbilitySequence = Math.Max(_pendingAbilitySequence, sequence);
+            var until = clientTick + (uint)AbilityCooldownTicks;
+            if (until > _cooldownUntilTick)
+            {
+                _cooldownUntilTick = until;
+            }
+        }
 
         /// <summary>Порог, выше которого расхождение считается реальным и запускает реконсиляцию.</summary>
         public float Tolerance { get; }
@@ -105,9 +177,17 @@ namespace Client.Network
                 throw new ArgumentNullException(nameof(snapshot));
             }
 
-            if (!TryFindOwnEntity(snapshot, out var serverPosition))
+            if (!TryFindOwnEntity(snapshot, out var ownEntity))
             {
                 return false;
+            }
+
+            var serverPosition = new Vector3(ownEntity.Position.X, ownEntity.Position.Y, ownEntity.Position.Z);
+            if (_pendingAbilitySequence <= acknowledgedSequence)
+            {
+                // Сервер обработал способность: его кулдаун — истина (0, если команду отклонили).
+                _cooldownUntilTick = ownEntity.CooldownUntilTick;
+                _pendingAbilitySequence = 0;
             }
 
             var predicted = serverPosition;
@@ -147,6 +227,8 @@ namespace Client.Network
             _unacknowledged.Clear();
             _position = position;
             _hasPosition = true;
+            _cooldownUntilTick = 0;
+            _pendingAbilitySequence = 0;
         }
 
         private Vector3 Step(Vector3 position, ICommand command)
@@ -162,18 +244,18 @@ namespace Client.Network
             return position;
         }
 
-        private bool TryFindOwnEntity(SimulationSnapshot snapshot, out Vector3 position)
+        private bool TryFindOwnEntity(SimulationSnapshot snapshot, out EntitySnapshot entity)
         {
-            foreach (var entity in snapshot.Entities)
+            foreach (var candidate in snapshot.Entities)
             {
-                if (entity.Id == _entityId)
+                if (candidate.Id == _entityId)
                 {
-                    position = new Vector3(entity.Position.X, entity.Position.Y, entity.Position.Z);
+                    entity = candidate;
                     return true;
                 }
             }
 
-            position = default;
+            entity = default;
             return false;
         }
     }

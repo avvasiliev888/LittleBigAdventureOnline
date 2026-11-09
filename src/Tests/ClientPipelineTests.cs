@@ -197,6 +197,55 @@ namespace Tests
             Assert.InRange(lagTicks, 0u, 8u);
         }
         [Fact]
+        public void Pipeline_UsesConfigForPredictionAndAbilityCooldown()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            using var server = new GameServer(TestWorld.Config(cooldownSeconds: 2f), serverTransport, new ServerOptions());
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            var input = new SingleCommandInputSource();
+            var view = new RecordingView();
+            using var pipeline = new ClientPipeline(transport, input, view, content: content);
+            pipeline.Start();
+
+            for (var i = 0; i < 5; i++)
+            {
+                pipeline.Update(ClientPipeline.TickIntervalSeconds);
+                server.Poll();
+                server.Tick();
+            }
+
+            Assert.NotNull(pipeline.Prediction);
+            Assert.True(pipeline.HasSession);
+            Assert.Equal(40, pipeline.Prediction!.AbilityCooldownTicks);
+            Assert.Equal(3f, pipeline.Prediction.AbilityRange, 3);
+
+            // Space → AbilityCommand по себе (единственная цель): клиент сразу рисует кулдаун из конфига.
+            input.Command = new AbilityCommand(pipeline.EntityId, pipeline.ClientTick, 1);
+            pipeline.Update(ClientPipeline.TickIntervalSeconds);
+
+            Assert.True(pipeline.Prediction.CooldownRemainingTicks(pipeline.ClientTick) > 0,
+                "предсказанный кулдаун не появился после команды способности");
+
+            server.Poll();
+            server.Tick();
+            for (var i = 0; i < 10; i++)
+            {
+                pipeline.Update(ClientPipeline.TickIntervalSeconds);
+                server.Poll();
+                server.Tick();
+            }
+
+            Assert.NotNull(pipeline.LastSnapshot);
+            var own = Array.Find(pipeline.LastSnapshot!.Entities.ToArray(), entity => entity.Id == pipeline.EntityId);
+            Assert.True(own.Hp < own.MaxHp, "сервер не применил способность: hp=" + own.Hp + "/" + own.MaxHp);
+            Assert.True(pipeline.Prediction.CooldownRemainingTicks(pipeline.ClientTick) > 0);
+        }
+
+        [Fact]
         public void Pipeline_StableNetwork_DoesNotReconcile()
         {
             var tick = 0u;
@@ -370,6 +419,18 @@ namespace Tests
             {
                 IsConnected = false;
                 Disconnected?.Invoke(reason);
+            }
+        }
+
+        private sealed class SingleCommandInputSource : IInputSource
+        {
+            public ICommand? Command { get; set; }
+
+            public bool TryReadCommand(uint clientTick, out ICommand? command)
+            {
+                command = Command;
+                Command = null;
+                return command != null;
             }
         }
 

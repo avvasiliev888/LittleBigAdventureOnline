@@ -1,5 +1,8 @@
 using System;
+using System.IO;
 using Client.Network;
+using Shared;
+using Simulation.Core;
 using UnityEngine;
 
 namespace Albion.Client
@@ -17,6 +20,7 @@ namespace Albion.Client
         private const int DefaultPort = 9050;
 
         private LiteNetLibTransport _transport;
+        private ClientContent _content;
         private ClientPipeline _pipeline;
         private UnityView _view;
         private UnityInputSource _input;
@@ -46,11 +50,25 @@ namespace Albion.Client
             EnsureLight();
             EnsureGround();
 
+            var configDirectory = Path.Combine(Application.streamingAssetsPath, "Config");
+            try
+            {
+                _content = ClientContent.LoadFromDirectory(configDirectory);
+                Debug.Log("ClientRuntime: конфиг " + configDirectory + " загружен, hash=" + _content.Hash);
+            }
+            catch (Exception exception)
+            {
+                _status = "config error: " + exception.Message;
+                Debug.LogError("ClientRuntime: конфиг не загружен (" + configDirectory + "): " + exception.Message
+                    + ". Запустите tools/unity/build-plugins.ps1.");
+                return;
+            }
+
             var worldRoot = new GameObject("Entities").transform;
             _view = new UnityView(worldRoot);
-            _input = new UnityInputSource();
+            _input = new UnityInputSource(ResolveAbilityTarget);
             _transport = new LiteNetLibTransport(host, port);
-            _pipeline = new ClientPipeline(_transport, _input, _view);
+            _pipeline = new ClientPipeline(_transport, _input, _view, content: _content);
 
             _pipeline.SessionReady += entityId =>
             {
@@ -78,6 +96,17 @@ namespace Albion.Client
 
             _pipeline.Start();
             Debug.Log("ClientRuntime: подключаюсь к " + host + ":" + port);
+        }
+
+        private uint ResolveAbilityTarget()
+        {
+            if (_pipeline == null || !_pipeline.HasSession)
+            {
+                return 0;
+            }
+
+            var nearest = _pipeline.FindNearestEntity(_pipeline.EntityId);
+            return nearest != 0 ? nearest : _pipeline.EntityId;
         }
 
         private void Update()
@@ -109,21 +138,45 @@ namespace Albion.Client
             var snapshots = _pipeline == null ? 0 : _pipeline.SnapshotsApplied;
             var deltas = _pipeline == null ? 0 : _pipeline.DeltasApplied;
             var fullRequests = _pipeline == null ? 0 : _pipeline.FullSnapshotRequests;
+            var configHash = _content == null ? "-" : _content.Hash.Substring(0, Math.Min(8, _content.Hash.Length));
+
             GUI.Label(
-                new Rect(12f, 12f, 900f, 24f),
+                new Rect(12f, 12f, 1000f, 24f),
                 "Albion: " + _status + " | snapshots: " + snapshots + " (delta " + deltas + ", fullReq " + fullRequests + ")"
-                + " | WASD — движение");
+                + " | cfg: " + configHash + " | WASD — движение, Space — способность");
 
             if (_pipeline?.Prediction != null)
             {
                 var prediction = _pipeline.Prediction;
                 GUI.Label(
-                    new Rect(12f, 34f, 900f, 24f),
+                    new Rect(12f, 34f, 1000f, 24f),
                     "prediction: reconciles=" + prediction.Reconciliations
                     + " | lastError=" + prediction.LastError.ToString("0.000")
                     + " | pos=(" + prediction.Position.X.ToString("0.##") + ", " + prediction.Position.Z.ToString("0.##") + ")"
-                    + " | unacked=" + prediction.Unacknowledged.Count);
+                    + " | unacked=" + prediction.Unacknowledged.Count
+                    + " | hp: " + OwnHpText()
+                    + " | cd: " + prediction.CooldownRemainingTicks(_pipeline.ClientTick) + " тиков"
+                    + " | range: " + prediction.AbilityRange.ToString("0.##"));
             }
+        }
+
+        private string OwnHpText()
+        {
+            var snapshot = _pipeline?.LastSnapshot;
+            if (snapshot == null)
+            {
+                return "-";
+            }
+
+            foreach (var entity in snapshot.Entities)
+            {
+                if (entity.Id == _pipeline!.EntityId)
+                {
+                    return entity.Hp + "/" + entity.MaxHp;
+                }
+            }
+
+            return "-";
         }
 
         private void EnsureCamera()

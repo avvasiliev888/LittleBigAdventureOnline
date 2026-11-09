@@ -1,5 +1,5 @@
 using System.IO;
-using Server;
+using Shared;
 using Simulation.Core;
 using Xunit;
 

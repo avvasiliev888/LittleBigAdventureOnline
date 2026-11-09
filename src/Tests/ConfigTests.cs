@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using Server;
+using Shared;
 using Xunit;
 
 namespace Tests

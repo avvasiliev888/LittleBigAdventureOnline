@@ -85,6 +85,7 @@ namespace Server
             using var transport = new InMemoryServerTransport();
             using var server = new GameServer(config, transport, new ServerOptions { LogTicks = true }, Console.WriteLine);
             var serializer = new BinarySnapshotSerializer();
+            SimulationSnapshot? lastSnapshot = null;
             var loop = new ServerLoop(server, new SystemClock(), 20);
 
             server.Start();
@@ -115,12 +116,29 @@ namespace Server
                 while (transport.TryReceive(clientId, out var packet) && packet != null)
                 {
                     var framing = MessageFraming.TryUnwrap(packet, out var frame);
-                    if (framing == FramingError.None && frame.Type == MessageType.Snapshot)
+                    if (framing != FramingError.None)
                     {
-                        var snapshot = serializer.Deserialize(frame.Payload);
-                        var first = snapshot.Entities.Count > 0 ? snapshot.Entities[0] : default;
+                        continue;
+                    }
+
+                    SimulationSnapshot? shown = null;
+                    if (frame.Type == MessageType.Snapshot)
+                    {
+                        lastSnapshot = serializer.Deserialize(frame.Payload);
+                        shown = lastSnapshot;
+                    }
+                    else if (frame.Type == MessageType.Delta && lastSnapshot != null)
+                    {
+                        // M8: дельта от последнего полного/восстановленного снапшота.
+                        lastSnapshot = serializer.ApplyDelta(lastSnapshot, frame.Payload);
+                        shown = lastSnapshot;
+                    }
+
+                    if (shown != null)
+                    {
+                        var first = shown.Entities.Count > 0 ? shown.Entities[0] : default;
                         Console.WriteLine(
-                            "[client] snapshot tick=" + snapshot.Tick + " entities=" + snapshot.Entities.Count
+                            "[client] " + frame.Type + " tick=" + shown.Tick + " entities=" + shown.Entities.Count
                             + " pos=(" + first.Position.X.ToString("0.###") + ", " + first.Position.Z.ToString("0.###") + ")"
                             + " hp=" + first.Hp);
                     }

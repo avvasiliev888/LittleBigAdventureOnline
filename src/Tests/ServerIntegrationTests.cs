@@ -165,6 +165,7 @@ namespace Tests
         private sealed class Harness : IDisposable
         {
             private readonly BinarySnapshotSerializer _serializer = new BinarySnapshotSerializer();
+            private SimulationSnapshot? _lastSnapshot;
 
             public Harness(ServerOptions? options = null)
             {
@@ -207,7 +208,27 @@ namespace Tests
 
             public SimulationSnapshot ReceiveSnapshot(int connectionId)
             {
-                return _serializer.Deserialize(Receive(connectionId, MessageType.Snapshot).Payload);
+                // M8: после первого полного снапшота сервер шлёт дельты; применяем к последнему.
+                while (Transport.TryReceive(connectionId, out var packet) && packet != null)
+                {
+                    var error = MessageFraming.TryUnwrap(packet, out var frame);
+                    Assert.Equal(FramingError.None, error);
+
+                    if (frame.Type == MessageType.Snapshot)
+                    {
+                        _lastSnapshot = _serializer.Deserialize(frame.Payload);
+                        return _lastSnapshot;
+                    }
+
+                    if (frame.Type == MessageType.Delta)
+                    {
+                        Assert.NotNull(_lastSnapshot);
+                        _lastSnapshot = _serializer.ApplyDelta(_lastSnapshot!, frame.Payload);
+                        return _lastSnapshot;
+                    }
+                }
+
+                throw new Xunit.Sdk.XunitException("Снапшот не найден");
             }
 
             public void Dispose() => Server.Dispose();

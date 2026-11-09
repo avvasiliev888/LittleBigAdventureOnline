@@ -9,8 +9,9 @@ using Xunit;
 namespace Tests
 {
     /// <summary>
-    /// M5: детерминированная имитация плохой сети — 30% потерь снапшотов и задержка 100 мс (2 тика).
-    /// Проверяется, что клиент не зависает и восстанавливается после серии потерь.
+    /// M5 + M8: детерминированная имитация плохой сети — 30% потерь снапшотов и задержка 100 мс (2 тика).
+    /// Проверяется, что клиент не зависает и восстанавливается после серии потерь, а после M8 —
+    /// что потеря базы дельты лечится запросом полного снапшота.
     /// </summary>
     public sealed class LossyTransportTests
     {
@@ -22,6 +23,7 @@ namespace Tests
             var lossy = new LossyServerTransport(inner, lossPercent: 30, delayTicks: 2, seed: 2026, currentTick: () => server!.Simulation.State.Tick);
             var serializer = new BinarySnapshotSerializer();
             var receivedTicks = new List<uint>();
+            var fullRequests = 0;
             SimulationSnapshot? lastSnapshot = null;
 
             try
@@ -37,23 +39,17 @@ namespace Tests
                     server.Poll();
                     server.Tick();
 
-                    while (inner.TryReceive(clientId, out var packet) && packet != null)
-                    {
-                        if (MessageFraming.TryUnwrap(packet, out var frame) == FramingError.None && frame.Type == MessageType.Snapshot)
-                        {
-                            lastSnapshot = serializer.Deserialize(frame.Payload);
-                            receivedTicks.Add(lastSnapshot.Tick);
-                        }
-                    }
+                    ReceiveAndApply(inner, clientId, serializer, ref lastSnapshot, receivedTicks, ref fullRequests);
                 }
 
                 Assert.True(receivedTicks.Count > 0, "клиент не получил ни одного снапшота");
                 Assert.True(lossy.DroppedPackets > 0, "имитатор не потерял ни одного пакета");
                 Assert.True(lossy.DelayedPackets > 0, "имитатор не задержал ни одного пакета");
+                Assert.True(fullRequests > 0, "при 30% потерь клиент ни разу не запросил полный снапшот");
 
-                // Полный снапшот: потеря — пропуск обновления, а не потеря состояния.
-                // При 30% i.i.d. потерь серия из 7+ пропусков практически невероятна (0.3^7 ≈ 2e-4);
-                // порог 8 оставляет запас, не превращая тест в проверку генератора случайных чисел.
+                // Восстановление: разрыв в цепочке дельт лечится полным снапшотом. Одиночная
+                // потеря даёт паузу не больше 2–3 тиков (запрос + ответ), поэтому порог 8
+                // оставляет запас и не зависит от генератора случайных чисел.
                 var maxGap = 0u;
                 for (var i = 1; i < receivedTicks.Count; i++)
                 {
@@ -92,6 +88,8 @@ namespace Tests
             var dropping = new DropTicksTransport(inner, () => server!.Simulation.State.Tick, 10u, 11u, 12u);
             var serializer = new BinarySnapshotSerializer();
             var receivedTicks = new List<uint>();
+            var fullRequests = 0;
+            SimulationSnapshot? lastSnapshot = null;
 
             try
             {
@@ -106,26 +104,17 @@ namespace Tests
                     server.Poll();
                     server.Tick();
 
-                    while (inner.TryReceive(clientId, out var packet) && packet != null)
-                    {
-                        if (MessageFraming.TryUnwrap(packet, out var frame) == FramingError.None && frame.Type == MessageType.Snapshot)
-                        {
-                            receivedTicks.Add(serializer.Deserialize(frame.Payload).Tick);
-                        }
-                    }
+                    ReceiveAndApply(inner, clientId, serializer, ref lastSnapshot, receivedTicks, ref fullRequests);
                 }
 
                 Assert.Equal(3, dropping.Dropped);
 
-                // Серия потерь на тиках 10–12: следующий снапшот (тик 13) должен прийти сразу,
-                // то есть восстановление — 1 тик, и уж точно ≤ 3.
+                // Серия потерь на тиках 10–12 ломает цепочку дельт; клиент замечает отсутствие
+                // базы, запрашивает полный снапшот и продолжает с него. Восстановление — ≤ 3 тиков.
+                Assert.True(fullRequests > 0, "клиент не запросил полный снапшот после серии потерь");
+                Assert.Equal(20u, receivedTicks[^1]);
+                Assert.Contains(receivedTicks, tick => tick >= 13u && tick <= 15u);
                 Assert.Contains(9u, receivedTicks);
-                Assert.Contains(13u, receivedTicks);
-                Assert.True(receivedTicks[^1] == 20u, "после серии потерь поток снапшотов оборвался");
-
-                var indexOfNine = receivedTicks.IndexOf(9u);
-                var indexOfThirteen = receivedTicks.IndexOf(13u);
-                Assert.True(indexOfThirteen > indexOfNine);
             }
             finally
             {
@@ -154,17 +143,17 @@ namespace Tests
                 Assert.Equal(FramingError.None, MessageFraming.TryUnwrap(packet!, out var frame));
                 Assert.Equal(MessageType.HelloAck, frame.Type);
 
+                // Тик 1: первый снапшот сессии — полный и надёжный, потерь нет.
                 server.Tick();
+                var received = Drain(inner, clientId);
+                Assert.Contains(MessageType.Snapshot, received);
+                Assert.Contains(MessageType.ServerAck, received);
+                Assert.Equal(0, lossy.DroppedPackets);
 
-                var received = new System.Collections.Generic.List<MessageType>();
-
-                while (inner.TryReceive(clientId, out var queued) && queued != null)
-                {
-                    Assert.Equal(FramingError.None, MessageFraming.TryUnwrap(queued, out var queuedFrame));
-                    received.Add(queuedFrame.Type);
-                }
-
-                Assert.DoesNotContain(MessageType.Snapshot, received);
+                // Тик 2: дальше идёт дельта — она ненадёжная и при 100% потерь пропадает.
+                server.Tick();
+                received = Drain(inner, clientId);
+                Assert.DoesNotContain(MessageType.Delta, received);
                 Assert.Contains(MessageType.ServerAck, received);
                 Assert.Equal(1, lossy.DroppedPackets);
                 Assert.Equal(0, lossy.DelayedPackets);
@@ -187,6 +176,68 @@ namespace Tests
                 Assert.Throws<ArgumentOutOfRangeException>(() => new LossyServerTransport(inner, 101, 2, 1, () => 0u));
                 Assert.Throws<ArgumentOutOfRangeException>(() => new LossyServerTransport(inner, 30, -1, 1, () => 0u));
             }
+        }
+
+        /// <summary>Эмулирует клиента M8: применяет полные снапшоты и дельты, при потере базы просит полный.</summary>
+        private static void ReceiveAndApply(
+            InMemoryServerTransport transport,
+            int clientId,
+            BinarySnapshotSerializer serializer,
+            ref SimulationSnapshot? lastSnapshot,
+            List<uint> receivedTicks,
+            ref int fullRequests)
+        {
+            while (transport.TryReceive(clientId, out var packet) && packet != null)
+            {
+                if (MessageFraming.TryUnwrap(packet, out var frame) != FramingError.None)
+                {
+                    continue;
+                }
+
+                switch (frame.Type)
+                {
+                    case MessageType.Snapshot:
+                        lastSnapshot = serializer.Deserialize(frame.Payload);
+                        receivedTicks.Add(lastSnapshot.Tick);
+                        break;
+
+                    case MessageType.Delta when lastSnapshot != null:
+                        var baselineTick = serializer.ReadBaselineTick(frame.Payload);
+                        if (baselineTick < lastSnapshot.Tick)
+                        {
+                            // Устаревшая дельта (пришла после более нового состояния) — пропускаем.
+                            break;
+                        }
+
+                        if (baselineTick > lastSnapshot.Tick)
+                        {
+                            transport.SendFromClient(clientId, MessageFraming.Wrap(MessageType.FullSnapshotRequest, Array.Empty<byte>()));
+                            fullRequests++;
+                            break;
+                        }
+
+                        lastSnapshot = serializer.ApplyDelta(lastSnapshot, frame.Payload);
+                        receivedTicks.Add(lastSnapshot.Tick);
+                        break;
+
+                    case MessageType.Delta:
+                        transport.SendFromClient(clientId, MessageFraming.Wrap(MessageType.FullSnapshotRequest, Array.Empty<byte>()));
+                        fullRequests++;
+                        break;
+                }
+            }
+        }
+
+        private static List<MessageType> Drain(InMemoryServerTransport transport, int clientId)
+        {
+            var received = new List<MessageType>();
+            while (transport.TryReceive(clientId, out var queued) && queued != null)
+            {
+                Assert.Equal(FramingError.None, MessageFraming.TryUnwrap(queued, out var queuedFrame));
+                received.Add(queuedFrame.Type);
+            }
+
+            return received;
         }
 
         /// <summary>Теряет ненадёжные пакеты ровно на заданных тиках (для проверки восстановления).</summary>

@@ -19,8 +19,10 @@ namespace Shared
         /// относительно эскиза ADR-004 полями actor/resource/cooldown/respawn/spawn (ADR-008).
         /// Версия 3 (M7): в HelloAck добавлена скорость движения актора, появилось сообщение
         /// <see cref="MessageType.ServerAck"/> с подтверждением последней обработанной команды (ADR-009).
+        /// Версия 4 (M8): снапшоты передаются дельтой от базового тика (<see cref="MessageType.Delta"/>),
+        /// полный снапшот — по запросу при потере базы (ADR-010).
         /// </remarks>
-        public const ushort Version = 3;
+        public const ushort Version = 4;
     }
 
     /// <summary>

@@ -99,6 +99,8 @@ namespace Tests
 
             public List<SimulationSnapshot> Snapshots { get; } = new List<SimulationSnapshot>();
 
+            private SimulationSnapshot? _lastSnapshot;
+
             public void OnPacket(byte[] packet)
             {
                 if (MessageFraming.TryUnwrap(packet, out var frame) != FramingError.None)
@@ -113,7 +115,15 @@ namespace Tests
                 }
                 else if (frame.Type == MessageType.Snapshot)
                 {
-                    Snapshots.Add(_serializer.Deserialize(frame.Payload));
+                    var snapshot = _serializer.Deserialize(frame.Payload);
+                    Snapshots.Add(snapshot);
+                    _lastSnapshot = snapshot;
+                }
+                else if (frame.Type == MessageType.Delta && _lastSnapshot != null)
+                {
+                    var snapshot = _serializer.ApplyDelta(_lastSnapshot, frame.Payload);
+                    Snapshots.Add(snapshot);
+                    _lastSnapshot = snapshot;
                 }
             }
 

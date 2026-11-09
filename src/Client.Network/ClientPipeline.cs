@@ -19,6 +19,8 @@ namespace Client.Network
         private const float HelloRetrySeconds = 0.5f;
         private const float FullSnapshotTimeoutSeconds = 1.0f;
         private const int AckHistorySize = 40;
+        private const int SnapshotHistorySize = 16;
+        private const float FullRequestCooldownSeconds = 0.3f;
 
         private readonly ITransport _transport;
         private readonly ISnapshotSerializer _serializer;
@@ -26,11 +28,13 @@ namespace Client.Network
         private readonly IView _view;
         private readonly BinarySnapshotSerializer _fallbackSerializer = new BinarySnapshotSerializer();
         private readonly Dictionary<uint, uint> _acknowledgedByTick = new Dictionary<uint, uint>();
+        private readonly Dictionary<uint, SimulationSnapshot> _snapshotsByTick = new Dictionary<uint, SimulationSnapshot>();
         private readonly List<string> _log = new List<string>();
         private SimulationSnapshot? _lastSnapshot;
         private float _tickAccumulator;
         private float _sinceHello;
         private float _sinceSnapshot;
+        private float _sinceFullRequest;
         private uint _clientTick;
         private bool _disposed;
 
@@ -66,6 +70,12 @@ namespace Client.Network
         /// <summary>Записи клиентского лога (реконсиляции, ошибки протокола) — для HUD и тестов.</summary>
         public IReadOnlyList<string> LogEntries => _log;
 
+        /// <summary>Сколько дельта-снапшотов применено (M8).</summary>
+        public int DeltasApplied { get; private set; }
+
+        /// <summary>Сколько раз клиент запрашивал полный снапшот после пропуска базы (M8).</summary>
+        public int FullSnapshotRequests { get; private set; }
+
         /// <summary>Сессия готова: пришёл HelloAck с идентификатором сущности.</summary>
         public event Action<uint>? SessionReady;
 
@@ -93,6 +103,7 @@ namespace Client.Network
             _transport.Poll();
             _sinceHello += deltaTime;
             _sinceSnapshot += deltaTime;
+            _sinceFullRequest += deltaTime;
 
             if (!HasSession)
             {
@@ -103,8 +114,7 @@ namespace Client.Network
             }
             else if (_sinceSnapshot >= FullSnapshotTimeoutSeconds)
             {
-                _transport.Send(MessageFraming.Wrap(MessageType.FullSnapshotRequest, ReadOnlySpan<byte>.Empty), DeliveryMode.ReliableOrdered);
-                _sinceSnapshot = 0f;
+                RequestFullSnapshot(force: true);
             }
 
             _tickAccumulator += deltaTime;
@@ -179,6 +189,10 @@ namespace Client.Network
                 case MessageType.Snapshot:
                     HandleSnapshot(frame.Payload);
                     break;
+
+                case MessageType.Delta:
+                    HandleDeltaSnapshot(frame.Payload);
+                    break;
             }
         }
 
@@ -245,10 +259,74 @@ namespace Client.Network
 
         private void HandleSnapshot(byte[] payload)
         {
+            var snapshot = _serializer.Deserialize(payload);
+            ApplyReceivedSnapshot(snapshot);
+        }
+
+        private void HandleDeltaSnapshot(byte[] payload)
+        {
+            uint baselineTick;
+            try
+            {
+                baselineTick = _serializer.ReadBaselineTick(payload);
+            }
+            catch (FormatException)
+            {
+                _log.Add("[delta] некорректная дельта (" + payload.Length + " байт)");
+                RequestFullSnapshot();
+                return;
+            }
+
+            if (!_snapshotsByTick.TryGetValue(baselineTick, out var baseline))
+            {
+                if (_lastSnapshot != null && baselineTick < _lastSnapshot.Tick)
+                {
+                    // Дельта опоздала: состояние новее уже применено, запрос полного не нужен.
+                    return;
+                }
+
+                // Пропуск базы (потеря пакета или разрыв цепочки): восстановление только полным (M8).
+                _log.Add("[delta] нет базы тика " + baselineTick + " — запрашиваем полный снапшот");
+                RequestFullSnapshot();
+                return;
+            }
+
+            if (_lastSnapshot != null && baselineTick < _lastSnapshot.Tick)
+            {
+                // База есть в истории, но она старше уже применённого состояния: дельта устарела
+                // (полный ответ на запрос пришёл раньше задержанных пакетов). Пропускаем.
+                return;
+            }
+
+            SimulationSnapshot snapshot;
+            try
+            {
+                snapshot = _serializer.ApplyDelta(baseline, payload);
+            }
+            catch (FormatException exception)
+            {
+                _log.Add("[delta] " + exception.Message);
+                RequestFullSnapshot();
+                return;
+            }
+
+            if (_lastSnapshot != null && snapshot.Tick <= _lastSnapshot.Tick)
+            {
+                return;
+            }
+
+            DeltasApplied++;
+            ApplyReceivedSnapshot(snapshot);
+        }
+
+        private void ApplyReceivedSnapshot(SimulationSnapshot snapshot)
+        {
             _sinceSnapshot = 0f;
             SnapshotsApplied++;
 
-            var snapshot = _serializer.Deserialize(payload);
+            _snapshotsByTick[snapshot.Tick] = snapshot;
+            TrimSnapshots(snapshot.Tick);
+
             _view.ApplySnapshot(snapshot);
             _lastSnapshot = snapshot;
 
@@ -260,6 +338,41 @@ namespace Client.Network
             // Пара «снапшот + подтверждение на одном тике» — единственный консистентный вход
             // для реконсиляции: снапшот мог прийти с задержкой, а ack уже уйти вперёд (M7).
             Reconcile(snapshot, acknowledgedSequence);
+        }
+
+        private void RequestFullSnapshot(bool force = false)
+        {
+            if (!force && _sinceFullRequest < FullRequestCooldownSeconds)
+            {
+                return;
+            }
+
+            _sinceFullRequest = 0f;
+            FullSnapshotRequests++;
+            _transport.Send(MessageFraming.Wrap(MessageType.FullSnapshotRequest, ReadOnlySpan<byte>.Empty), DeliveryMode.ReliableOrdered);
+        }
+
+        private void TrimSnapshots(uint currentTick)
+        {
+            if (_snapshotsByTick.Count <= SnapshotHistorySize)
+            {
+                return;
+            }
+
+            var oldest = currentTick > SnapshotHistorySize ? currentTick - SnapshotHistorySize : 0u;
+            var stale = new List<uint>();
+            foreach (var tick in _snapshotsByTick.Keys)
+            {
+                if (tick < oldest)
+                {
+                    stale.Add(tick);
+                }
+            }
+
+            foreach (var tick in stale)
+            {
+                _snapshotsByTick.Remove(tick);
+            }
         }
 
         private void Reconcile(SimulationSnapshot snapshot, uint acknowledgedSequence)

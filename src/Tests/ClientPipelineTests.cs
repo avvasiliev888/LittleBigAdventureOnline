@@ -168,6 +168,35 @@ namespace Tests
         }
 
         [Fact]
+        public void Pipeline_AppliesDeltas_AndRecoversGapsWithFullSnapshot()
+        {
+            var tick = 0u;
+            var link = new SimulatedLink(lossPercent: 30, delayTicks: 2, seed: 2026, currentTick: () => tick);
+            using var server = new GameServer(TestWorld.Config(), link, new ServerOptions());
+            server.Start();
+
+            var clientId = link.ConnectClient();
+            using var transport = new LinkClientTransport(link, clientId);
+            var view = new RecordingView();
+            using var pipeline = new ClientPipeline(transport, new ScriptedInputSource(new Vector2(1f, 0f)), view);
+            pipeline.Start();
+
+            for (var i = 0; i < 120; i++)
+            {
+                Step(pipeline, server, ref tick);
+            }
+
+            Assert.True(server.DeltasSent > 0, "сервер не отправил ни одной дельты");
+            Assert.True(pipeline.DeltasApplied > 0, "клиент не применил ни одной дельты");
+            Assert.True(pipeline.FullSnapshotRequests > 0, "при 30% потерь клиент ни разу не запросил полный снапшот");
+            Assert.True(pipeline.SnapshotsApplied > 40, "слишком мало снапшотов для проверки восстановления");
+
+            // Восстановление после потери базы: полный снапшот приходит по надёжному каналу,
+            // поэтому отставание ограничено сетевой задержкой, а не растёт со временем.
+            var lagTicks = server.Simulation.State.Tick - view.Buffer.LatestTick;
+            Assert.InRange(lagTicks, 0u, 8u);
+        }
+        [Fact]
         public void Pipeline_StableNetwork_DoesNotReconcile()
         {
             var tick = 0u;

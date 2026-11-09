@@ -27,6 +27,8 @@ namespace TestClient
             var disconnectedReason = string.Empty;
             var helloAcked = false;
             var snapshots = 0;
+            var deltas = 0;
+            SimulationSnapshot? lastSnapshot = null;
             var commandsSent = 0;
             var fullSnapshotRequests = 0;
             var acks = 0;
@@ -70,25 +72,85 @@ namespace TestClient
                         break;
 
                     case MessageType.Snapshot:
-                        var snapshot = serializer.Deserialize(frame.Payload);
+                        var fullSnapshot = serializer.Deserialize(frame.Payload);
+                        lastSnapshot = fullSnapshot;
                         snapshots++;
                         lastSnapshotAt = Environment.TickCount64;
-                        if (snapshot.Entities.Count > 0)
+                        LogSnapshot(fullSnapshot);
+                        break;
+
+                    case MessageType.Delta:
+                        if (lastSnapshot == null)
                         {
-                            lastPosition = snapshot.Entities[0].Position;
+                            RequestFull();
+                            break;
                         }
 
-                        if (snapshots == 1 || snapshots % 20 == 0)
+                        uint baselineTick;
+                        try
                         {
-                            Console.WriteLine("[client] snapshot #" + snapshots + " tick=" + snapshot.Tick
-                                + " entities=" + snapshot.Entities.Count + " pos=("
-                                + lastPosition.X.ToString("0.##") + ", " + lastPosition.Z.ToString("0.##") + ")"
-                                + " RTT=" + transport.RoundTripTimeMs + " мс");
+                            baselineTick = serializer.ReadBaselineTick(frame.Payload);
+                        }
+                        catch (FormatException)
+                        {
+                            RequestFull();
+                            break;
                         }
 
+                        if (baselineTick < lastSnapshot.Tick)
+                        {
+                            // Дельта устарела: более новое состояние уже применено (M8).
+                            break;
+                        }
+
+                        if (baselineTick > lastSnapshot.Tick)
+                        {
+                            // Базы нет (потерян пакет) — просим полный снапшот.
+                            RequestFull();
+                            break;
+                        }
+
+                        SimulationSnapshot applied;
+                        try
+                        {
+                            applied = serializer.ApplyDelta(lastSnapshot, frame.Payload);
+                        }
+                        catch (FormatException)
+                        {
+                            RequestFull();
+                            break;
+                        }
+
+                        deltas++;
+                        snapshots++;
+                        lastSnapshot = applied;
+                        lastSnapshotAt = Environment.TickCount64;
+                        LogSnapshot(applied);
                         break;
                 }
             };
+
+            void RequestFull()
+            {
+                transport.Send(MessageFraming.Wrap(MessageType.FullSnapshotRequest, Array.Empty<byte>()), DeliveryMode.ReliableOrdered);
+                fullSnapshotRequests++;
+            }
+
+            void LogSnapshot(SimulationSnapshot snapshot)
+            {
+                if (snapshot.Entities.Count > 0)
+                {
+                    lastPosition = snapshot.Entities[0].Position;
+                }
+
+                if (snapshots == 1 || snapshots % 20 == 0)
+                {
+                    Console.WriteLine("[client] snapshot #" + snapshots + " tick=" + snapshot.Tick
+                        + " entities=" + snapshot.Entities.Count + " pos=("
+                        + lastPosition.X.ToString("0.##") + ", " + lastPosition.Z.ToString("0.##") + ")"
+                        + " RTT=" + transport.RoundTripTimeMs + " мс");
+                }
+            }
 
             transport.Start();
             Console.WriteLine("[client] connecting to " + host + ":" + port + " (protocol v" + Protocol.Version + ")");
@@ -140,7 +202,7 @@ namespace TestClient
             }
 
             Console.WriteLine(
-                "[client] готово: снапшотов=" + snapshots + ", команд отправлено=" + commandsSent
+                "[client] готово: снапшотов=" + snapshots + " (дельтами " + deltas + "), команд отправлено=" + commandsSent
                 + ", запросов полного снапшота=" + fullSnapshotRequests
                 + ", acks=" + acks + " (последний sequence=" + lastAckSequence + ")"
                 + ", последняя позиция=(" + lastPosition.X.ToString("0.##") + ", " + lastPosition.Z.ToString("0.##") + ")"

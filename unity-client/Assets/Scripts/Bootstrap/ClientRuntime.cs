@@ -107,7 +107,12 @@ namespace Albion.Client
         private void OnGUI()
         {
             var snapshots = _pipeline == null ? 0 : _pipeline.SnapshotsApplied;
-            GUI.Label(new Rect(12f, 12f, 900f, 24f), "Albion: " + _status + " | snapshots: " + snapshots + " | WASD — движение");
+            var deltas = _pipeline == null ? 0 : _pipeline.DeltasApplied;
+            var fullRequests = _pipeline == null ? 0 : _pipeline.FullSnapshotRequests;
+            GUI.Label(
+                new Rect(12f, 12f, 900f, 24f),
+                "Albion: " + _status + " | snapshots: " + snapshots + " (delta " + deltas + ", fullReq " + fullRequests + ")"
+                + " | WASD — движение");
 
             if (_pipeline?.Prediction != null)
             {

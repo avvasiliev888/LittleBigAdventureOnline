@@ -21,6 +21,7 @@ namespace Server
         private readonly BinarySnapshotSerializer _serializer = new BinarySnapshotSerializer();
         private readonly Dictionary<int, ClientSession> _sessions = new Dictionary<int, ClientSession>();
         private readonly List<PendingCommand> _pendingCommands = new List<PendingCommand>();
+        private SimulationSnapshot? _previousSnapshot;
         private readonly List<string> _log = new List<string>();
         private readonly Action<string>? _logSink;
         private uint _nextEntityId = 1;
@@ -66,6 +67,12 @@ namespace Server
         /// <summary>Записи лога сервера (включая отклонённые команды) — для тестов и демо.</summary>
         public IReadOnlyList<string> LogEntries => _log;
 
+        /// <summary>Сколько дельта-снапшотов отправлено (M8, для замеров трафика).</summary>
+        public int DeltasSent { get; private set; }
+
+        /// <summary>Сколько полных снапшотов отправлено (M8).</summary>
+        public int FullSnapshotsSent { get; private set; }
+
         /// <summary>Запускает транспорт.</summary>
         public void Start()
         {
@@ -93,9 +100,18 @@ namespace Server
 
             Simulation.Tick(SimulationConstants.FixedDeltaTime, commands);
 
-            var snapshot = _serializer.Serialize(Simulation.CreateSnapshot());
-            var packet = MessageFraming.Wrap(MessageType.Snapshot, snapshot);
-            var ackTick = Simulation.State.Tick;
+            var current = Simulation.CreateSnapshot();
+            var fullPayload = _serializer.Serialize(current);
+            var fullPacket = MessageFraming.Wrap(MessageType.Snapshot, fullPayload);
+            var ackTick = current.Tick;
+
+            // Одна дельта на всех: база — предыдущий тик мира (M8, ADR-010).
+            byte[]? deltaPacket = null;
+            if (_previousSnapshot != null)
+            {
+                var deltaPayload = _serializer.SerializeDelta(_previousSnapshot, current);
+                deltaPacket = MessageFraming.Wrap(MessageType.Delta, deltaPayload);
+            }
 
             foreach (var session in _sessions.Values)
             {
@@ -105,10 +121,26 @@ namespace Server
                     MessageType.ServerAck,
                     AckCodec.Encode(session.EntityId, session.AcknowledgedSequence, ackTick));
                 _transport.Send(session.ConnectionId, ack, DeliveryMode.ReliableOrdered);
-                _transport.Send(session.ConnectionId, packet, DeliveryMode.Unreliable);
 
+                // Дельта уместна, только если у клиента гарантированно есть база (предыдущий тик).
+                // Иначе (первый снапшот, разрыв, запрос полного) отправляем полный — надёжно.
+                var hasBaseline = deltaPacket != null && session.LastSentTick == _previousSnapshot!.Tick;
+                if (hasBaseline)
+                {
+                    _transport.Send(session.ConnectionId, deltaPacket!, DeliveryMode.Unreliable);
+                    DeltasSent++;
+                }
+                else
+                {
+                    _transport.Send(session.ConnectionId, fullPacket, DeliveryMode.ReliableOrdered);
+                    FullSnapshotsSent++;
+                }
+
+                session.LastSentTick = current.Tick;
                 session.CommandsThisTick = 0;
             }
+
+            _previousSnapshot = current;
 
             if (_options.LogTicks)
             {
@@ -261,6 +293,12 @@ namespace Server
         {
             var snapshot = _serializer.Serialize(Simulation.CreateSnapshot());
             _transport.Send(connectionId, MessageFraming.Wrap(MessageType.Snapshot, snapshot), DeliveryMode.ReliableOrdered);
+            FullSnapshotsSent++;
+
+            if (_sessions.TryGetValue(connectionId, out var session))
+            {
+                session.LastSentTick = Simulation.State.Tick;
+            }
         }
 
         private ActorConfig DefaultActor()
@@ -318,6 +356,9 @@ namespace Server
             public uint EntityId { get; }
 
             public uint AcknowledgedSequence { get; private set; }
+
+            /// <summary>Тик последнего снапшота, реально отправленного этому клиенту (для выбора дельты).</summary>
+            public uint LastSentTick { get; set; }
 
             public int CommandsThisTick { get; set; }
 

@@ -45,6 +45,14 @@ else
   echo "ok: Server/Tests без Unity"
 fi
 
+echo "== 5. Simulation.Core без хардкода геймплейных констант (M3, ADR-005) =="
+const_pattern='const[[:space:]]+(int|uint|long|float|double)[[:space:]]+[A-Za-z_]*(Damage|Range|Cooldown|Respawn|MaxHp|MaxHP|MoveSpeed|Resource)'
+if grep -rInE --include='*.cs' "$const_pattern" src/Simulation.Core; then
+  fail "в Simulation.Core найдена геймплейная константа (ADR-005: параметры только из конфига)"
+else
+  echo "ok: геймплейных констант нет"
+fi
+
 if [ "$failed" -ne 0 ]; then
   echo "Архитектурные проверки провалены." >&2
   exit 1

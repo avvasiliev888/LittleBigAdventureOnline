@@ -8,7 +8,7 @@ namespace Tests
 {
     /// <summary>
     /// Базовые тесты симуляции: создание, продвижение тика, валидация аргументов.
-    /// Гарантируют, что каркас M1 не сломан последующими вехами.
+    /// Гарантируют, что каркас M1/M2 не сломан последующими вехами.
     /// </summary>
     public sealed class SimulationSmokeTests
     {
@@ -53,17 +53,30 @@ namespace Tests
         }
 
         [Fact]
+        public void Simulation_WithStateOnly_KeepsEntities()
+        {
+            var config = TestWorld.Config();
+            var state = new SimulationState(3, new[] { TestWorld.Entity(1, config) });
+
+            var simulation = new CoreSimulation(state);
+
+            Assert.Equal(3u, simulation.State.Tick);
+            Assert.Single(simulation.State.Entities);
+        }
+
+        [Fact]
         public void Simulation_WithState_KeepsEntities()
         {
+            var config = TestWorld.Config(maxHp: 100);
             var state = new SimulationState(
                 7,
                 new[]
                 {
-                    new EntityState(10, new Vector3(1.5f, 0f, -2.5f), 100),
-                    new EntityState(20, new Vector3(0f, 0f, 0f), 80),
+                    TestWorld.Entity(10, config, x: 1.5f, z: -2.5f),
+                    TestWorld.Entity(20, config),
                 });
 
-            var simulation = new CoreSimulation(state);
+            var simulation = new CoreSimulation(state, config);
 
             Assert.Equal(7u, simulation.State.Tick);
             Assert.Equal(2, simulation.State.Entities.Count);

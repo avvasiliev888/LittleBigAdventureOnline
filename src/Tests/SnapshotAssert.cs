@@ -18,9 +18,15 @@ namespace Tests
                 var right = actual.Entities[i];
 
                 Assert.Equal(left.Id, right.Id);
+                Assert.Equal(left.ActorId, right.ActorId);
                 Assert.Equal(left.Position, right.Position);
+                Assert.Equal(left.SpawnPosition, right.SpawnPosition);
                 Assert.Equal(left.Hp, right.Hp);
                 Assert.Equal(left.MaxHp, right.MaxHp);
+                Assert.Equal(left.Resource, right.Resource);
+                Assert.Equal(left.MaxResource, right.MaxResource);
+                Assert.Equal(left.CooldownUntilTick, right.CooldownUntilTick);
+                Assert.Equal(left.RespawnAtTick, right.RespawnAtTick);
                 Assert.Equal(left.IsDead, right.IsDead);
             }
         }

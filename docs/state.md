@@ -1,9 +1,9 @@
 # State
 
-Last updated: 2026-11-09 08:35 UTC
-Last heartbeat: 2026-11-09 08:35 UTC
-Current milestone: M2 — Симуляция: детерминированный тик и движение
-Current task: ожидание Human-Gate M2
+Last updated: 2026-11-09 08:55 UTC
+Last heartbeat: 2026-11-09 08:55 UTC
+Current milestone: M3 — Способность, здоровье, смерть, data-driven конфиг
+Current task: ожидание Human-Gate M3
 Onboarding: completed
 
 ## Onboarding: completed
@@ -16,8 +16,8 @@ Onboarding: completed
 |---|---|---|---|
 | M0 | ✅ | ✅ | done (2026-11-08, ADR заморожены) |
 | M1 | ✅ | ✅ | done (2026-11-09, контракты заморожены) |
-| M2 | ✅ | ⏳ | awaiting human review |
-| M3 | — | — | todo |
+| M2 | ✅ | ✅ | done (2026-11-09, `045c24b`) |
+| M3 | ✅ | ⏳ | awaiting human review |
 | M4 | — | — | todo |
 | M5 | — | — | todo |
 | M6 | — | — | todo |
@@ -28,47 +28,48 @@ Onboarding: completed
 | M11 | — | — | todo |
 | M12 | — | — | todo |
 
-## M2 tasks
+## M3 tasks
 
-| Task | Status | Commit | Notes |
-|---|---|---|---|
-| 1. `MoveCommand` (направление, `ClientTick`, `Sequence`) | done | — | без лишних полей |
-| 2. `Simulation.Tick`: движение с `deltaTime` и `moveSpeed` из конфига | done | — | `SimulationConfig`, без хардкода |
-| 3. `CreateSnapshot`/`RestoreFromSnapshot` (полный снапшот) | done | — | 1:1, включая `MaxHp` |
-| 4. Сортировка команд по `(ClientTick, Sequence)` | done | — | `CommandOrdering.Sort` (канонический порядок + `EntityId`) |
-| 5. Unit-тесты детерминизма, порядка, восстановления | done | — | 31 тест всего |
-| 6. Replay-тест: 1000 команд с `seed` | done | — | два прогона → идентичный снапшот |
+| Task | Status | Notes |
+|---|---|---|
+| 1. JSON-схема конфигов (`actors`, `abilities`) | done | `config/actors.json`, `config/abilities.json` в корне репо |
+| 2. Загрузчик с валидацией | done | `Shared.Config.ConfigLoader` → `ConfigValidationException`; без дефолтов |
+| 3. `AbilityCommand` (цель, `ClientTick`, `Sequence`) | done | `TargetId` |
+| 4. Логика способности: дистанция, кулдаун, ресурс, урон | done | всё из конфига |
+| 5. Смерть (HP ≤ 0) и респавн через N секунд | done | N из `actors.json` |
+| 6. Unit-тесты | done | 69 тестов всего |
 
-## M2: принятые решения (на ревью оператору)
+## M3: принятые решения (на ревью оператору)
 
-1. **`EntitySnapshot` получил `MaxHp`.** Без него восстановление «1:1» теряло максимальное здоровье (M2 требует 1:1). Это DTO, а не замороженный интерфейс; сигнатуры `ISimulation`/`ISnapshotSerializer` не менялись. При кодировании в байты (M4) поле попадёт в формат — `Protocol.Version` пока не поднимался, потому что провод ещё не реализован (ADR-004 требует поднимать версию при изменении формата).
-2. **`SimulationConfig` — отдельный тип в `Simulation.Core`** с единственным параметром `MoveSpeed`. Хардкод скорости запрещён: `Tick` с командами без конфига бросает `InvalidOperationException`. M3 заменит ручное создание на загрузку из JSON, тип останется тем же.
-3. **`CommandOrdering.Sort` — отдельная утилита, а не логика внутри `Tick`.** Замороженный контракт `ISimulation` говорит: команды приходят уже отсортированными, симуляция порядок не меняет. Сортировка — обязанность вызывающего кода (сервер/клиент), утилита даёт канонический порядок `(ClientTick, Sequence, EntityId)`, детерминированный при любом входном порядке.
-4. **Команда для несуществующей сущности игнорируется** (не бросает): сущность могла умереть/исчезнуть; решение о логировании — на сервере (M4), а не в симуляции.
-5. **Неизвестный тип команды бросает `NotSupportedException`** — вместо тихого игнорирования, чтобы ошибки протокола не прятались.
+1. **`Shared` теперь ссылается на `Simulation.Core`** — это уточнение таблицы зависимостей ADR-001 (там у `Shared` был только BCL). Причина: загрузчик JSON обязан построить `SimulationConfig`, а DTO-дубли внутри Core нарушили бы «Core не знает про JSON». Инвариант «`Simulation.Core` не зависит ни от чего» сохранён (проверка №2 в `check-architecture.sh`). Если оператор против — альтернатива: перенести маппинг DTO→Core в `Server`/`Tests` (дублирование ~40 строк).
+2. **Ресурс не регенерируется в M3** — в плане M3 этого нет; запас восстанавливается только на респавне. Регенерация — отдельная веха.
+3. **Способность нацеленная** (`TargetId`), дистанция считается в плоскости XZ, `Damage` — целое. Кулдаун в тиках = `round(cooldownSeconds * 20)`, минимум 1 тик.
+4. **Мёртвая сущность** не двигается, не кастует, не может быть целью; команды для неё молча игнорируются.
+5. **Респавн**: `RespawnAtTick = тик смерти + round(respawnSeconds * 20)`; на этом тике HP и ресурс полные, позиция = точка появления, кулдаун сброшен.
+6. **`MoveSpeed` переехал в `ActorConfig`** (M2 держал его в `SimulationConfig`): скорость теперь per-actor и тоже из JSON.
+7. **`EntitySnapshot` расширен** (actorId, spawnPosition, resource, maxResource, cooldownUntilTick, respawnAtTick) — восстановление 1:1 сохранено; провод ещё не реализован, поэтому `Protocol.Version` не поднимался (M4).
+8. **Команды для неизвестного типа** по-прежнему бросают `NotSupportedException` (решение M2).
 
-## M2 Auto-Gate (проверено 2026-11-09)
+## M3 Auto-Gate (проверено 2026-11-09)
 
-- [x] CI зелёный: run [42578589472](https://github.com/avvasiliev888/albion-prototype/actions/runs/42578589472) (build, arch-check, tests + coverage gate) на PR #3.
-- [x] Все unit-тесты зелёные: **31/31** (движение, порядок команд, снапшоты, детерминизм, контракты).
-- [x] Replay-тест зелёный: 1000 команд с `seed=20261108`, два прогона → идентичный финальный снапшот; другой seed → другое состояние.
-- [x] CI-grep: `UnityEngine` в `Simulation.Core` отсутствует (`tools/ci/check-architecture.sh`).
-- [x] Покрытие `Simulation.Tick` и snapshot-методов — **100% line** (coverlet, порог в CI: `Threshold=100`, `Include=[Simulation.Core]Simulation.Core.Simulation`).
+- [x] CI зелёный: run [42582357716](https://github.com/avvasiliev888/albion-prototype/actions/runs/42582357716) на PR #4 (build + arch-checks + 69 тестов + coverage gate).
+- [x] Unit-тесты: **69/69** зелёные (`tools/dev/test-local.ps1`).
+- [x] Тест «изменил JSON → изменилось поведение»: `ChangedJsonDamage_ChangesSimulationResult` (damage 40 → 60 HP) и `RepoConfig_DamageFromJson_IsAppliedInSimulation`.
+- [x] Невалидный JSON → `ConfigValidationException` с понятным сообщением (6 тестов: битый JSON, не-массив, пропущенное поле, дубликат, висячая ссылка, отсутствующий файл).
+- [x] CI-grep: проверка №5 в `tools/ci/check-architecture.sh` (геймплейные `const` в `Simulation.Core`) — чисто.
+- [x] Покрытие `Simulation` — **100% line** (порог в CI не менялся).
 
-## M2 Human-Gate (ожидает оператора)
+## M3 Human-Gate (ожидает оператора)
 
-**PR:** [#3 — M2: детерминированное движение и снапшоты](https://github.com/avvasiliev888/albion-prototype/pull/3), ветка `agent/M2/movement-and-snapshots`.
+**PR:** [#4 — M3: JSON-конфиги, способность, смерть и респавн](https://github.com/avvasiliev888/albion-prototype/pull/4), ветка `agent/M3/configs-abilities-respawn`.
 
-- [ ] Оператор прогнал replay-тест дважды — результат идентичен.
-- [ ] Оператор проверил, что `MoveCommand` не содержит лишних полей (`speedMultiplier` и т.п. — только `Direction`, `ClientTick`, `Sequence`).
+1. **Измените урон и убедитесь, что поведение задаёт JSON:**
+   - в `config/abilities.json` поменяйте `"damage": 25` на `40`;
+   - `pwsh -File tools/dev/test-local.ps1 -Configuration Release`;
+   - ожидаемо падает `RepoConfigTests.RepoConfig_Ability_HasDocumentedBalance` (ожидает 25, получил 40) — конфиг реально управляет поведением; верните 25.
+2. **Проверьте отсутствие хардкода:** `tools/ci/check-architecture.sh` (нужен Git Bash: `bash` в PATH на этом хосте — WSL и падает) и глазами `src/Simulation.Core/`.
 
-**Как прогнать replay:**
-```
-pwsh -File tools/dev/test-local.ps1 -Configuration Release
-# или точечно, вне workspace:
-dotnet test src/Tests/Tests.csproj --filter "FullyQualifiedName~ReplayTests" -c Release
-```
-Ожидаемо: `Replay_1000SeededCommands_ProducesIdenticalFinalState` и `Replay_DifferentSeed_ProducesDifferentState` — зелёные.
+Ожидаемо: 69 тестов, покрытие `Simulation` 100%, arch-checks зелёные.
 
 ## Environment
 
@@ -104,10 +105,11 @@ dotnet test src/Tests/Tests.csproj --filter "FullyQualifiedName~ReplayTests" -c 
 ## Discovered Issues
 
 1. **VSTest не работает внутри workspace на `F:`** — testhost падает с `Win32Exception (5)` на `Process.set_EnableRaisingEvents`; тот же проект из `%TEMP%` проходит. Обход: `tools/dev/test-local.ps1`. CI не затронут. Приоритет: низкий (ограничение хоста).
-2. **Unity Package Manager не может достучаться до `packages.unity.com`** — `ETIMEDOUT` из процесса UPM, хотя хост-процесс получает `200` (проверено `Invoke-WebRequest` к тому же хосту). Причина — сетевое ограничение дочерних процессов на этом хосте (та же семья, что и п.1), не диск F: и не проект. **Не критично:** `Packages/manifest.json` и `packages-lock.json` в репозитории, все 37 пакетов разрешены из `Library/PackageCache`, проект компилируется и собирается, сцена открывается. Влияние: поиск/установка новых пакетов из registry (понадобится на M10 для URP) — тогда либо оператор ставит пакет через Hub, либо добавляем тарбол локально (`file:`), либо ищем снятие ограничения. Приоритет: средний к M10.
-3. **CRLF-предупреждения git** на Windows — косметика (`core.autocrlf=false`). Приоритет: низкий.
+2. **Unity Package Manager не может достучаться до `packages.unity.com`** — `ETIMEDOUT` из процесса UPM, хотя хост-процесс получает `200`. Причина — сетевое ограничение дочерних процессов на этом хосте. Не критично до M10 (URP): проект собирается из `Library/PackageCache`.
+3. **`bash` в PATH на этом хосте — WSL**, а не Git Bash: `tools/ci/check-architecture.sh` локально запускается через `C:\Program Files\Git\bin\bash.exe` (в CI — обычный bash). Приоритет: низкий.
+4. **CRLF-предупреждения git** на Windows — косметика. Приоритет: низкий.
 
 ## Next Actions (для следующей сессии)
 
-1. Дождаться Human-Gate M2 (replay дважды + проверка полей `MoveCommand`), после — merge PR.
-2. Затем M3: JSON-схема конфигов (`abilities`, `actors`), загрузчик с валидацией, `AbilityCommand`, урон/кулдаун/смерть/респавн, тесты «изменил JSON → изменилось поведение».
+1. Дождаться Human-Gate M3, после — merge PR.
+2. M4: серверный цикл 20 Гц, LiteNetLib, приём `MoveCommand`/`AbilityCommand`, валидация, рассылка снапшотов, нагрузочный тест 10–20 ботов.

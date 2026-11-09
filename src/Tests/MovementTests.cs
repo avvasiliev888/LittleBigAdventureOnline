@@ -6,38 +6,52 @@ using CoreSimulation = Simulation.Core.Simulation;
 
 namespace Tests
 {
-    /// <summary>Движение: применение <see cref="MoveCommand"/> с шагом и скоростью из конфига.</summary>
+    /// <summary>Движение: скорость берётся из конфига актора, а не из команды.</summary>
     public sealed class MovementTests
     {
         [Fact]
         public void MoveCommand_MovesEntityBySpeedTimesDeltaTime()
         {
-            var state = new SimulationState(0, new[] { new EntityState(1, Vector3.Zero, 100) });
-            var simulation = new CoreSimulation(state, new SimulationConfig(moveSpeed: 4f));
+            var config = TestWorld.Config(moveSpeed: 4f);
+            var simulation = TestWorld.Simulation(config, TestWorld.Entity(1, config));
 
-            simulation.Tick(SimulationConstants.FixedDeltaTime, Pack(new MoveCommand(new Vector2(1f, 0f), 0, 1)));
+            TestWorld.Tick(simulation, TestWorld.Move(1, 1f, 0f));
 
             // 4 ед/с * 0.05 с = 0.2 по X.
             SnapshotAssert.Equal(new Vector3(0.2f, 0f, 0f), simulation.State.Entities[0].Position);
         }
 
         [Fact]
-        public void MoveCommand_DiagonalDirection_UsesBothAxes()
+        public void MoveCommand_UsesDirectionAsWorldXZ()
         {
-            var state = new SimulationState(0, new[] { new EntityState(1, Vector3.Zero, 100) });
-            var simulation = new CoreSimulation(state, new SimulationConfig(moveSpeed: 2f));
+            var config = TestWorld.Config(moveSpeed: 2f);
+            var simulation = TestWorld.Simulation(config, TestWorld.Entity(1, config));
 
-            simulation.Tick(SimulationConstants.FixedDeltaTime, Pack(new MoveCommand(new Vector2(0f, 1f), 0, 1)));
+            TestWorld.Tick(simulation, TestWorld.Move(1, 0f, 1f));
 
             SnapshotAssert.Equal(new Vector3(0f, 0f, 0.1f), simulation.State.Entities[0].Position);
         }
 
         [Fact]
+        public void MoveCommand_ForDeadEntity_IsIgnored()
+        {
+            var config = TestWorld.Config();
+            var entity = TestWorld.Entity(1, config);
+            entity.Hp = 0;
+            var simulation = TestWorld.Simulation(config, entity);
+
+            TestWorld.Tick(simulation, TestWorld.Move(1, 1f, 0f));
+
+            Assert.Equal(Vector3.Zero, simulation.State.Entities[0].Position);
+        }
+
+        [Fact]
         public void MoveCommand_ForUnknownEntity_IsIgnored()
         {
-            var simulation = new CoreSimulation(new SimulationConfig(moveSpeed: 3f));
+            var config = TestWorld.Config();
+            var simulation = TestWorld.Simulation(config);
 
-            simulation.Tick(SimulationConstants.FixedDeltaTime, Pack(new MoveCommand(Vector2.One, 0, 1)));
+            TestWorld.Tick(simulation, TestWorld.Move(42, 1f, 0f));
 
             Assert.Equal(1u, simulation.State.Tick);
             Assert.Empty(simulation.State.Entities);
@@ -48,20 +62,19 @@ namespace Tests
         {
             var simulation = new CoreSimulation();
 
-            Assert.Throws<InvalidOperationException>(
-                () => simulation.Tick(SimulationConstants.FixedDeltaTime, Pack(new MoveCommand(Vector2.One, 0, 1))));
+            Assert.Throws<InvalidOperationException>(() => TestWorld.Tick(simulation, TestWorld.Move(1, 1f, 0f)));
         }
 
         [Fact]
         public void Tick_WithUnsupportedCommand_Throws()
         {
-            var state = new SimulationState(0, new[] { new EntityState(1, Vector3.Zero, 100) });
-            var simulation = new CoreSimulation(state, new SimulationConfig(moveSpeed: 1f));
+            var config = TestWorld.Config();
+            var simulation = TestWorld.Simulation(config, TestWorld.Entity(1, config));
 
             Assert.Throws<NotSupportedException>(
-                () => simulation.Tick(
-                    SimulationConstants.FixedDeltaTime,
-                    new[] { new CommandEnvelope(1, new UnknownCommand()) }));
+                () => TestWorld.Tick(
+                    simulation,
+                    new CommandEnvelope(1, new UnknownCommand())));
         }
 
         [Fact]
@@ -71,15 +84,6 @@ namespace Tests
 
             Assert.Throws<ArgumentNullException>(
                 () => simulation.Tick(SimulationConstants.FixedDeltaTime, null!));
-        }
-
-        [Fact]
-        public void Config_WithNonPositiveSpeed_Throws()
-        {
-            Assert.Throws<ArgumentOutOfRangeException>(() => new SimulationConfig(0f));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new SimulationConfig(-1f));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new SimulationConfig(float.NaN));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new SimulationConfig(float.PositiveInfinity));
         }
 
         [Fact]
@@ -93,18 +97,7 @@ namespace Tests
         public void Simulation_WithNullState_Throws()
         {
             Assert.Throws<ArgumentNullException>(
-                () => new CoreSimulation((SimulationState)null!, new SimulationConfig(1f)));
-        }
-
-        private static CommandEnvelope[] Pack(params ICommand[] commands)
-        {
-            var packed = new CommandEnvelope[commands.Length];
-            for (var i = 0; i < commands.Length; i++)
-            {
-                packed[i] = new CommandEnvelope(1, commands[i]);
-            }
-
-            return packed;
+                () => new CoreSimulation((SimulationState)null!, TestWorld.Config()));
         }
 
         private sealed class UnknownCommand : ICommand

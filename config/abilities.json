@@ -1,0 +1,9 @@
+[
+  {
+    "id": 1,
+    "damage": 25,
+    "range": 3.0,
+    "cooldownSeconds": 2.0,
+    "resourceCost": 10
+  }
+]

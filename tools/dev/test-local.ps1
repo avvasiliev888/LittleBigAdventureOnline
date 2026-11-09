@@ -22,7 +22,7 @@ $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("albion-test-" + [Guid]
 try {
     New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
-    foreach ($item in @('src', 'tools')) {
+    foreach ($item in @('src', 'tools', 'config')) {
         Copy-Item -Path (Join-Path $repoRoot $item) -Destination $tempRoot -Recurse
     }
 

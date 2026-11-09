@@ -4,42 +4,69 @@ using System.Numerics;
 namespace Simulation.Core
 {
     /// <summary>
-    /// Состояние одной сущности мира. Мутируется исключительно симуляцией;
-    /// снаружи объект читается для отображения и тестов.
+    /// Состояние одной сущности в мире. Все геймплейные параметры берутся из <see cref="ActorConfig"/>.
     /// </summary>
     public sealed class EntityState
     {
-        /// <summary>Создаёт сущность с полным запасом здоровья.</summary>
-        /// <param name="id">Уникальный идентификатор сущности в рамках мира.</param>
-        /// <param name="position">Начальная позиция в мировых координатах.</param>
-        /// <param name="maxHp">Максимальное и текущее здоровье; должно быть положительным.</param>
-        /// <exception cref="ArgumentOutOfRangeException">Если <paramref name="maxHp"/> не положителен.</exception>
-        public EntityState(uint id, Vector3 position, int maxHp)
+        /// <summary>Создаёт сущность в точке появления с полным здоровьем и ресурсом.</summary>
+        /// <param name="id">Идентификатор сущности в мире.</param>
+        /// <param name="actor">Тип актора из конфига.</param>
+        /// <param name="spawnPosition">Точка появления и респавна.</param>
+        /// <exception cref="ArgumentNullException">Если <paramref name="actor"/> равен <c>null</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Если идентификатор сущности равен нулю.</exception>
+        public EntityState(uint id, ActorConfig actor, Vector3 spawnPosition)
         {
-            if (maxHp <= 0)
+            if (id == 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(maxHp), maxHp, "MaxHp должен быть положительным.");
+                throw new ArgumentOutOfRangeException(nameof(id), id, "Id сущности должен быть положительным.");
             }
 
+            Actor = actor ?? throw new ArgumentNullException(nameof(actor));
+
             Id = id;
-            Position = position;
-            MaxHp = maxHp;
-            Hp = maxHp;
+            ActorId = actor.Id;
+            MaxHp = actor.MaxHp;
+            MaxResource = actor.MaxResource;
+            SpawnPosition = spawnPosition;
+            Position = spawnPosition;
+            Hp = actor.MaxHp;
+            Resource = actor.MaxResource;
         }
 
-        /// <summary>Уникальный идентификатор сущности.</summary>
+        /// <summary>Идентификатор сущности в мире.</summary>
         public uint Id { get; }
 
-        /// <summary>Позиция в мировых координатах.</summary>
+        /// <summary>Идентификатор типа актора.</summary>
+        public uint ActorId { get; }
+
+        /// <summary>Тип актора из конфига.</summary>
+        public ActorConfig Actor { get; }
+
+        /// <summary>Точка появления и респавна.</summary>
+        public Vector3 SpawnPosition { get; }
+
+        /// <summary>Текущая позиция.</summary>
         public Vector3 Position { get; set; }
 
-        /// <summary>Текущее здоровье; при значении ≤ 0 сущность мертва.</summary>
+        /// <summary>Текущее здоровье.</summary>
         public int Hp { get; set; }
 
-        /// <summary>Максимальное здоровье сущности (из конфига акторов).</summary>
+        /// <summary>Максимальное здоровье.</summary>
         public int MaxHp { get; }
 
-        /// <summary>Признак смерти: <see cref="Hp"/> ≤ 0.</summary>
+        /// <summary>Текущий ресурс.</summary>
+        public int Resource { get; set; }
+
+        /// <summary>Максимальный ресурс.</summary>
+        public int MaxResource { get; }
+
+        /// <summary>Тик, до которого способность на кулдауне (включительно).</summary>
+        public uint CooldownUntilTick { get; set; }
+
+        /// <summary>Тик, на котором произойдёт респавн (0 — сущность жива).</summary>
+        public uint RespawnAtTick { get; set; }
+
+        /// <summary>Мёртвая сущность (HP ≤ 0).</summary>
         public bool IsDead => Hp <= 0;
     }
 }

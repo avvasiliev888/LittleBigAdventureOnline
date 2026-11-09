@@ -28,20 +28,20 @@ namespace Tests
         {
             var commands = new List<CommandEnvelope>
             {
-                Envelope(entity: 1, tick: 0, sequence: 0),
-                Envelope(entity: 2, tick: 0, sequence: 0),
-                Envelope(entity: 1, tick: 0, sequence: 1),
-                Envelope(entity: 2, tick: 0, sequence: 1),
+                TestWorld.Move(1, 0f, 1f, 0, 0),
+                TestWorld.Move(2, 0f, 1f, 0, 0),
+                TestWorld.Move(1, 1f, 0f, 0, 1),
+                TestWorld.Move(2, 1f, 0f, 0, 1),
             };
 
-            var direct = new CoreSimulation(World(), Config());
-            direct.Tick(SimulationConstants.FixedDeltaTime, CommandOrdering.Sort(commands));
+            var direct = TestWorld.Simulation(TestWorld.Config(moveSpeed: 3f), Entities());
+            TestWorld.Tick(direct, CommandOrdering.Sort(commands));
 
             var reversed = new List<CommandEnvelope>(commands);
             reversed.Reverse();
 
-            var shuffled = new CoreSimulation(World(), Config());
-            shuffled.Tick(SimulationConstants.FixedDeltaTime, CommandOrdering.Sort(reversed));
+            var shuffled = TestWorld.Simulation(TestWorld.Config(moveSpeed: 3f), Entities());
+            TestWorld.Tick(shuffled, CommandOrdering.Sort(reversed));
 
             SnapshotAssert.Equal(direct.CreateSnapshot(), shuffled.CreateSnapshot());
         }
@@ -49,7 +49,7 @@ namespace Tests
         [Fact]
         public void Tick_IsMonotonic_AndIncreasesByOne()
         {
-            var simulation = new CoreSimulation(World(), Config());
+            var simulation = TestWorld.Simulation(TestWorld.Config(moveSpeed: 3f), Entities());
 
             for (var i = 0; i < Ticks; i++)
             {
@@ -61,24 +61,15 @@ namespace Tests
         private static CoreSimulation RunScenario(int seed)
         {
             var random = new Random(seed);
-            var simulation = new CoreSimulation(World(), Config());
+            var config = TestWorld.Config(moveSpeed: 3f);
+            var simulation = TestWorld.Simulation(config, Entities());
 
             for (var tick = 0u; tick < Ticks; tick++)
             {
                 var commands = new[]
                 {
-                    new CommandEnvelope(
-                        1,
-                        new MoveCommand(
-                            new System.Numerics.Vector2((float)random.NextDouble() * 2f - 1f, (float)random.NextDouble() * 2f - 1f),
-                            tick,
-                            0)),
-                    new CommandEnvelope(
-                        2,
-                        new MoveCommand(
-                            new System.Numerics.Vector2((float)random.NextDouble() * 2f - 1f, (float)random.NextDouble() * 2f - 1f),
-                            tick,
-                            0)),
+                    TestWorld.Move(1, NextAxis(random), NextAxis(random), tick, 0),
+                    TestWorld.Move(2, NextAxis(random), NextAxis(random), tick, 0),
                 };
 
                 simulation.Tick(SimulationConstants.FixedDeltaTime, commands);
@@ -87,22 +78,12 @@ namespace Tests
             return simulation;
         }
 
-        private static SimulationState World()
-        {
-            return new SimulationState(
-                0,
-                new[]
-                {
-                    new EntityState(1, System.Numerics.Vector3.Zero, 100),
-                    new EntityState(2, System.Numerics.Vector3.Zero, 100),
-                });
-        }
+        private static float NextAxis(Random random) => (float)((random.NextDouble() * 2d) - 1d);
 
-        private static SimulationConfig Config() => new SimulationConfig(moveSpeed: 3f);
-
-        private static CommandEnvelope Envelope(uint entity, uint tick, uint sequence)
+        private static EntityState[] Entities()
         {
-            return new CommandEnvelope(entity, new MoveCommand(new System.Numerics.Vector2(0f, 1f), tick, sequence));
+            var config = TestWorld.Config(moveSpeed: 3f);
+            return new[] { TestWorld.Entity(1, config), TestWorld.Entity(2, config) };
         }
     }
 }

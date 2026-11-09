@@ -145,6 +145,10 @@ namespace Albion.Client
                 new Rect(12f, 12f, 1000f, 24f),
                 "Albion: " + _status + " | snapshots: " + snapshots + " (delta " + deltas + ", fullReq " + fullRequests + ")"
                 + " | cfg: " + configHash + " | WASD — движение, Space — способность");
+            GUI.Label(
+                new Rect(12f, 12f, 900f, 24f),
+                "Albion: " + _status + " | snapshots: " + snapshots + " (delta " + deltas + ", fullReq " + fullRequests + ")"
+                + " | WASD — движение");
 
             if (_pipeline?.Prediction != null)
             {

@@ -1,27 +1,127 @@
 using System;
+using System.IO;
+using System.Numerics;
+using Shared;
+using Shared.Config;
 using Simulation.Core;
 
 namespace Server
 {
     /// <summary>
-    /// Точка входа серверного процесса. M1: каркас, который доказывает, что симуляция
-    /// создаётся и тикает. Серверный цикл, транспорт и валидация — M4–M5.
+    /// Точка входа серверного процесса. M4: консольный сервер с фиксированным тиком, валидацией команд
+    /// и рассылкой полных снапшотов. В демо-режиме клиент живёт в том же процессе (in-memory транспорт),
+    /// поэтому видно полный путь «команда → валидация → тик → снапшот».
     /// </summary>
     public static class Program
     {
-        /// <summary>Запускает серверный процесс.</summary>
-        /// <param name="args">Аргументы командной строки (пока не используются).</param>
+        /// <summary>Запускает сервер с демо-клиентом.</summary>
+        /// <param name="args">Путь к каталогу конфигов (необязательно).</param>
         /// <returns>Код возврата процесса.</returns>
         public static int Main(string[] args)
         {
-            var simulation = new Simulation.Core.Simulation();
+            var configDirectory = ResolveConfigDirectory(args);
+            SimulationConfig config;
 
-            simulation.Tick(SimulationConstants.FixedDeltaTime, Array.Empty<CommandEnvelope>());
+            try
+            {
+                config = ConfigLoader.LoadFromDirectory(configDirectory);
+            }
+            catch (ConfigValidationException exception)
+            {
+                Console.Error.WriteLine("Конфигурация не загружена: " + exception.Message);
+                return 1;
+            }
 
-            Console.WriteLine(
-                $"server skeleton: tick={simulation.State.Tick}, entities={simulation.State.Entities.Count}, deltaTime={SimulationConstants.FixedDeltaTime}");
+            Console.WriteLine("config: " + configDirectory + " (акторов: " + config.Actors.Count + ", способностей: " + config.Abilities.Count + ")");
+
+            using var transport = new InMemoryServerTransport();
+            using var server = new GameServer(config, transport, new ServerOptions { LogTicks = true }, Console.WriteLine);
+            var serializer = new BinarySnapshotSerializer();
+            var loop = new ServerLoop(server, new SystemClock(), 20);
+
+            server.Start();
+
+            var clientId = transport.ConnectClient();
+            transport.SendFromClient(clientId, MessageFraming.Wrap(MessageType.Hello, Array.Empty<byte>()));
+
+            const int ticks = 40;
+            for (var i = 0; i < ticks; i++)
+            {
+                if (i % 4 == 0)
+                {
+                    transport.SendFromClient(
+                        clientId,
+                        MessageFraming.Wrap(MessageType.Command, CommandCodec.Encode(new MoveCommand(new Vector2(1f, 0f), (uint)i, 0))));
+                }
+
+                if (i % 10 == 5)
+                {
+                    // Цель, которой нет в мире, — демонстрация отказа валидатора с причиной в логе.
+                    transport.SendFromClient(
+                        clientId,
+                        MessageFraming.Wrap(MessageType.Command, CommandCodec.Encode(new AbilityCommand(999, (uint)i, 0))));
+                }
+
+                loop.RunOnce();
+
+                while (transport.TryReceive(clientId, out var packet) && packet != null)
+                {
+                    var framing = MessageFraming.TryUnwrap(packet, out var frame);
+                    if (framing == FramingError.None && frame.Type == MessageType.Snapshot)
+                    {
+                        var snapshot = serializer.Deserialize(frame.Payload);
+                        var first = snapshot.Entities.Count > 0 ? snapshot.Entities[0] : default;
+                        Console.WriteLine(
+                            "[client] snapshot tick=" + snapshot.Tick + " entities=" + snapshot.Entities.Count
+                            + " pos=(" + first.Position.X.ToString("0.###") + ", " + first.Position.Z.ToString("0.###") + ")"
+                            + " hp=" + first.Hp);
+                    }
+                }
+            }
+
+            Console.WriteLine("demo завершено: тиков=" + loop.TicksExecuted + ", лог-записей=" + server.LogEntries.Count
+                + ", отклонённых=" + CountRejected(server));
 
             return 0;
+        }
+
+        private static int CountRejected(GameServer server)
+        {
+            var count = 0;
+            foreach (var entry in server.LogEntries)
+            {
+                if (entry.Contains("rejected", StringComparison.Ordinal))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static string ResolveConfigDirectory(string[] args)
+        {
+            foreach (var arg in args)
+            {
+                if (!arg.StartsWith("--", StringComparison.Ordinal))
+                {
+                    return arg;
+                }
+            }
+
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                var candidate = Path.Combine(directory.FullName, "config");
+                if (File.Exists(Path.Combine(candidate, ConfigLoader.ActorsFileName)))
+                {
+                    return candidate;
+                }
+
+                directory = directory.Parent;
+            }
+
+            return Path.Combine(Directory.GetCurrentDirectory(), "config");
         }
     }
 }

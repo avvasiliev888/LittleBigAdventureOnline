@@ -14,7 +14,11 @@ namespace Shared
         /// Версия протокола. Поднимается при любом несовместимом изменении формата или семантики;
         /// несовпадение при handshake — отказ в соединении.
         /// </summary>
-        public const ushort Version = 1;
+        /// <remarks>
+        /// Версия 2 (M4): бинарный формат реализован впервые, запись сущности в снапшоте расширена
+        /// относительно эскиза ADR-004 полями actor/resource/cooldown/respawn/spawn (ADR-008).
+        /// </remarks>
+        public const ushort Version = 2;
     }
 
     /// <summary>

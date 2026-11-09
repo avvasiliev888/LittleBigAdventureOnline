@@ -1,9 +1,9 @@
 # State
 
-Last updated: 2026-11-09 08:55 UTC
-Last heartbeat: 2026-11-09 08:55 UTC
-Current milestone: M3 — Способность, здоровье, смерть, data-driven конфиг
-Current task: ожидание Human-Gate M3
+Last updated: 2026-11-09 09:20 UTC
+Last heartbeat: 2026-11-09 09:20 UTC
+Current milestone: M4 — Сервер: цикл, валидация, снапшоты
+Current task: ожидание Human-Gate M4
 Onboarding: completed
 
 ## Onboarding: completed
@@ -17,8 +17,8 @@ Onboarding: completed
 | M0 | ✅ | ✅ | done (2026-11-08, ADR заморожены) |
 | M1 | ✅ | ✅ | done (2026-11-09, контракты заморожены) |
 | M2 | ✅ | ✅ | done (2026-11-09, `045c24b`) |
-| M3 | ✅ | ⏳ | awaiting human review |
-| M4 | — | — | todo |
+| M3 | ✅ | ✅ | done (2026-11-09) |
+| M4 | ✅ | ⏳ | awaiting human review |
 | M5 | — | — | todo |
 | M6 | — | — | todo |
 | M7 | — | — | todo |
@@ -28,48 +28,49 @@ Onboarding: completed
 | M11 | — | — | todo |
 | M12 | — | — | todo |
 
-## M3 tasks
+## M4 tasks
 
 | Task | Status | Notes |
 |---|---|---|
-| 1. JSON-схема конфигов (`actors`, `abilities`) | done | `config/actors.json`, `config/abilities.json` в корне репо |
-| 2. Загрузчик с валидацией | done | `Shared.Config.ConfigLoader` → `ConfigValidationException`; без дефолтов |
-| 3. `AbilityCommand` (цель, `ClientTick`, `Sequence`) | done | `TargetId` |
-| 4. Логика способности: дистанция, кулдаун, ресурс, урон | done | всё из конфига |
-| 5. Смерть (HP ≤ 0) и респавн через N секунд | done | N из `actors.json` |
-| 6. Unit-тесты | done | 69 тестов всего |
+| 1. `ServerLoop` 20 Гц с компенсацией дрейфа | done | `ServerLoop` + `IClock`/`SystemClock`; дедлайн двигается на фиксированный интервал |
+| 2. `InputValidator`: дистанция, кулдаун, ресурс, лимит частоты | done | + проверка длины вектора направления |
+| 3. `ISnapshotSerializer` (полный снапшот, без дельт) | done | `BinarySnapshotSerializer` (57 байт/сущность) |
+| 4. Транспорт-заглушка для отладки | done | `InMemoryServerTransport` за `IServerTransport`; LiteNetLib — M5 |
+| 5. Сессии, подключение/отключение | done | `GameServer` + `ClientSession`; сущность удаляется при отключении |
+| 6. Интеграционный тест сервер + фейковый клиент | done | Hello → команда → тик → снапшот → состояние совпадает |
 
-## M3: принятые решения (на ревью оператору)
+## M4: принятые решения (на ревью оператору)
 
-1. **`Shared` теперь ссылается на `Simulation.Core`** — это уточнение таблицы зависимостей ADR-001 (там у `Shared` был только BCL). Причина: загрузчик JSON обязан построить `SimulationConfig`, а DTO-дубли внутри Core нарушили бы «Core не знает про JSON». Инвариант «`Simulation.Core` не зависит ни от чего» сохранён (проверка №2 в `check-architecture.sh`). Если оператор против — альтернатива: перенести маппинг DTO→Core в `Server`/`Tests` (дублирование ~40 строк).
-2. **Ресурс не регенерируется в M3** — в плане M3 этого нет; запас восстанавливается только на респавне. Регенерация — отдельная веха.
-3. **Способность нацеленная** (`TargetId`), дистанция считается в плоскости XZ, `Damage` — целое. Кулдаун в тиках = `round(cooldownSeconds * 20)`, минимум 1 тик.
-4. **Мёртвая сущность** не двигается, не кастует, не может быть целью; команды для неё молча игнорируются.
-5. **Респавн**: `RespawnAtTick = тик смерти + round(respawnSeconds * 20)`; на этом тике HP и ресурс полные, позиция = точка появления, кулдаун сброшен.
-6. **`MoveSpeed` переехал в `ActorConfig`** (M2 держал его в `SimulationConfig`): скорость теперь per-actor и тоже из JSON.
-7. **`EntitySnapshot` расширен** (actorId, spawnPosition, resource, maxResource, cooldownUntilTick, respawnAtTick) — восстановление 1:1 сохранено; провод ещё не реализован, поэтому `Protocol.Version` не поднимался (M4).
-8. **Команды для неизвестного типа** по-прежнему бросают `NotSupportedException` (решение M2).
+1. **ADR-008: запись сущности расширена до 57 байт, `Protocol.Version` = 2.** Эскиза ADR-004 (`id/x/y/z/hp/flags`) не хватает для восстановления статов и реконсиляции (ADR-006). Документ — `docs/adr/ADR-008-snapshot-entity-record.md`, требует «ок» на Human-Gate.
+2. **Валидатор не «мягкий»:** отклонённая команда не попадает в симуляцию, но пишется в лог с причиной (`rejected (Причина) — деталь`). Отдельный тест проверяет, что состояние после отказа не изменилось.
+3. **Проверка длины вектора направления** (`|dir| ≤ 1.05`) — защита от «ускорения» читом; клиент обязан присылать единичный вектор.
+4. **Лимит команд** — `ServerOptions.MaxCommandsPerTick = 5` (политика сервера, не геймплей; в JSON не выносится).
+5. **Спавн сессий** — вдоль оси X с шагом `SpawnSpacing = 2` (политика сервера; заменится конфигом мира, когда он появится).
+6. **`SimulationState.AddEntity`/`RemoveEntity`** — мир стал динамическим (подключение/отключение), симуляция по-прежнему не знает про сеть.
+7. **Транспорт-абстракция сервера — `IServerTransport`** (события + `Send(connId, packet, DeliveryMode)`), в M5 её реализует LiteNetLib. `ITransport` (клиентский, заморожен в M1) не трогали.
+8. **Handshake в M4 — `Hello`/`HelloAck`** с версией в заголовке; отказ по версии и `Reason.VersionMismatch` — M5 (там появляется реальная сеть).
 
-## M3 Auto-Gate (проверено 2026-11-09)
+## M4 Auto-Gate (проверено 2026-11-09)
 
-- [x] CI зелёный: run [42582357716](https://github.com/avvasiliev888/albion-prototype/actions/runs/42582357716) на PR #4 (build + arch-checks + 69 тестов + coverage gate).
-- [x] Unit-тесты: **69/69** зелёные (`tools/dev/test-local.ps1`).
-- [x] Тест «изменил JSON → изменилось поведение»: `ChangedJsonDamage_ChangesSimulationResult` (damage 40 → 60 HP) и `RepoConfig_DamageFromJson_IsAppliedInSimulation`.
-- [x] Невалидный JSON → `ConfigValidationException` с понятным сообщением (6 тестов: битый JSON, не-массив, пропущенное поле, дубликат, висячая ссылка, отсутствующий файл).
-- [x] CI-grep: проверка №5 в `tools/ci/check-architecture.sh` (геймплейные `const` в `Simulation.Core`) — чисто.
-- [x] Покрытие `Simulation` — **100% line** (порог в CI не менялся).
+- [x] CI зелёный: run [42585257077](https://github.com/avvasiliev888/albion-prototype/actions/runs/42585257077) на PR #5 (build + arch-checks + 116 тестов + coverage gate).
+- [x] Интеграционный тест зелёный: `Hello_Move_ProducesSnapshotMatchingServerState`, снапшот совпадает с состоянием сервера.
+- [x] Валидатор отклоняет: вне радиуса (`OutOfRange`), на кулдауне (`OnCooldown`), превышение частоты (`RateLimit`), плюс `DeadTarget`, `NotEnoughResource`, `DirectionTooLarge`, `UnknownEntity`.
+- [x] Сервер логирует отказы с причиной — тесты проверяют `LogEntries` на `UnknownTarget`/`RateLimit`/`отклонён`.
+- [x] Тик стабилен: `ServerLoopTests.HundredTicks_TakeFiveSecondsWithinTolerance` — 101 тик = 5000 мс на фейковых часах (допуск ±100 мс).
+- [x] **116/116** тестов, покрытие `Simulation` — 100% line, arch-checks зелёные.
 
-## M3 Human-Gate (ожидает оператора)
+## M4 Human-Gate (ожидает оператора)
 
-**PR:** [#4 — M3: JSON-конфиги, способность, смерть и респавн](https://github.com/avvasiliev888/albion-prototype/pull/4), ветка `agent/M3/configs-abilities-respawn`.
+**PR:** [#5 — M4: серверный цикл 20 Гц, валидация и снапшоты](https://github.com/avvasiliev888/albion-prototype/pull/5), ветка `agent/M4/server-loop-validation`.
 
-1. **Измените урон и убедитесь, что поведение задаёт JSON:**
-   - в `config/abilities.json` поменяйте `"damage": 25` на `40`;
-   - `pwsh -File tools/dev/test-local.ps1 -Configuration Release`;
-   - ожидаемо падает `RepoConfigTests.RepoConfig_Ability_HasDocumentedBalance` (ожидает 25, получил 40) — конфиг реально управляет поведением; верните 25.
-2. **Проверьте отсутствие хардкода:** `tools/ci/check-architecture.sh` (нужен Git Bash: `bash` в PATH на этом хосте — WSL и падает) и глазами `src/Simulation.Core/`.
+1. **Запустите сервер с демо-клиентом:**
+   ```
+   dotnet run --project src/Server -c Release
+   ```
+   Ожидаемо в логе: `Hello принят`, строки `[tN] tick: ...`, `[client] snapshot tick=N ... pos=(...) hp=100` и отказы `rejected (UnknownTarget) — цели 999 нет`.
+2. **Ложные срабатывания:** в демо команды движения принимаются (`commands=1`, позиция растёт на 0.2), а отклоняется только заведомо невалидная цель. Юнит-тесты `ValidMove_IsAccepted`/`ValidAbility_IsAccepted` фиксируют отсутствие ложных отказов.
 
-Ожидаемо: 69 тестов, покрытие `Simulation` 100%, arch-checks зелёные.
+Ожидаемо: 116 тестов, покрытие `Simulation` 100%, arch-checks зелёные.
 
 ## Environment
 
@@ -111,5 +112,5 @@ Onboarding: completed
 
 ## Next Actions (для следующей сессии)
 
-1. Дождаться Human-Gate M3, после — merge PR.
-2. M4: серверный цикл 20 Гц, LiteNetLib, приём `MoveCommand`/`AbilityCommand`, валидация, рассылка снапшотов, нагрузочный тест 10–20 ботов.
+1. Дождаться Human-Gate M4 (демо-запуск сервера + подтверждение ADR-008), после — merge PR.
+2. M5: `LiteNetLibTransport` (`ITransport`/`IServerTransport`), `tools/test-client`, режимы доставки, интеграционный тест с 30% потерь и 100 мс задержки, отказ по версии протокола.

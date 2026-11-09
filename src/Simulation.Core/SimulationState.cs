@@ -33,6 +33,42 @@ namespace Simulation.Core
         /// <summary>Сущности мира в детерминированном порядке (порядок добавления).</summary>
         public IReadOnlyList<EntityState> Entities => _entities;
 
+        /// <summary>Добавляет сущность в мир (подключение игрока, спавн).</summary>
+        /// <param name="entity">Сущность для добавления.</param>
+        /// <exception cref="ArgumentNullException">Если <paramref name="entity"/> равен <c>null</c>.</exception>
+        /// <exception cref="ArgumentException">Если сущность с таким Id уже есть в мире.</exception>
+        public void AddEntity(EntityState entity)
+        {
+            if (entity == null)
+            {
+                throw new ArgumentNullException(nameof(entity));
+            }
+
+            if (TryGetEntity(entity.Id, out _))
+            {
+                throw new ArgumentException("Сущность с Id " + entity.Id + " уже есть в мире.", nameof(entity));
+            }
+
+            _entities.Add(entity);
+        }
+
+        /// <summary>Удаляет сущность из мира (отключение игрока).</summary>
+        /// <param name="entityId">Идентификатор сущности.</param>
+        /// <returns><c>true</c>, если сущность была и удалена.</returns>
+        public bool RemoveEntity(uint entityId)
+        {
+            for (var i = 0; i < _entities.Count; i++)
+            {
+                if (_entities[i].Id == entityId)
+                {
+                    _entities.RemoveAt(i);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         /// <summary>Пытается найти сущность по идентификатору.</summary>
         /// <param name="entityId">Идентификатор сущности.</param>
         /// <param name="entity">Найденная сущность или <c>null</c>.</param>

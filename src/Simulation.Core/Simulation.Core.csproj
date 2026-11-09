@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Unity 6.3 (netstandard2.1) должен уметь ссылаться на этот проект, сервер — использовать net10.0. -->
+    <TargetFrameworks>netstandard2.1;net10.0</TargetFrameworks>
+    <LangVersion>9.0</LangVersion>
+    <!-- C# 9 для совместимости с Unity 6.3; global usings требуют C# 10 — используем явные using. -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Simulation.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>

@@ -1,9 +1,9 @@
 # State
 
-Last updated: 2026-11-08 18:02 UTC
-Last heartbeat: 2026-11-08 18:02 UTC
-Current milestone: M0 — Видение и архитектурные решения
-Current task: ожидание Human-Gate M0
+Last updated: 2026-11-08 21:10 UTC
+Last heartbeat: 2026-11-08 21:10 UTC
+Current milestone: M1 — Walking skeleton
+Current task: ожидание Human-Gate M1
 Onboarding: completed
 
 ## Onboarding: completed
@@ -14,8 +14,8 @@ Onboarding: completed
 
 | Milestone | Auto-Gate | Human-Gate | Status |
 |---|---|---|---|
-| M0 | ✅ | ⏳ | awaiting human review |
-| M1 | — | — | todo |
+| M0 | ✅ | ✅ | done (2026-11-08, ADR заморожены) |
+| M1 | ✅ | ⏳ | awaiting human review |
 | M2 | — | — | todo |
 | M3 | — | — | todo |
 | M4 | — | — | todo |
@@ -28,81 +28,99 @@ Onboarding: completed
 | M11 | — | — | todo |
 | M12 | — | — | todo |
 
-## Current milestone tasks
+## M1 tasks
 
 | Task | Status | Commit | Notes |
 |---|---|---|---|
-| Проверить `docs/product-vision.md` (все 10 разделов) | done | — | разделы 1–10 присутствуют (проверено grep по `^## N.`) |
-| ADR-001…ADR-007 в `docs/adr/` | done | — | 7 файлов, в каждом «Контекст / Решение / Альтернативы / Последствия» |
-| Создать `docs/state.md` | done | — | |
+| 1. Структура репозитория (`/src/*`, `/unity-client`, `/tools`, `/docs`) | done | — | только dotnet + Unity |
+| 2. `.sln` с проектами и зависимостями | done | — | `Prototype.sln`, зависимости по ADR-001 |
+| 3. CI: сборка, `dotnet test`, grep-проверка `UnityEngine` | done | — | `.github/workflows/ci.yml` + `tools/ci/check-architecture.sh` |
+| 4. Пустые интерфейсы с XML-документацией | done | — | 6 контрактов, см. ниже |
+| 5. `SimulationState` (тик, id/позиция/HP) | done | — | без игровой логики |
+| 6. Smoke-тест: симуляция создаётся, `Tick` не падает | done | — | 9 тестов, все зелёные |
+| 7. Unity-проект (пустая сцена) | done | — | Unity 6000.3.28f1, сцена + сборка Windows-плеера |
 
-## M0 Auto-Gate (проверено локально 2026-11-08)
+## M1: созданные контракты (замораживаются по Human-Gate)
 
-- [x] Все ADR существуют и содержат контекст, решение, альтернативы, последствия — 7/7, проверено скриптом.
-- [x] `docs/state.md` создан.
-- [x] `docs/product-vision.md` содержит все 10 разделов (1…10).
+| Контракт | Проект | Состав |
+|---|---|---|
+| `ISimulation` | `Simulation.Core` | `State`, `Tick(float deltaTime, IReadOnlyList<CommandEnvelope>)`, `CreateSnapshot()`, `RestoreFromSnapshot(SimulationSnapshot)` |
+| `ICommand` | `Simulation.Core` | `ClientTick`, `Sequence` (без геймплейных полей) |
+| `ISnapshotSerializer` | `Simulation.Core` | `Serialize(SimulationSnapshot) → byte[]`, `Deserialize(ReadOnlySpan<byte>)` |
+| `ITransport` | `Client.Network` | `Start()`, `Poll()`, `Send(byte[], DeliveryMode)`, `IsConnected`, события `PacketReceived` / `Disconnected` |
+| `IInputSource` | `Client.Network` | `TryReadCommand(uint clientTick, out ICommand?)` |
+| `IView` | `Client.Network` | `ApplySnapshot(SimulationSnapshot)`, `Render(float frameDeltaTime)` |
 
-## M0 Human-Gate (ожидает оператора)
+Вспомогательные типы: `SimulationState`, `EntityState`, `CommandEnvelope` (EntityId + ICommand), `SimulationSnapshot`, `EntitySnapshot`, `SimulationConstants` (`TickRate = 20`, `FixedDeltaTime = 0.05`).
 
-**PR:** [#1 — M0: ADR-001…ADR-007 и проверка Product Vision](https://github.com/avvasiliev888/albion-prototype/pull/1), ветка `agent/M0/adr-and-vision`, коммит `2388e64`.
+## M1 Auto-Gate (проверено 2026-11-08)
 
-- [ ] Оператор подтвердил ADR-001…ADR-007. После этого они **заморожены**.
-- [ ] Оператор ответил на «Вопросы к заказчику» из Product Vision (допущения 1–3 вынесены в `## Resolved Questions`, п.11).
+- [x] CI зелёный: run [42522296907](https://github.com/avvasiliev888/albion-prototype/actions/runs/42522296907) (build, architecture checks, test) на PR #2.
+- [x] `dotnet build Prototype.sln -c Release` — 0 предупреждений, 0 ошибок.
+- [x] `dotnet test` — 9/9 зелёные (локально через `tools/dev/test-local.ps1`, см. Discovered Issues).
+- [x] `tools/ci/check-architecture.sh` — все 4 проверки пройдены локально.
+- [x] `Simulation.Core` не ссылается на другие проекты; `UnityEngine` отсутствует.
+- [x] Unity-проект: `6000.3.28f1`, сцена `Assets/Scenes/SampleScene.unity`, Windows-плеер собран (`BuildWindowsPlayer: result=Succeeded, errors=0`).
+- [x] `docs/state.md` обновлён: интерфейсы и контракты перечислены выше.
 
-**Что смотреть оператору:**
-- ADR-001 — границы проектов и запрет `UnityEngine` в `Simulation.Core`.
-- ADR-002 — LiteNetLib 2.1.4, режимы доставки (команды ReliableOrdered, снапшоты Unreliable).
-- ADR-003 — тик 20 Гц, `dt = 0.05`, бюджет тика 50 мс.
-- ADR-004 — бинарный формат снапшота/дельты, `Protocol.Version`, handshake-отказ при несовпадении.
-- ADR-005 — JSON-конфиги, fail-fast валидация, отсутствие фолбэков, секунды→тики.
-- ADR-006 — предсказание движения, откат + повтор команд, `EPSILON = 0.01`, сглаживание, а не телепорт.
-- ADR-007 — xUnit, 4 уровня тестов, 100% покрытие `Simulation.Tick`/snapshot, флап = дефект.
+## M1 Human-Gate (ожидает оператора)
+
+**PR:** [#2 — M1: Walking skeleton](https://github.com/avvasiliev888/albion-prototype/pull/2), ветка `agent/M1/walking-skeleton`.
+
+- [ ] Оператор прочитал интерфейсы и подтвердил контракты. **После этого интерфейсы заморожены.**
+- [ ] Оператор вручную проверил, что CI краснеет при `using UnityEngine;` в `Simulation.Core`.
+- [ ] Оператор открыл `unity-client` в Unity Hub (проект должен открыться без ошибок, сцена `SampleScene` в build settings).
+
+**Как проверить CI-красноту (п.2):** в ветке `agent/M1/walking-skeleton` добавить `using UnityEngine;` в любой файл `src/Simulation.Core`, запушить — job `build-test` должен упасть на шаге «Architecture checks». Коммит с этой правкой не должен попасть в PR.
 
 ## Environment
 
 | Что | Значение |
 |---|---|
 | ОС | Windows 11 (10.0.22631), PowerShell 7.5.4 |
-| .NET SDK | **10.0.403** (установлен 2026-11-08 через winget, по решению оператора) |
-| Unity | 6.3 LTS (6000.3.x) — устанавливает и активирует оператор; агент установку не трогает |
-| Репозиторий | `https://github.com/avvasiliev888/albion-prototype` (private), ветка `main`, remote `origin` |
-| GitHub CLI | авторизован как `avvasiliev888`, scopes `repo`, `workflow`, `gist`, `read:org` |
-| git identity | `Blaze <avvasiliev888@gmail.com>` |
-| Git LFS | 3.7.1, `git lfs install --local`; бинарники > 100 KB — в LFS, `*.meta` трекаются обычным git |
+| .NET SDK | 10.0.403 (winget), `global.json` фиксирует версию |
+| Unity | 6000.3.28f1 LTS, `N:\Program Files\Unity Hub\Editor\6000.3.28f1` (лицензия активирована оператором) |
+| Репозиторий | `https://github.com/avvasiliev888/albion-prototype` (private), `main`, remote `origin` |
+| Git LFS | 3.7.1, `--local`; бинарники > 100 KB — в LFS (`.gitattributes`) |
 | Node.js | v24.14.1 |
 
 ## Open Questions
 
-1. **Branch protection на `main` невозможна на текущем плане GitHub.** `gh api ... /branches/main/protection` и `POST /rulesets` возвращают `403: Upgrade to GitHub Pro or make this repository public to enable this feature`. Варианты:
-   - (a) Оформить GitHub Pro (~$4/мес) — protection включается, репозиторий остаётся private;
-   - (b) сделать репозиторий public — protection бесплатна, но код открыт (для портфолио это, возможно, и нужно);
-   - (c) оставить как есть: правило «агент пушит только в `agent/*`, в `main` мержит только оператор» соблюдается дисциплиной агента + проверкой в PR; серверного запрета нет.
-   Вопрос блокирует только п.9 ответов оператора (branch protection), не блокирует M0/M1. Пока действует (c).
-2. **Требуемые статус-чеки CI** (require CI green) добавить в protection/ruleset после появления workflow в M1 — сейчас настраивать нечего (CI ещё нет, а required-check без воркфлоу заблокирует PR навсегда).
+(нет — branch protection решена вариантом «дисциплина»: агент пушит только в `agent/*`, мержит оператор)
 
 ## Resolved Questions
 
-1. **Какой .NET SDK и кто ставит?** → .NET 10 LTS (не 8: 8 и 9 теряют поддержку 10.11.2026, у 10 LTS — до ноября 2028). Установку делает агент через winget/официальный скрипт. (2026-11-08)
-2. **Какая Unity и кто ставит?** → Unity 6.3 LTS (6000.3.x), не «просто 6» и не 2022.3 (2022.3 без поддержки с мая 2025, у 6.3 — до декабря 2027). Ставит и активирует лицензию оператор; агент установку не трогает. (2026-11-08)
-3. **Как проверяется «Unity собирается» (Gate M1/M6)?** → локально оператором, на M6. GameCI с secrets оператора — только если/когда M6 дойдёт до реального билда. CI для Unity до этого не делаем. (2026-11-08)
+1. **Какой .NET SDK и кто ставит?** → .NET 10 LTS, устанавливает агент. (2026-11-08)
+2. **Какая Unity и кто ставит?** → Unity 6.3 LTS (6000.3.x), ставит и активирует оператор. (2026-11-08)
+3. **Как проверяется «Unity собирается»?** → локально оператором на M6; GameCI — только при реальном билде. (2026-11-08)
 4. **Где хостится репозиторий?** → `avvasiliev888/albion-prototype`, private. (2026-11-08)
-5. **Кто создаёт репозиторий?** → агент: `git init` + `gh repo create --push`; URL оператор не даёт. (2026-11-08)
-6. **Монорепо и Git LFS?** → монорепо подтверждено; LFS включается сразу, до первого коммита в `/unity-client`. Правило: любой бинарный файл > 100 KB — в LFS. `*.meta` трекаются, в `.gitignore` не добавлять. (2026-11-08)
-7. **Модель доступа?** → агент пушит только в `agent/*`, PR открывает агент, мержит только оператор. (2026-11-08)
-8. **CI-раннер и лимиты?** → `ubuntu-latest`, без жёстких лимитов минут, но полный прогон только на push в `agent/*` и PR в `main`. (2026-11-08)
-9. **Branch protection?** → настраивает агент через `gh api` (require PR, require CI green, no force push в `main`), после настройки показать оператору вывод. **Частично выполнено:** GitHub отказывает на бесплатном плане для private-репо (см. Open Questions п.1). (2026-11-08)
-10. **LiteNetLib?** → NuGet, версия 2.1.4, не вендорить. Других запрещённых пакетов нет; при сомнении — спрашивать. (2026-11-08)
-11. **Допущения Product Vision?** → 10–20 CCU для нагрузочного теста подтверждено; NPC-якорей рынка НЕТ в прототипе; цифры убывающей отдачи — позже, не в прототипе. (2026-11-08)
-12. **Противоречие vision/план (экономика)?** → снято: в M1–M12 экономики, крафта, инвентаря и торговли НЕТ, осознанно — прототип проверяет архитектуру, а не контент; экономика — на следующей вехе (vertical slice). (2026-11-08)
-13. **M1 и M2?** → строго последовательно; параллелить подготовку M2 нельзя, контракты M1 замораживаются до начала M2. (2026-11-08)
-14. **Namespace/имена проектов?** → `Simulation.Core`, `Shared`, `Server`, `Client.Network` — буквально как в плане, никаких `Albion.*`. (2026-11-08)
+5. **Кто создаёт репозиторий?** → агент. (2026-11-08)
+6. **Монорепо и Git LFS?** → монорепо, LFS сразу, бинарники > 100 KB, `*.meta` трекаются. (2026-11-08)
+7. **Модель доступа?** → агент пушит только в `agent/*`, PR открывает агент, мержит оператор. (2026-11-08)
+8. **CI-раннер и лимиты?** → `ubuntu-latest`, полный прогон только на push в `agent/*` и PR в `main`. (2026-11-08)
+9. **Branch protection?** → GitHub Free не даёт protection для private-репо; оператор выбрал вариант (c): репозиторий остаётся private, действует дисциплина. (2026-11-08)
+10. **LiteNetLib?** → NuGet 2.1.4, не вендорить. (2026-11-08)
+11. **Допущения Product Vision?** → 10–20 CCU; NPC-якорей рынка нет; цифры убывающей отдачи позже. (2026-11-08)
+12. **Экономика в прототипе?** → нет (M1–M12), только архитектура. (2026-11-08)
+13. **M1 → M2?** → строго последовательно, контракты M1 замораживаются. (2026-11-08)
+14. **Namespace?** → `Simulation.Core`, `Shared`, `Server`, `Client.Network`. (2026-11-08)
+
+## Решения, принятые в M1 (на ревью оператору)
+
+1. **Мультитаргет `netstandard2.1;net10.0`** для `Simulation.Core`, `Shared`, `Client.Network`; `LangVersion 9.0` и `ImplicitUsings=disable` — иначе Unity 6.3 (netstandard2.1, C# 9) не сможет сослаться на библиотеки.
+2. **`ISnapshotSerializer` живёт в `Simulation.Core`** (сериализует тело снапшота), а `Shared` содержит только обёртку сообщения (`Protocol.Magic/Version`, `MessageType`) — так `Simulation.Core` остаётся без зависимостей (ADR-001).
+3. **`IView`/`IInputSource`/`ITransport` живут в `Client.Network`**, который ссылается на `Simulation.Core` + `Shared`: интерфейсам нужны `SimulationSnapshot` и `ICommand`. Инвариант «`Simulation.Core` ни от чего не зависит» соблюдён.
+4. **Класс `Simulation` требует полного имени `Simulation.Core.Simulation`** извне — конфликт с корневым namespace `Simulation`. В тестах используется алиас `CoreSimulation`.
+5. **Тесты: xUnit, 9 штук** (smoke + контракты), проект `src/Tests` на `net10.0`.
+6. **`Simulation.CreateSnapshot/RestoreFromSnapshot` реализованы сразу** как простое копирование состояния (без игровой логики); M2 добавляет тесты детерминизма и сортировку команд, а не «плумбинг».
+7. **Unity-проект инициализируется из CLI** (`Assets/Editor/ProjectSetup.cs`, `-executeMethod`): сцена + build settings + сборка плеера. Это же — основа для проверки Gate «Unity собирается».
 
 ## Discovered Issues
 
-1. **CRLF-предупреждения git на Windows.** Файлы в индексе нормализованы (`core.autocrlf=false`), но `git` предупреждает о замене LF→CRLF при checkout. Косметика; при появлении `.cs` проверить, что файлы не «мигают» в diff. Приоритет: низкий.
+1. **VSTest не работает внутри workspace на `F:`** — testhost падает с `Win32Exception (5)` на `Process.set_EnableRaisingEvents` (попытка открыть handle родительского процесса). Тот же проект из `%TEMP%` (или с `F:` вне workspace) проходит. Обход: `tools/dev/test-local.ps1` (копирует исходники во временный каталог и гоняет тесты там). CI на `ubuntu-latest` проблемы не имеет. Приоритет: низкий для проекта, требует внимания оператора (возможно ограничение песочницы хоста).
+2. **CRLF-предупреждения git** при `git add` на Windows. Файлы в индексе нормализованы (`core.autocrlf=false`); косметика. Приоритет: низкий.
 
 ## Next Actions (для следующей сессии)
 
-1. Дождаться Human-Gate M0: оператор подтверждает ADR-001…ADR-007 (PR `agent/M0/adr-and-vision`).
-2. Решить Open Question п.1 (branch protection: Pro / public / дисциплина).
-3. После закрытия M0 — M1: структура репозитория, `.sln`, CI (ubuntu), пустые интерфейсы с XML-док, `SimulationState`, smoke-тест.
+1. Дождаться Human-Gate M1: подтверждение контрактов (после — заморозка), проверка красноты CI, открытие Unity-проекта.
+2. После подтверждения — M2: `MoveCommand`, `Tick` с движением, сортировка команд, snapshot-тесты, replay-тест.

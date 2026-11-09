@@ -1,0 +1,59 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+
+namespace Simulation.Core
+{
+    /// <summary>
+    /// Неизменяемая копия состояния одной сущности на тике снапшота.
+    /// </summary>
+    public readonly struct EntitySnapshot
+    {
+        /// <summary>Создаёт снимок сущности.</summary>
+        /// <param name="id">Идентификатор сущности.</param>
+        /// <param name="position">Позиция на момент снапшота.</param>
+        /// <param name="hp">Текущее здоровье.</param>
+        /// <param name="isDead">Признак смерти на момент снапшота.</param>
+        public EntitySnapshot(uint id, Vector3 position, int hp, bool isDead)
+        {
+            Id = id;
+            Position = position;
+            Hp = hp;
+            IsDead = isDead;
+        }
+
+        /// <summary>Идентификатор сущности.</summary>
+        public uint Id { get; }
+
+        /// <summary>Позиция сущности.</summary>
+        public Vector3 Position { get; }
+
+        /// <summary>Текущее здоровье.</summary>
+        public int Hp { get; }
+
+        /// <summary>Признак смерти.</summary>
+        public bool IsDead { get; }
+    }
+
+    /// <summary>
+    /// Полный снапшот мира на тике: используется для сети (ADR-004), replay-тестов и реконсиляции (ADR-006).
+    /// </summary>
+    public sealed class SimulationSnapshot
+    {
+        /// <summary>Создаёт снапшот мира.</summary>
+        /// <param name="tick">Тик, к которому относится состояние.</param>
+        /// <param name="entities">Снимки сущностей в детерминированном порядке.</param>
+        /// <exception cref="ArgumentNullException">Если <paramref name="entities"/> равен <c>null</c>.</exception>
+        public SimulationSnapshot(uint tick, IReadOnlyList<EntitySnapshot> entities)
+        {
+            Tick = tick;
+            Entities = entities ?? throw new ArgumentNullException(nameof(entities));
+        }
+
+        /// <summary>Тик, к которому относится снапшот.</summary>
+        public uint Tick { get; }
+
+        /// <summary>Снимки сущностей в детерминированном порядке.</summary>
+        public IReadOnlyList<EntitySnapshot> Entities { get; }
+    }
+}

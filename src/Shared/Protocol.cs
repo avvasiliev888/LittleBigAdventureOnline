@@ -1,0 +1,43 @@
+namespace Shared
+{
+    /// <summary>
+    /// Константы протокола (ADR-004): маркер пакета и версия совместимости.
+    /// </summary>
+    public static class Protocol
+    {
+        /// <summary>
+        /// Маркер начала пакета. Защищает от чтения «мусора» (чужой порт, не тот протокол).
+        /// </summary>
+        public const ushort Magic = 0xA1B0;
+
+        /// <summary>
+        /// Версия протокола. Поднимается при любом несовместимом изменении формата или семантики;
+        /// несовпадение при handshake — отказ в соединении.
+        /// </summary>
+        public const ushort Version = 1;
+    }
+
+    /// <summary>
+    /// Тип сообщения в заголовке пакета. Значения фиксируются в M1 и меняются только с версией протокола.
+    /// </summary>
+    public enum MessageType : byte
+    {
+        /// <summary>Клиент представляется серверу и передаёт версию протокола.</summary>
+        Hello = 1,
+
+        /// <summary>Сервер принимает соединение или отказывает с причиной.</summary>
+        HelloAck = 2,
+
+        /// <summary>Команда игрока (надёжная доставка).</summary>
+        Command = 3,
+
+        /// <summary>Полный снапшот мира (ненадёжная доставка).</summary>
+        Snapshot = 4,
+
+        /// <summary>Дельта относительно <c>baseTick</c> (M8).</summary>
+        Delta = 5,
+
+        /// <summary>Запрос полного снапшота, если база для дельты потеряна.</summary>
+        FullSnapshotRequest = 6,
+    }
+}

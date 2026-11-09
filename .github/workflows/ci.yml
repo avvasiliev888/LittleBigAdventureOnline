@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - 'agent/**'
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore Prototype.sln
+
+      - name: Build
+        run: dotnet build Prototype.sln --no-restore -c Release
+
+      - name: Architecture checks
+        run: bash tools/ci/check-architecture.sh
+
+      - name: Test
+        run: dotnet test src/Tests/Tests.csproj --no-build -c Release --logger "console;verbosity=normal"

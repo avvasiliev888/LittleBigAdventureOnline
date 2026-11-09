@@ -75,7 +75,9 @@ namespace Server
                 return 1;
             }
 
-            Console.WriteLine("config: " + configDirectory + " (акторов: " + config.Actors.Count + ", способностей: " + config.Abilities.Count + ")");
+            Console.WriteLine(
+                "config: " + configDirectory + " (акторов: " + config.Actors.Count + ", способностей: " + config.Abilities.Count + ")"
+                + ", hash: " + ConfigLoader.ComputeHash(configDirectory));
 
             if (udpPort.HasValue)
             {

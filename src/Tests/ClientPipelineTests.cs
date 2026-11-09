@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Client.Network;
 using Server;
+using Shared;
 using Simulation.Core;
 using Xunit;
 
@@ -197,6 +198,123 @@ namespace Tests
             Assert.InRange(lagTicks, 0u, 8u);
         }
         [Fact]
+        public void Pipeline_UsesConfigForPredictionAndAbilityCooldown()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            using var server = new GameServer(TestWorld.Config(cooldownSeconds: 2f), serverTransport, new ServerOptions());
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            var input = new SingleCommandInputSource();
+            var view = new RecordingView();
+            using var pipeline = new ClientPipeline(transport, input, view, content: content);
+            pipeline.Start();
+
+            for (var i = 0; i < 5; i++)
+            {
+                pipeline.Update(ClientPipeline.TickIntervalSeconds);
+                server.Poll();
+                server.Tick();
+            }
+
+            Assert.NotNull(pipeline.Prediction);
+            Assert.True(pipeline.HasSession);
+            Assert.Equal(40, pipeline.Prediction!.AbilityCooldownTicks);
+            Assert.Equal(3f, pipeline.Prediction.AbilityRange, 3);
+
+            // Space → AbilityCommand по себе (единственная цель): клиент сразу рисует кулдаун из конфига.
+            input.Command = new AbilityCommand(pipeline.EntityId, pipeline.ClientTick, 1);
+            pipeline.Update(ClientPipeline.TickIntervalSeconds);
+
+            Assert.True(pipeline.Prediction.CooldownRemainingTicks > 0,
+                "предсказанный кулдаун не появился после команды способности");
+
+            server.Poll();
+            server.Tick();
+            for (var i = 0; i < 10; i++)
+            {
+                pipeline.Update(ClientPipeline.TickIntervalSeconds);
+                server.Poll();
+                server.Tick();
+            }
+
+            Assert.NotNull(pipeline.LastSnapshot);
+            var own = Array.Find(pipeline.LastSnapshot!.Entities.ToArray(), entity => entity.Id == pipeline.EntityId);
+            Assert.True(own.Hp < own.MaxHp, "сервер не применил способность: hp=" + own.Hp + "/" + own.MaxHp);
+            Assert.True(pipeline.Prediction.CooldownRemainingTicks > 0);
+        }
+
+        [Fact]
+        public void Pipeline_IgnoresAbilityWhileCooldownActive_AndFiresAfterIt()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            using var server = new GameServer(TestWorld.Config(cooldownSeconds: 2f), serverTransport, new ServerOptions());
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            var input = new SpamAbilityInputSource();
+            using var pipeline = new ClientPipeline(transport, input, new RecordingView(), content: content);
+            pipeline.Start();
+
+            Step(pipeline, server, 5);
+            input.TargetId = pipeline.EntityId;
+
+            // Первая способность: команда уходит, кулдаун из конфига (2 с = 40 тиков) ставится сразу.
+            Step(pipeline, server, 1);
+            Assert.Single(transport.SentAbilities);
+            Assert.Equal(40, pipeline.Prediction!.CooldownRemainingTicks);
+
+            Step(pipeline, server, 3);
+            var hpAfterFirst = OwnHp(pipeline);
+            Assert.Equal(75, hpAfterFirst);
+
+            // Пока кулдаун идёт, спам Space игнорируется локально: ни команды, ни урона.
+            var sentAfterFirst = transport.SentAbilities.Count;
+            Step(pipeline, server, 10);
+            Assert.Equal(sentAfterFirst, transport.SentAbilities.Count);
+            Assert.Equal(hpAfterFirst, OwnHp(pipeline));
+            Assert.True(pipeline.Prediction.CooldownRemainingTicks > 0);
+
+            // Кулдаун истёк — способность снова срабатывает (сервер применяет урон).
+            Step(pipeline, server, 45);
+            Assert.True(transport.SentAbilities.Count > sentAfterFirst);
+            Assert.True(OwnHp(pipeline) < hpAfterFirst, "способность не сработала после кулдауна");
+        }
+
+        private static void Step(ClientPipeline pipeline, GameServer server, int ticks)
+        {
+            for (var i = 0; i < ticks; i++)
+            {
+                pipeline.Update(ClientPipeline.TickIntervalSeconds);
+                server.Poll();
+                server.Tick();
+            }
+        }
+
+        private static int OwnHp(ClientPipeline pipeline)
+        {
+            var snapshot = pipeline.LastSnapshot;
+            if (snapshot == null)
+            {
+                return -1;
+            }
+
+            foreach (var entity in snapshot.Entities)
+            {
+                if (entity.Id == pipeline.EntityId)
+                {
+                    return entity.Hp;
+                }
+            }
+
+            return -1;
+        }
+
+        [Fact]
         public void Pipeline_StableNetwork_DoesNotReconcile()
         {
             var tick = 0u;
@@ -312,8 +430,18 @@ namespace Tests
                 }
             }
 
+            public List<AbilityCommand> SentAbilities { get; } = new List<AbilityCommand>();
+
             public void Send(byte[] packet, DeliveryMode mode)
             {
+                if (MessageFraming.TryUnwrap(packet, out var frame) == FramingError.None
+                    && frame.Type == MessageType.Command
+                    && CommandCodec.TryDecode(frame.Payload, out var command)
+                    && command is AbilityCommand ability)
+                {
+                    SentAbilities.Add(ability);
+                }
+
                 _server.SendFromClient(_connectionId, packet);
             }
 
@@ -370,6 +498,37 @@ namespace Tests
             {
                 IsConnected = false;
                 Disconnected?.Invoke(reason);
+            }
+        }
+
+        private sealed class SpamAbilityInputSource : IInputSource
+        {
+            private uint _sequence;
+
+            public uint TargetId { get; set; }
+
+            public bool TryReadCommand(uint clientTick, out ICommand? command)
+            {
+                if (TargetId == 0)
+                {
+                    command = null;
+                    return false;
+                }
+
+                command = new AbilityCommand(TargetId, clientTick, ++_sequence);
+                return true;
+            }
+        }
+
+        private sealed class SingleCommandInputSource : IInputSource
+        {
+            public ICommand? Command { get; set; }
+
+            public bool TryReadCommand(uint clientTick, out ICommand? command)
+            {
+                command = Command;
+                Command = null;
+                return command != null;
             }
         }
 

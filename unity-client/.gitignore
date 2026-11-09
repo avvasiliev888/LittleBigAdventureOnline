@@ -38,3 +38,7 @@ crashlytics-build.properties
 # Плагины для Unity: собираются заново через tools/unity/build-plugins.ps1, не коммитятся.
 /Assets/Plugins/
 /Assets/Plugins.meta
+
+# M9: конфиги копируются в StreamingAssets тем же скриптом (не дублируем JSON в репозитории).
+/Assets/StreamingAssets/Config/
+/Assets/StreamingAssets/Config.meta

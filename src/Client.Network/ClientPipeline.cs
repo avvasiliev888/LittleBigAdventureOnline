@@ -24,6 +24,7 @@ namespace Client.Network
 
         private readonly ITransport _transport;
         private readonly ISnapshotSerializer _serializer;
+        private readonly ClientContent? _content;
         private readonly IInputSource _input;
         private readonly IView _view;
         private readonly BinarySnapshotSerializer _fallbackSerializer = new BinarySnapshotSerializer();
@@ -43,13 +44,20 @@ namespace Client.Network
         /// <param name="input">Источник ввода.</param>
         /// <param name="view">Представление мира.</param>
         /// <param name="serializer">Десериализатор снапшотов; по умолчанию — бинарный формат ADR-008.</param>
+        /// <param name="content">Контент из JSON-конфига (M9); без него предсказание берёт скорость из HelloAck.</param>
         /// <exception cref="ArgumentNullException">Если обязательный аргумент равен <c>null</c>.</exception>
-        public ClientPipeline(ITransport transport, IInputSource input, IView view, ISnapshotSerializer? serializer = null)
+        public ClientPipeline(
+            ITransport transport,
+            IInputSource input,
+            IView view,
+            ISnapshotSerializer? serializer = null,
+            ClientContent? content = null)
         {
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
             _input = input ?? throw new ArgumentNullException(nameof(input));
             _view = view ?? throw new ArgumentNullException(nameof(view));
             _serializer = serializer ?? _fallbackSerializer;
+            _content = content;
 
             _transport.PacketReceived += OnPacketReceived;
             _transport.Disconnected += OnTransportDisconnected;
@@ -61,6 +69,9 @@ namespace Client.Network
         /// <summary>Есть ли сессия (получен HelloAck).</summary>
         public bool HasSession { get; private set; }
 
+        /// <summary>Текущий клиентский тик (растёт на 20 Гц) — для UI кулдауна (M9).</summary>
+        public uint ClientTick => _clientTick;
+
         /// <summary>Сколько снапшотов применено к представлению.</summary>
         public int SnapshotsApplied { get; private set; }
 
@@ -70,6 +81,9 @@ namespace Client.Network
         /// <summary>Записи клиентского лога (реконсиляции, ошибки протокола) — для HUD и тестов.</summary>
         public IReadOnlyList<string> LogEntries => _log;
 
+        /// <summary>Последний применённый снапшот (полный или восстановленный из дельты) — для UI и целей (M9).</summary>
+        public SimulationSnapshot? LastSnapshot => _lastSnapshot;
+
         /// <summary>Сколько дельта-снапшотов применено (M8).</summary>
         public int DeltasApplied { get; private set; }
 
@@ -78,6 +92,9 @@ namespace Client.Network
 
         /// <summary>Сессия готова: пришёл HelloAck с идентификатором сущности.</summary>
         public event Action<uint>? SessionReady;
+
+        /// <summary>Контент из JSON-конфига (M9), если передан в конструктор.</summary>
+        public ClientContent? Content => _content;
 
         /// <summary>Соединение потеряно или отклонено (причина для лога).</summary>
         public event Action<string>? Disconnected;
@@ -122,9 +139,19 @@ namespace Client.Network
             {
                 _tickAccumulator -= TickIntervalSeconds;
                 _clientTick++;
+                Prediction?.AdvanceCooldown();
 
                 ICommand? command = null;
                 var hasCommand = HasSession && _input.TryReadCommand(_clientTick, out command) && command != null;
+
+                // M9: локальный кулдаун проверяется ДО отправки. Пока кулдаун идёт, нажатие
+                // игнорируется: сервер не спамится, предсказание урона не накручивается.
+                if (hasCommand && command is AbilityCommand ability && Prediction != null && !Prediction.TryStartAbility(ability.Sequence))
+                {
+                    hasCommand = false;
+                    command = null;
+                }
+
                 if (hasCommand)
                 {
                     _transport.Send(MessageFraming.Wrap(MessageType.Command, CommandCodec.Encode(command!)), DeliveryMode.ReliableOrdered);
@@ -206,14 +233,35 @@ namespace Client.Network
                 Prediction.Reconciled -= OnReconciled;
             }
 
-            Prediction = new ClientPrediction(EntityId, moveSpeed);
+            // M9: скорость/способность берутся из того же JSON-конфига, что у сервера.
+            // Если конфиг клиента расходится с серверным, предсказание всё равно опирается на
+            // файл (data-driven), а расхождение видно в логе и HUD.
+            var actorId = payload.Length >= 12 ? ReadUInt32(payload, 8) : 0u;
+            if (_content != null && _content.Config.Actors.ContainsKey(actorId))
+            {
+                var actor = _content.GetActor(actorId);
+                Prediction = new ClientPrediction(EntityId, actor, _content.GetAbility(actor.AbilityId));
+                if (Math.Abs(actor.MoveSpeed - moveSpeed) > 0.001f)
+                {
+                    _log.Add("[config] клиент и сервер расходятся: moveSpeed клиента "
+                        + actor.MoveSpeed.ToString("0.###") + ", сервера " + moveSpeed.ToString("0.###"));
+                }
+            }
+            else
+            {
+                Prediction = new ClientPrediction(EntityId, moveSpeed);
+            }
+
             Prediction.Reconciled += OnReconciled;
 
             HasSession = true;
             _acknowledgedByTick.Clear();
-            _log.Add("[hello] сущность " + EntityId + ", скорость " + moveSpeed.ToString("0.###"));
+            _log.Add("[hello] сущность " + EntityId + ", актор " + actorId + ", скорость " + moveSpeed.ToString("0.###")
+                + (_content == null ? string.Empty : ", config " + ShortHash(_content.Hash)));
             SessionReady?.Invoke(EntityId);
         }
+
+        private static string ShortHash(string hash) => hash.Length <= 8 ? hash : hash.Substring(0, 8);
 
         private void HandleServerAck(byte[] payload)
         {
@@ -338,6 +386,41 @@ namespace Client.Network
             // Пара «снапшот + подтверждение на одном тике» — единственный консистентный вход
             // для реконсиляции: снапшот мог прийти с задержкой, а ack уже уйти вперёд (M7).
             Reconcile(snapshot, acknowledgedSequence);
+        }
+
+        /// <summary>
+        /// Ближайшая к предсказанной позиции сущность (кроме указанной) — цель для способности (M9).
+        /// Возвращает 0, если снапшота ещё нет или других сущностей нет.
+        /// </summary>
+        /// <param name="excludeEntityId">Идентификатор, который надо исключить (обычно свой).</param>
+        /// <returns>Идентификатор цели или 0.</returns>
+        public uint FindNearestEntity(uint excludeEntityId)
+        {
+            if (_lastSnapshot == null)
+            {
+                return 0;
+            }
+
+            var origin = Prediction?.Position ?? Vector3.Zero;
+            var bestId = 0u;
+            var bestDistance = float.MaxValue;
+
+            foreach (var entity in _lastSnapshot.Entities)
+            {
+                if (entity.Id == excludeEntityId || entity.IsDead)
+                {
+                    continue;
+                }
+
+                var distance = Vector3.Distance(origin, entity.Position);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestId = entity.Id;
+                }
+            }
+
+            return bestId;
         }
 
         private void RequestFullSnapshot(bool force = false)

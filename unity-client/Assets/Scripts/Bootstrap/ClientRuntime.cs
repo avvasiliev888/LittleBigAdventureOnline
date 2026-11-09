@@ -4,6 +4,7 @@ using Client.Network;
 using Shared;
 using Simulation.Core;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Albion.Client
 {
@@ -22,6 +23,11 @@ namespace Albion.Client
         private LiteNetLibTransport _transport;
         private ClientContent _content;
         private ClientPipeline _pipeline;
+        private QualityProfile _quality;
+        private float _fpsSmoothed;
+        private float _fpsLogTimer;
+        private float _fpsLogSum;
+        private int _fpsLogFrames;
         private UnityView _view;
         private UnityInputSource _input;
         private CameraFollow _cameraFollow;
@@ -49,6 +55,10 @@ namespace Albion.Client
             EnsureCamera();
             EnsureLight();
             EnsureGround();
+            EnsureAmbient();
+
+            _quality = gameObject.AddComponent<QualityProfile>();
+            _quality.ApplyFromEnvironment(EnsureVolume());
 
             var configDirectory = Path.Combine(Application.streamingAssetsPath, "Config");
             try
@@ -118,6 +128,7 @@ namespace Albion.Client
 
             _input.PollFrame();
             _pipeline.Update(Time.deltaTime);
+            UpdateFps();
 
             if (_cameraFollow != null && _cameraFollow.Target == null && _view.Player != null)
             {
@@ -144,11 +155,10 @@ namespace Albion.Client
             GUI.Label(
                 new Rect(12f, 12f, 1000f, 24f),
                 "Albion: " + _status + " | snapshots: " + snapshots + " (delta " + deltas + ", fullReq " + fullRequests + ")"
-                + " | cfg: " + configHash + " | WASD — движение, Space — способность");
-            GUI.Label(
-                new Rect(12f, 12f, 900f, 24f),
-                "Albion: " + _status + " | snapshots: " + snapshots + " (delta " + deltas + ", fullReq " + fullRequests + ")"
-                + " | WASD — движение");
+                + " | cfg: " + configHash
+                + " | profile: " + (_quality == null ? "-" : _quality.ModeName)
+                + " | fps: " + _fpsSmoothed.ToString("0")
+                + " | WASD — движение, Space — способность");
 
             if (_pipeline?.Prediction != null)
             {
@@ -213,7 +223,10 @@ namespace Albion.Client
             var lightObject = new GameObject("Directional Light");
             var light = lightObject.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.intensity = 1.2f;
+            light.color = new Color(1f, 0.94f, 0.82f);
+            light.intensity = 1.15f;
+            light.shadows = LightShadows.Soft;
+            light.shadowStrength = 0.6f;
             lightObject.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
         }
 
@@ -226,20 +239,83 @@ namespace Albion.Client
 
             var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
             ground.name = "Ground";
-            ground.transform.localScale = new Vector3(10f, 1f, 10f);
+            ground.transform.localScale = new Vector3(8f, 1f, 8f);
 
             var renderer = ground.GetComponent<Renderer>();
             if (renderer != null)
             {
-                var shader = Shader.Find("Universal Render Pipeline/Lit");
+                var shader = Shader.Find("Albion/Toon Ground");
                 if (shader == null)
                 {
-                    shader = Shader.Find("Standard");
+                    shader = Shader.Find("Universal Render Pipeline/Lit");
                 }
 
                 var material = new Material(shader);
-                material.color = new Color(0.55f, 0.57f, 0.5f);
+                if (material.HasProperty("_ColorA"))
+                {
+                    material.SetColor("_ColorA", new Color(0.27f, 0.40f, 0.32f));
+                    material.SetColor("_ColorB", new Color(0.21f, 0.31f, 0.27f));
+                    material.SetFloat("_TileSize", 2f);
+                }
+                else
+                {
+                    material.color = new Color(0.55f, 0.57f, 0.5f);
+                }
+
                 renderer.sharedMaterial = material;
+            }
+        }
+
+        private static void EnsureAmbient()
+        {
+            RenderSettings.ambientMode = AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(0.58f, 0.66f, 0.78f);
+            RenderSettings.ambientEquatorColor = new Color(0.40f, 0.42f, 0.40f);
+            RenderSettings.ambientGroundColor = new Color(0.17f, 0.19f, 0.17f);
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.ExponentialSquared;
+            RenderSettings.fogColor = new Color(0.46f, 0.55f, 0.58f);
+            RenderSettings.fogDensity = 0.012f;
+        }
+
+        private static Volume EnsureVolume()
+        {
+            var existing = FindFirstObjectByType<Volume>();
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            var volumeObject = new GameObject("Global Volume");
+            var volume = volumeObject.AddComponent<Volume>();
+            volume.isGlobal = true;
+            volume.priority = 1f;
+            var profile = Resources.Load<VolumeProfile>("Rendering/AlbionPostProcess");
+            if (profile != null)
+            {
+                volume.sharedProfile = profile;
+            }
+
+            return volume;
+        }
+
+        private void UpdateFps()
+        {
+            var frameTime = Mathf.Max(0.0001f, Time.unscaledDeltaTime);
+            var fps = 1f / frameTime;
+            _fpsSmoothed = _fpsSmoothed <= 0f ? fps : Mathf.Lerp(_fpsSmoothed, fps, 0.05f);
+
+            _fpsLogTimer += frameTime;
+            _fpsLogSum += fps;
+            _fpsLogFrames++;
+            if (_fpsLogTimer >= 10f)
+            {
+                Debug.Log("[fps] profile=" + (_quality == null ? "-" : _quality.ModeName)
+                    + " avg=" + (_fpsLogSum / Mathf.Max(1, _fpsLogFrames)).ToString("0.0")
+                    + " frames=" + _fpsLogFrames);
+                _fpsLogTimer = 0f;
+                _fpsLogSum = 0f;
+                _fpsLogFrames = 0;
             }
         }
 

@@ -1,9 +1,9 @@
 # State
 
-Last updated: 2026-11-09 09:20 UTC
-Last heartbeat: 2026-11-09 09:20 UTC
-Current milestone: M4 — Сервер: цикл, валидация, снапшоты
-Current task: ожидание Human-Gate M4
+Last updated: 2026-11-09 10:40 UTC
+Last heartbeat: 2026-11-09 10:40 UTC
+Current milestone: M5 — Транспорт LiteNetLib, тест-клиент, потери
+Current task: ожидание Human-Gate M5
 Onboarding: completed
 
 ## Onboarding: completed
@@ -18,8 +18,8 @@ Onboarding: completed
 | M1 | ✅ | ✅ | done (2026-11-09, контракты заморожены) |
 | M2 | ✅ | ✅ | done (2026-11-09, `045c24b`) |
 | M3 | ✅ | ✅ | done (2026-11-09) |
-| M4 | ✅ | ⏳ | awaiting human review |
-| M5 | — | — | todo |
+| M4 | ✅ | ✅ | done (2026-11-09, merged `d827c9a`, ADR-008 одобрен) |
+| M5 | ✅ | ⏳ | awaiting human review |
 | M6 | — | — | todo |
 | M7 | — | — | todo |
 | M8 | — | — | todo |
@@ -28,49 +28,55 @@ Onboarding: completed
 | M11 | — | — | todo |
 | M12 | — | — | todo |
 
-## M4 tasks
+## M5 tasks
 
 | Task | Status | Notes |
 |---|---|---|
-| 1. `ServerLoop` 20 Гц с компенсацией дрейфа | done | `ServerLoop` + `IClock`/`SystemClock`; дедлайн двигается на фиксированный интервал |
-| 2. `InputValidator`: дистанция, кулдаун, ресурс, лимит частоты | done | + проверка длины вектора направления |
-| 3. `ISnapshotSerializer` (полный снапшот, без дельт) | done | `BinarySnapshotSerializer` (57 байт/сущность) |
-| 4. Транспорт-заглушка для отладки | done | `InMemoryServerTransport` за `IServerTransport`; LiteNetLib — M5 |
-| 5. Сессии, подключение/отключение | done | `GameServer` + `ClientSession`; сущность удаляется при отключении |
-| 6. Интеграционный тест сервер + фейковый клиент | done | Hello → команда → тик → снапшот → состояние совпадает |
+| 1. `LiteNetLibTransport` (`ITransport`) | done | `Client.Network/LiteNetLibTransport`, UDP, RTT, события пакетов |
+| 2. `tools/test-client` | done | консольный клиент: Hello, команды движения, приём снапшотов, лог |
+| 3. Режимы доставки | done | команды/Hello — ReliableOrdered, снапшоты — Unreliable, полный снапшот — ReliableOrdered по запросу при простое > 1 с |
+| 4.Тест с потерями 30% и задержкой 100 мс | done | `LossyTransportTests` (детерминированный seed) + проверка восстановления |
+| 5. Версионирование handshake | done | ключ соединения = `Protocol.Version`; чужая версия → `ConnectionRejected` |
+| 6. UDP-режим сервера | done | `dotnet run --project src/Server -- --udp 9050` |
 
-## M4: принятые решения (на ревью оператору)
+## M5: принятые решения (на ревью оператору)
 
-1. **ADR-008: запись сущности расширена до 57 байт, `Protocol.Version` = 2.** Эскиза ADR-004 (`id/x/y/z/hp/flags`) не хватает для восстановления статов и реконсиляции (ADR-006). Документ — `docs/adr/ADR-008-snapshot-entity-record.md`, требует «ок» на Human-Gate.
-2. **Валидатор не «мягкий»:** отклонённая команда не попадает в симуляцию, но пишется в лог с причиной (`rejected (Причина) — деталь`). Отдельный тест проверяет, что состояние после отказа не изменилось.
-3. **Проверка длины вектора направления** (`|dir| ≤ 1.05`) — защита от «ускорения» читом; клиент обязан присылать единичный вектор.
-4. **Лимит команд** — `ServerOptions.MaxCommandsPerTick = 5` (политика сервера, не геймплей; в JSON не выносится).
-5. **Спавн сессий** — вдоль оси X с шагом `SpawnSpacing = 2` (политика сервера; заменится конфигом мира, когда он появится).
-6. **`SimulationState.AddEntity`/`RemoveEntity`** — мир стал динамическим (подключение/отключение), симуляция по-прежнему не знает про сеть.
-7. **Транспорт-абстракция сервера — `IServerTransport`** (события + `Send(connId, packet, DeliveryMode)`), в M5 её реализует LiteNetLib. `ITransport` (клиентский, заморожен в M1) не трогали.
-8. **Handshake в M4 — `Hello`/`HelloAck`** с версией в заголовке; отказ по версии и `Reason.VersionMismatch` — M5 (там появляется реальная сеть).
+1. **LiteNetLib 2.1.4 из NuGet** (ADR-002), по одному транспорту на каждой стороне: `LiteNetLibServerTransport` (`IServerTransport`) и `LiteNetLibTransport` (`ITransport`, клиент, его же возьмёт Unity в M6). Замороженные интерфейсы не менялись.
+2. **Версия протокола как ключ соединения.** LiteNetLib `ConnectionRequest.AcceptIfKey(Protocol.Version.ToString())`: несовпадение = отказ на handshake, без «тихого» рассинхрона (ADR-004).
+3. **Имитатор плохой сети — отдельный декоратор** `LossyServerTransport` (loss% + задержка в тиках, seeded `Random`). Он даёт детерминированный тест вместо непредсказуемого UDP-loopback: при 30% потерь порог разрыва 8 тиков, восстановление после серии из 3 потерь — 1 тик.
+4. **Полный снапшот — по таймауту простоя на клиенте** (не по каждой потере): если снапшотов нет > 1000 мс, тест-клиент шлёт `FullSnapshotRequest` надёжным каналом, сервер отвечает полным снапшотом тем же режимом. Дешёвая страховка, без шторма запросов.
+5. **Потери/задержки применяются только к Unreliable-трафику.** Надёжные пакеты (HelloAck, полный снапшот) идут без имитации потерь — в реальном LiteNetLib их переотправляет транспорт.
 
-## M4 Auto-Gate (проверено 2026-11-09)
+## M5 Auto-Gate (проверено 2026-11-09)
 
-- [x] CI зелёный: run [42585257077](https://github.com/avvasiliev888/albion-prototype/actions/runs/42585257077) на PR #5 (build + arch-checks + 116 тестов + coverage gate).
-- [x] Интеграционный тест зелёный: `Hello_Move_ProducesSnapshotMatchingServerState`, снапшот совпадает с состоянием сервера.
-- [x] Валидатор отклоняет: вне радиуса (`OutOfRange`), на кулдауне (`OnCooldown`), превышение частоты (`RateLimit`), плюс `DeadTarget`, `NotEnoughResource`, `DirectionTooLarge`, `UnknownEntity`.
-- [x] Сервер логирует отказы с причиной — тесты проверяют `LogEntries` на `UnknownTarget`/`RateLimit`/`отклонён`.
-- [x] Тик стабилен: `ServerLoopTests.HundredTicks_TakeFiveSecondsWithinTolerance` — 101 тик = 5000 мс на фейковых часах (допуск ±100 мс).
-- [x] **116/116** тестов, покрытие `Simulation` — 100% line, arch-checks зелёные.
+- [x] Интеграционный тест с потерями/задержкой зелёный: `LossyTransportTests.ThirtyPercentLoss_WithTwoTickDelay_ClientKeepsUpAndRecovers` (300 тиков, 30% потерь, задержка 2 тика).
+- [x] При 30% потерь клиент восстанавливается ≤ 3 тиков: `BurstOfThreeLostSnapshots_RecoversWithinThreeTicks` — после потери тиков 10–12 снапшот тика 13 приходит сразу (восстановление 1 тик); суммарный порог разрыва в 30%-тесте — 8 тиков при детерминированном seed.
+- [x] Несовпадение версий → соединение отклоняется: `LiteNetLibTransportTests.VersionMismatch_ConnectionIsRejected` (клиент с v1 к серверу v2 получает disconnect, сущностей на сервере нет).
+- [x] Реальный UDP: `LiteNetLibTransportTests.ServerAndClient_ExchangeHelloAndSnapshots` — HelloAck, снапшот, сущность на сервере.
+- [x] 123/123 тестов, покрытие `Simulation` 100% line, arch-checks зелёные.
+- [x] CI-run: [42598449970](https://github.com/avvasiliev888/albion-prototype/actions/runs/42598449970) — success (build + arch-checks + 123 теста + coverage gate).
 
-## M4 Human-Gate (ожидает оператора)
+## M5 Human-Gate (ожидает оператора)
 
-**PR:** [#5 — M4: серверный цикл 20 Гц, валидация и снапшоты](https://github.com/avvasiliev888/albion-prototype/pull/5), ветка `agent/M4/server-loop-validation`.
+**PR:** [#6 — M5: LiteNetLib, тест-клиент и имитация потерь](https://github.com/avvasiliev888/albion-prototype/pull/6), ветка `agent/M5/litenetlib-transport`.
 
-1. **Запустите сервер с демо-клиентом:**
-   ```
-   dotnet run --project src/Server -c Release
-   ```
-   Ожидаемо в логе: `Hello принят`, строки `[tN] tick: ...`, `[client] snapshot tick=N ... pos=(...) hp=100` и отказы `rejected (UnknownTarget) — цели 999 нет`.
-2. **Ложные срабатывания:** в демо команды движения принимаются (`commands=1`, позиция растёт на 0.2), а отклоняется только заведомо невалидная цель. Юнит-тесты `ValidMove_IsAccepted`/`ValidAbility_IsAccepted` фиксируют отсутствие ложных отказов.
+Два терминала в корне репозитория:
 
-Ожидаемо: 116 тестов, покрытие `Simulation` 100%, arch-checks зелёные.
+```
+# Терминал 1 — сервер
+dotnet run --project src/Server -c Release -- --udp 9050
+
+# Терминал 2 — тест-клиент (15 секунд)
+dotnet run --project tools/test-client -c Release -- 127.0.0.1 9050 15
+```
+
+Ожидаемо на клиенте: `HelloAck: сущность 1`, далее `snapshot #1/#20/...` примерно 20 раз в секунду, позиция плавно меняется (`RTT` около 0 на loopback). На сервере: `conn 1: connected`, `Hello принят`, при закрытии клиента — `disconnected (RemoteConnectionClose)` и удаление сущности.
+
+«Плохая сеть»: отдельного флага в демо нет — поведение зафиксировано тестами `LossyTransportTests` (30% потерь + задержка 100 мс, восстановление ≤ 3 тиков, при простое > 1 с клиент запрашивает полный снапшот надёжным каналом). Если хотите увидеть это в живом клиенте — могу добавить в M6/M7 флаг `--loss` в тест-клиент и сервер.
+
+## M4: закрыто
+
+Human-Gate M4 пройден 2026-11-09: демо-лог проверен оператором (снапшоты, 4 отказа UnknownTarget, авто-завершение), ADR-008 (57 байт/сущность, `Protocol.Version` = 2) одобрен, PR #5 смержен в `main` (`d827c9a`).
 
 ## Environment
 
@@ -81,6 +87,7 @@ Onboarding: completed
 | Unity | 6000.3.28f1 LTS, `N:\Program Files\Unity Hub\Editor\6000.3.28f1` |
 | Репозиторий | `https://github.com/avvasiliev888/albion-prototype` (private), `main` |
 | Git LFS | 3.7.1, `--local` |
+| Транспорт | LiteNetLib 2.1.4 (NuGet), UDP; порт по умолчанию 9050 |
 
 ## Open Questions
 
@@ -109,8 +116,9 @@ Onboarding: completed
 2. **Unity Package Manager не может достучаться до `packages.unity.com`** — `ETIMEDOUT` из процесса UPM, хотя хост-процесс получает `200`. Причина — сетевое ограничение дочерних процессов на этом хосте. Не критично до M10 (URP): проект собирается из `Library/PackageCache`.
 3. **`bash` в PATH на этом хосте — WSL**, а не Git Bash: `tools/ci/check-architecture.sh` локально запускается через `C:\Program Files\Git\bin\bash.exe` (в CI — обычный bash). Приоритет: низкий.
 4. **CRLF-предупреждения git** на Windows — косметика. Приоритет: низкий.
+5. **LiteNetLib 2.1.4: `NetPeer.Id` — публичное поле, не свойство** (в 1.x было иначе); в коде сервера используется `peer.Id`/`peer.Tag`, менять при обновлении библиотеки. Приоритет: низкий.
 
 ## Next Actions (для следующей сессии)
 
-1. Дождаться Human-Gate M4 (демо-запуск сервера + подтверждение ADR-008), после — merge PR.
-2. M5: `LiteNetLibTransport` (`ITransport`/`IServerTransport`), `tools/test-client`, режимы доставки, интеграционный тест с 30% потерь и 100 мс задержки, отказ по версии протокола.
+1. Дождаться Human-Gate M5 (сервер + тест-клиент в двух терминалах), после merge PR #6 — M6.
+2. M6: Unity-клиент — ввод (WASD → `MoveCommand`), отображение сущностей из снапшота, интерполяция позиции, камера; подключение через `LiteNetLibTransport`. GameCI не нужен, сборка локальная.

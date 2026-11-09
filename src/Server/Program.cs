@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using Shared;
@@ -9,17 +10,41 @@ namespace Server
 {
     /// <summary>
     /// Точка входа серверного процесса. M4: консольный сервер с фиксированным тиком, валидацией команд
-    /// и рассылкой полных снапшотов. В демо-режиме клиент живёт в том же процессе (in-memory транспорт),
+    /// и рассылкой полных снапшотов. M5: UDP-режим через LiteNetLib (`--udp [порт]`).
+    /// В демо-режиме клиент живёт в том же процессе (in-memory транспорт),
     /// поэтому видно полный путь «команда → валидация → тик → снапшот».
     /// </summary>
     public static class Program
     {
-        /// <summary>Запускает сервер с демо-клиентом.</summary>
-        /// <param name="args">Путь к каталогу конфигов (необязательно).</param>
+        /// <summary>Запускает сервер: демо с in-process клиентом или UDP-сервер.</summary>
+        /// <param name="args">`--udp [порт]` для реального UDP; иначе путь к каталогу конфигов (необязательно).</param>
         /// <returns>Код возврата процесса.</returns>
         public static int Main(string[] args)
         {
-            var configDirectory = ResolveConfigDirectory(args);
+            var positional = new List<string>();
+            int? udpPort = null;
+
+            for (var i = 0; i < args.Length; i++)
+            {
+                if (args[i] == "--udp")
+                {
+                    if (i + 1 < args.Length && int.TryParse(args[i + 1], out var port))
+                    {
+                        udpPort = port;
+                        i++;
+                    }
+                    else
+                    {
+                        udpPort = 9050;
+                    }
+
+                    continue;
+                }
+
+                positional.Add(args[i]);
+            }
+
+            var configDirectory = ResolveConfigDirectory(positional.ToArray());
             SimulationConfig config;
 
             try
@@ -33,6 +58,11 @@ namespace Server
             }
 
             Console.WriteLine("config: " + configDirectory + " (акторов: " + config.Actors.Count + ", способностей: " + config.Abilities.Count + ")");
+
+            if (udpPort.HasValue)
+            {
+                return RunUdpServer(config, udpPort.Value);
+            }
 
             using var transport = new InMemoryServerTransport();
             using var server = new GameServer(config, transport, new ServerOptions { LogTicks = true }, Console.WriteLine);
@@ -82,6 +112,32 @@ namespace Server
             Console.WriteLine("demo завершено: тиков=" + loop.TicksExecuted + ", лог-записей=" + server.LogEntries.Count
                 + ", отклонённых=" + CountRejected(server));
 
+            return 0;
+        }
+
+        private static int RunUdpServer(SimulationConfig config, int port)
+        {
+            using var transport = new LiteNetLibServerTransport(port);
+            using var server = new GameServer(config, transport, new ServerOptions(), Console.WriteLine);
+            var loop = new ServerLoop(server, new SystemClock(), 20);
+
+            server.Start();
+            Console.WriteLine("UDP-сервер слушает порт " + transport.LocalPort + " (protocol v" + Protocol.Version
+                + ", тик " + loop.TickRate + " Гц). Ctrl+C — остановка.");
+
+            var running = true;
+            Console.CancelKeyPress += (_, eventArgs) =>
+            {
+                eventArgs.Cancel = true;
+                running = false;
+            };
+
+            while (running)
+            {
+                loop.RunOnce();
+            }
+
+            Console.WriteLine("остановлено: тиков=" + loop.TicksExecuted + ", лог-записей=" + server.LogEntries.Count);
             return 0;
         }
 

@@ -124,6 +124,24 @@ namespace Tests
         }
 
         [Fact]
+        public void FullSnapshotRequest_ReturnsSnapshotWithoutWaitingForTick()
+        {
+            using var harness = new Harness();
+            var clientId = harness.Connect();
+
+            harness.Send(clientId, MessageType.Hello, Array.Empty<byte>());
+            harness.Server.Poll();
+            harness.Receive(clientId, MessageType.HelloAck);
+
+            harness.Send(clientId, MessageType.FullSnapshotRequest, Array.Empty<byte>());
+            harness.Server.Poll();
+
+            var snapshot = harness.ReceiveSnapshot(clientId);
+            Assert.Equal(harness.Server.Simulation.State.Tick, snapshot.Tick);
+            Assert.Equal(harness.Server.Simulation.State.Entities.Count, snapshot.Entities.Count);
+        }
+
+        [Fact]
         public void SecondHello_IsIgnored()
         {
             using var harness = new Harness();

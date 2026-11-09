@@ -4,7 +4,7 @@ using System.IO;
 using System.Text.Json;
 using Simulation.Core;
 
-namespace Shared.Config
+namespace Server
 {
     /// <summary>
     /// Исключение конфигурации: невалидный JSON, пропущенное поле, дубликат или неразрешённая ссылка.

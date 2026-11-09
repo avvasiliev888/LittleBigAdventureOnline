@@ -15,9 +15,5 @@
     <ProjectReference Include="..\Simulation.Core\Simulation.Core.csproj" />
   </ItemGroup>
 
-  <!-- System.Text.Json отсутствует в netstandard2.1; для net10.0 он входит в BCL. -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.1'">
-    <PackageReference Include="System.Text.Json" Version="9.0.0" />
-  </ItemGroup>
 
 </Project>

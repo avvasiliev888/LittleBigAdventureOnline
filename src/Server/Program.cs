@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using Shared;
-using Shared.Config;
 using Simulation.Core;
 
 namespace Server

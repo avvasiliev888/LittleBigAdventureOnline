@@ -35,6 +35,9 @@ jobs:
       - name: Architecture checks
         run: bash tools/ci/check-architecture.sh
 
+      - name: Unity boundaries
+        run: bash tools/ci/check-unity-boundaries.sh
+
       - name: "Test (coverage gate: Simulation 100% line)"
         run: >
           dotnet test src/Tests/Tests.csproj --no-build -c Release

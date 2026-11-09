@@ -9,6 +9,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <IsPackable>false</IsPackable>
     <RootNamespace>Client.Network</RootNamespace>
+    <!-- Нужно для tools/unity/build-plugins.ps1: сборка netstandard2.1 должна содержать LiteNetLib.dll. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <ItemGroup>

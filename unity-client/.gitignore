@@ -34,3 +34,7 @@ crashlytics-build.properties
 /[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# Плагины для Unity: собираются заново через tools/unity/build-plugins.ps1, не коммитятся.
+/Assets/Plugins/
+/Assets/Plugins.meta

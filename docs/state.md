@@ -1,9 +1,9 @@
 # State
 
-Last updated: 2026-11-09 10:40 UTC
-Last heartbeat: 2026-11-09 10:40 UTC
-Current milestone: M5 — Транспорт LiteNetLib, тест-клиент, потери
-Current task: ожидание Human-Gate M5
+Last updated: 2026-11-09 11:35 UTC
+Last heartbeat: 2026-11-09 11:35 UTC
+Current milestone: M6 — Unity-клиент: ввод, отображение, интерполяция
+Current task: ожидание Human-Gate M6
 Onboarding: completed
 
 ## Onboarding: completed
@@ -18,9 +18,9 @@ Onboarding: completed
 | M1 | ✅ | ✅ | done (2026-11-09, контракты заморожены) |
 | M2 | ✅ | ✅ | done (2026-11-09, `045c24b`) |
 | M3 | ✅ | ✅ | done (2026-11-09) |
-| M4 | ✅ | ✅ | done (2026-11-09, merged `d827c9a`, ADR-008 одобрен) |
-| M5 | ✅ | ⏳ | awaiting human review |
-| M6 | — | — | todo |
+| M4 | ✅ | ✅ | done (2026-11-09, `d827c9a`, ADR-008 одобрен) |
+| M5 | ✅ | ✅ | done (2026-11-09, merged `cfccaa6`) |
+| M6 | ✅ | ⏳ | awaiting human review |
 | M7 | — | — | todo |
 | M8 | — | — | todo |
 | M9 | — | — | todo |
@@ -28,55 +28,62 @@ Onboarding: completed
 | M11 | — | — | todo |
 | M12 | — | — | todo |
 
-## M5 tasks
+## M6 tasks
 
 | Task | Status | Notes |
 |---|---|---|
-| 1. `LiteNetLibTransport` (`ITransport`) | done | `Client.Network/LiteNetLibTransport`, UDP, RTT, события пакетов |
-| 2. `tools/test-client` | done | консольный клиент: Hello, команды движения, приём снапшотов, лог |
-| 3. Режимы доставки | done | команды/Hello — ReliableOrdered, снапшоты — Unreliable, полный снапшот — ReliableOrdered по запросу при простое > 1 с |
-| 4.Тест с потерями 30% и задержкой 100 мс | done | `LossyTransportTests` (детерминированный seed) + проверка восстановления |
-| 5. Версионирование handshake | done | ключ соединения = `Protocol.Version`; чужая версия → `ConnectionRejected` |
-| 6. UDP-режим сервера | done | `dotnet run --project src/Server -- --udp 9050` |
+| 1. `IInputSource` в Unity (WASD → `MoveCommand`) | done | `UnityInputSource`; ввод опрашивается по клиентским тикам 20 Гц в `ClientPipeline` |
+| 2. `IView`: буфер снапшотов + интерполяция | done | `SnapshotBuffer` в `Client.Network` (чистая логика, тестируется xUnit); `UnityView` только применяет |
+| 3. Простая сцена | done | клиент создаёт плоскость/свет/камеру сам при старте (`ClientRuntime`), сцена не требуется |
+| 4. Камера со сглаживанием | done | `CameraFollow` с экспоненциальным сглаживанием в `LateUpdate` |
+| 5. Отправка команд через `LiteNetLibTransport` | done | `ClientPipeline` поверх `ITransport` + `IInputSource` + `IView` |
+| 6. Smoke-тест | done | xUnit `ClientPipelineTests`: подключение → HelloAck → команды → снапшоты → отрисовка |
+| 7. CI-grep границ Unity | done | `tools/ci/check-unity-boundaries.sh` + шаг в workflow |
 
-## M5: принятые решения (на ревью оператору)
+## M6: принятые решения (на ревью оператору)
 
-1. **LiteNetLib 2.1.4 из NuGet** (ADR-002), по одному транспорту на каждой стороне: `LiteNetLibServerTransport` (`IServerTransport`) и `LiteNetLibTransport` (`ITransport`, клиент, его же возьмёт Unity в M6). Замороженные интерфейсы не менялись.
-2. **Версия протокола как ключ соединения.** LiteNetLib `ConnectionRequest.AcceptIfKey(Protocol.Version.ToString())`: несовпадение = отказ на handshake, без «тихого» рассинхрона (ADR-004).
-3. **Имитатор плохой сети — отдельный декоратор** `LossyServerTransport` (loss% + задержка в тиках, seeded `Random`). Он даёт детерминированный тест вместо непредсказуемого UDP-loopback: при 30% потерь порог разрыва 8 тиков, восстановление после серии из 3 потерь — 1 тик.
-4. **Полный снапшот — по таймауту простоя на клиенте** (не по каждой потере): если снапшотов нет > 1000 мс, тест-клиент шлёт `FullSnapshotRequest` надёжным каналом, сервер отвечает полным снапшотом тем же режимом. Дешёвая страховка, без шторма запросов.
-5. **Потери/задержки применяются только к Unreliable-трафику.** Надёжные пакеты (HelloAck, полный снапшот) идут без имитации потерь — в реальном LiteNetLib их переотправляет транспорт.
+1. **Логика интерполяции — в `Client.Network`, а не в MonoBehaviour.** `SnapshotBuffer` (2–8 снапшотов, лаг 2 тика = 100 мс) и `ClientPipeline` тестируются xUnit-ом, Unity-слой только двигает капсулы по готовым позициям. Это закрывает AI-Failure Mode M6: в `MonoBehaviour` нет движения.
+2. **Клиент запускается сам** через `[RuntimeInitializeOnLoadMethod]`; мир (плоскость, свет, камера) создаётся в рантайме. Сцену/префаб править не нужно — меньше риска при импорте проекта оператором.
+3. **Сборки для Unity — генерируемые плагины** `Assets/Plugins/Albion/*.dll` (`tools/unity/build-plugins.ps1`), каталог в `.gitignore`. Коммитить DLL-бинарники в репозиторий не стали: они пересобираются одной командой, а Unity не умеет ссылаться на внешние csproj.
+4. **Рендер — встроенный `Standard`, не URP.** URP отложен до M10: `packages.unity.com` недоступен из процесса UPM (Discovered Issue #2), поэтому `ClientRuntime` берёт `Universal Render Pipeline/Lit`, если он есть, иначе `Standard`.
+5. **Границы Unity в CI** (`check-unity-boundaries.sh`): клиент не создаёт/не тикает `Simulation` вне `Bootstrap`/`Prediction`, `View`/`Input` не двигают объекты напрямую (`transform.position +=`, `Translate`), `View` не читает ввод. Тип-зависимость от `Simulation.Core` (снапшоты, `MoveCommand`) допустима — запрещена именно авторитетная логика.
+6. **Smoke-тест — xUnit, не Unity Test Framework**: пакет `com.unity.test-framework` в проекте не установлен (UPM), поэтому сквозной клиентский тест гоняется в dotnet на in-memory транспорте; вживую — Human-Gate оператора.
+7. **`ConfigLoader` переехал из `Shared` в `Server` (namespace `Server`).** Причина: `Shared` для netstandard2.1 тянул пакет `System.Text.Json`, которого нет в профиле Unity — сборка `Shared.dll` не загружалась в редакторе (`Reference has errors 'Shared'`). Загрузка конфигов — серверная обязанность, клиенту она не нужна; `Shared` теперь без внешних зависимостей. Тесты используют `Server`, как и раньше.
+8. **Из `unity-client/Packages/manifest.json` убран `com.unity.multiplayer.center`.** Его редакторская сборка видит глобальный namespace `Client` из наших плагинов и не компилируется (`Client.Search` vs `UnityEditor.PackageManager.Client`). Пакет — UI-окно Multiplayer Center, прототипу не нужен. Альтернатива (переименовать namespace `Client.Network`) отклонена: namespace заморожен решением оператора.
 
-## M5 Auto-Gate (проверено 2026-11-09)
+## M6 Auto-Gate (проверено 2026-11-09)
 
-- [x] Интеграционный тест с потерями/задержкой зелёный: `LossyTransportTests.ThirtyPercentLoss_WithTwoTickDelay_ClientKeepsUpAndRecovers` (300 тиков, 30% потерь, задержка 2 тика).
-- [x] При 30% потерь клиент восстанавливается ≤ 3 тиков: `BurstOfThreeLostSnapshots_RecoversWithinThreeTicks` — после потери тиков 10–12 снапшот тика 13 приходит сразу (восстановление 1 тик); суммарный порог разрыва в 30%-тесте — 8 тиков при детерминированном seed.
-- [x] Несовпадение версий → соединение отклоняется: `LiteNetLibTransportTests.VersionMismatch_ConnectionIsRejected` (клиент с v1 к серверу v2 получает disconnect, сущностей на сервере нет).
-- [x] Реальный UDP: `LiteNetLibTransportTests.ServerAndClient_ExchangeHelloAndSnapshots` — HelloAck, снапшот, сущность на сервере.
-- [x] 123/123 тестов, покрытие `Simulation` 100% line, arch-checks зелёные.
-- [x] CI-run: [42598449970](https://github.com/avvasiliev888/albion-prototype/actions/runs/42598449970) — success (build + arch-checks + 123 теста + coverage gate).
+- [x] Excel-сборка C# без ошибок: `dotnet build Prototype.sln -c Release` — 0 ошибок.
+- [x] Unity-скрипты компилируются: проверено отдельной сборкой против стабов UnityEngine (0 ошибок); в Unity — сборкой плеера (ниже).
+- [x] Smoke-тест зелёный: `ClientPipelineTests.Pipeline_Connects_MovesAndRenders` (снапшоты доходят, персонаж двигается), `Pipeline_RequestsFullSnapshot_WhenSnapshotsStop`, `Pipeline_ReportsDisconnect_AndStopsSession`.
+- [x] Интерполяция: `SnapshotBufferTests` (середина интервала, клэмпы, устаревшие снапшоты, новые сущности).
+- [x] CI-grep границ Unity: `check-unity-boundaries.sh` — ok (3 проверки).
+- [x] 135/135 тестов, покрытие `Simulation` 100% line, `check-architecture.sh` зелёный.
+- [x] Unity-проект собирается: batchmode `ProjectSetup.BuildWindowsPlayer` → `result=Succeeded, errors=0, size=89629688 bytes` (Unity 6000.3.28f1, локально).
+- [x] CI-run: [42601857536](https://github.com/avvasiliev888/albion-prototype/actions/runs/42601857536) — success (build + arch-checks + Unity boundaries + 135 тестов + coverage gate).
 
-## M5 Human-Gate (ожидает оператора)
+## M6 Human-Gate (ожидает оператора)
 
-**PR:** [#6 — M5: LiteNetLib, тест-клиент и имитация потерь](https://github.com/avvasiliev888/albion-prototype/pull/6), ветка `agent/M5/litenetlib-transport`.
+**PR:** [#7 — M6: Unity-клиент, ввод и интерполяция](https://github.com/avvasiliev888/albion-prototype/pull/7), ветка `agent/M6/unity-client`.
 
-Два терминала в корне репозитория:
+1. Собрать плагины для Unity:
+   ```
+   pwsh -File tools/unity/build-plugins.ps1
+   ```
+2. Сервер в терминале 1:
+   ```
+   dotnet run --project src/Server -c Release -- --udp 9050
+   ```
+3. Unity 6.3 → открыть `unity-client` → сцена `Assets/Scenes/SampleScene.unity` → **Play**. Клиент стартует сам.
+4. Проверить:
+   - капсула появляется и стоит на плоскости, HUD показывает `connected, entity 1` и растущий счётчик snapshots;
+   - WASD — капсула двигается **плавно** (лаг отображения ~100 мс);
+   - остановить сервер (Ctrl+C) — капсула замирает, клиент не крашится, в консоли `соединение потеряно`;
+   - «искусственная задержка сервера»: на M6 серверного флага задержки нет — плавность при задержке подтверждается тестами интерполяции; живой флаг добавлю в M7 вместе с предсказанием (если нужно раньше — скажите).
 
-```
-# Терминал 1 — сервер
-dotnet run --project src/Server -c Release -- --udp 9050
+## M5: закрыто
 
-# Терминал 2 — тест-клиент (15 секунд)
-dotnet run --project tools/test-client -c Release -- 127.0.0.1 9050 15
-```
-
-Ожидаемо на клиенте: `HelloAck: сущность 1`, далее `snapshot #1/#20/...` примерно 20 раз в секунду, позиция плавно меняется (`RTT` около 0 на loopback). На сервере: `conn 1: connected`, `Hello принят`, при закрытии клиента — `disconnected (RemoteConnectionClose)` и удаление сущности.
-
-«Плохая сеть»: отдельного флага в демо нет — поведение зафиксировано тестами `LossyTransportTests` (30% потерь + задержка 100 мс, восстановление ≤ 3 тиков, при простое > 1 с клиент запрашивает полный снапшот надёжным каналом). Если хотите увидеть это в живом клиенте — могу добавить в M6/M7 флаг `--loss` в тест-клиент и сервер.
-
-## M4: закрыто
-
-Human-Gate M4 пройден 2026-11-09: демо-лог проверен оператором (снапшоты, 4 отказа UnknownTarget, авто-завершение), ADR-008 (57 байт/сущность, `Protocol.Version` = 2) одобрен, PR #5 смержен в `main` (`d827c9a`).
+Human-Gate M5 пройден 2026-11-09: два терминала (сервер `--udp 9050` + `tools/test-client`), 298 снапшотов за сессию, корректный disconnect, 0 запросов полного снапшота (стабильный канал). PR #6 смержен (`cfccaa6`).
 
 ## Environment
 
@@ -88,6 +95,7 @@ Human-Gate M4 пройден 2026-11-09: демо-лог проверен опе
 | Репозиторий | `https://github.com/avvasiliev888/albion-prototype` (private), `main` |
 | Git LFS | 3.7.1, `--local` |
 | Транспорт | LiteNetLib 2.1.4 (NuGet), UDP; порт по умолчанию 9050 |
+| Unity-клиент | `unity-client/`, скрипты в `Assets/Scripts`, плагины генерируются `tools/unity/build-plugins.ps1` |
 
 ## Open Questions
 
@@ -113,12 +121,16 @@ Human-Gate M4 пройден 2026-11-09: демо-лог проверен опе
 ## Discovered Issues
 
 1. **VSTest не работает внутри workspace на `F:`** — testhost падает с `Win32Exception (5)` на `Process.set_EnableRaisingEvents`; тот же проект из `%TEMP%` проходит. Обход: `tools/dev/test-local.ps1`. CI не затронут. Приоритет: низкий (ограничение хоста).
-2. **Unity Package Manager не может достучаться до `packages.unity.com`** — `ETIMEDOUT` из процесса UPM, хотя хост-процесс получает `200`. Причина — сетевое ограничение дочерних процессов на этом хосте. Не критично до M10 (URP): проект собирается из `Library/PackageCache`.
-3. **`bash` в PATH на этом хосте — WSL**, а не Git Bash: `tools/ci/check-architecture.sh` локально запускается через `C:\Program Files\Git\bin\bash.exe` (в CI — обычный bash). Приоритет: низкий.
+2. **Unity Package Manager не может достучаться до `packages.unity.com`** — `ETIMEDOUT` из процесса UPM, хотя хост-процесс получает `200`. Не критично до M10 (URP): проект собирается из `Library/PackageCache`; в M6 это значит Built-in pipeline вместо URP. Приоритет: средний к M10.
+3. **`bash` в PATH на этом хосте — WSL**, а не Git Bash: скрипты `tools/ci/*.sh` локально запускаются через `C:\Program Files\Git\bin\bash.exe` (в CI — обычный bash). Приоритет: низкий.
 4. **CRLF-предупреждения git** на Windows — косметика. Приоритет: низкий.
-5. **LiteNetLib 2.1.4: `NetPeer.Id` — публичное поле, не свойство** (в 1.x было иначе); в коде сервера используется `peer.Id`/`peer.Tag`, менять при обновлении библиотеки. Приоритет: низкий.
+5. **LiteNetLib 2.1.4: `NetPeer.Id` — публичное поле, не свойство**; в коде сервера используется `peer.Id`/`peer.Tag`. Приоритет: низкий.
+6. **Unity не может ссылаться на csproj вне `Assets`** — плагины для клиента генерируются скриптом и не коммитятся. Перед открытием Unity нужно запускать `tools/unity/build-plugins.ps1` (описано в README). Приоритет: низкий.
+7. **Плагины в `Assets/Plugins` видны всем сборкам Unity** — глобальный namespace `Client` конфликтовал с `com.unity.multiplayer.center` (ошибка `Client.Search`). Решено удалением ненужного пакета; если появится другой пакет с namespace `Client` — вернуться к вопросу переименования namespace. Приоритет: низкий (пока один случай).
+8. **netstandard2.1-сборки для Unity не должны тянуть пакеты вне профиля .NET Standard 2.1** — `System.Text.Json` в `Shared` ломал загрузку `Shared.dll` в редакторе. Исправлено переносом `ConfigLoader` в `Server`. Приоритет: низкий (правило записано).
 
 ## Next Actions (для следующей сессии)
 
-1. Дождаться Human-Gate M5 (сервер + тест-клиент в двух терминалах), после merge PR #6 — M6.
-2. M6: Unity-клиент — ввод (WASD → `MoveCommand`), отображение сущностей из снапшота, интерполяция позиции, камера; подключение через `LiteNetLibTransport`. GameCI не нужен, сборка локальная.
+1. Дождаться Human-Gate M6 (Unity Play + сервер), после merge PR #7 — M7.
+2. M7: предсказание и реконсиляция — буфер истории, локальное применение команд, `ServerAck`, `RestoreFromSnapshot` + повтор неподтверждённых команд, тесты сходимости (100 мс задержка, 20% потерь, ≤ 3 тика) и намеренного рассинхрона.
+3. M7 также добавит флаг искусственной задержки/потерь на сервере (для живого Human-Gate по плавности).

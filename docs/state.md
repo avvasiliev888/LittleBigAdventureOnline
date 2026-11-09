@@ -40,6 +40,7 @@ Onboarding: completed
 | 6. Хеш конфига как проверка «один файл» | done | `ConfigLoader.ComputeHash` (SHA-256), сервер печатает hash при старте, клиент — в лог и HUD |
 | 7. Тест «изменил JSON → изменилось поведение клиента» | done | `ClientContentTests.ChangedMoveSpeedJson_ChangesPredictionStep_WithoutRecompile`, `ChangedCooldownJson_ChangesPredictedCooldown_WithoutRecompile` |
 | 8. Тест «клиент и сервер используют один файл» | done | `ClientContentTests.ClientAndServerReadSameFile_SameHash`, `ChangedJsonFile_ChangesHash` |
+| 9. Исправления по итогам первой вживую (Human-Gate): ввод Space, локальный кулдаун, часы кулдауна | done | латч нажатия в `UnityInputSource.PollFrame`, гейт `TryStartAbility` в конвейере, кулдаун в относительных тиках, тесты `Pipeline_IgnoresAbilityWhileCooldownActive_AndFiresAfterIt` и др. |
 
 ## M9: принятые решения (на ревью оператору)
 
@@ -56,11 +57,11 @@ Onboarding: completed
 - [x] Клиент и сервер используют один файл: `ClientAndServerReadSameFile_SameHash` (SHA-256 совпадает), `ChangedJsonFile_ChangesHash` (правка файла меняет хеш).
 - [x] Загрузчик и парсер: `MiniJsonTests` (валидные документы, комментарии, escape, ошибки с позицией), `ConfigTests` (нет дефолтов, объяснимые ошибки), `ClientContentTests` (загрузка, hash, предсказание).
 - [x] Конфиг реально управляет предсказанием и UI: `Pipeline_UsesConfigForPredictionAndAbilityCooldown` — `AbilityCooldownTicks=40`, `AbilityRange=3`, после Space кулдаун появляется сразу, сервер применяет способность (hp < maxHp), кулдаун подтверждается.
-- [x] `dotnet build` всех проектов без ошибок (в temp-копии из-за Win32Exception хоста); **198/198** тестов, покрытие `Simulation` 100% line, arch-checks и Unity-boundaries зелёные.
+- [x] `dotnet build` всех проектов без ошибок (в temp-копии из-за Win32Exception хоста); **202/202** теста, покрытие `Simulation` 100% line, arch-checks и Unity-boundaries зелёные.
 - [x] Плагины и конфиги для Unity собраны: `tools/unity/build-plugins.ps1` → 4 DLL + `StreamingAssets/Config/{actors,abilities}.json`.
 - [x] Сервер печатает `config: <path> (акторов: 1, способностей: 1), hash: <sha256>`; клиент логирует тот же хеш (проверено в headless-тесте и live-прогоном).
 - [x] Unity batchmode-сборка не перезапускалась: Editor открыт оператором; скрипты компилируются (stub), Play-проверка — на Human-Gate.
-- [x] CI-run: [42655392948](https://github.com/avvasiliev888/albion-prototype/actions/runs/42655392948) — success (198 тестов, coverage gate).
+- [x] CI-run: [проверки PR #10](https://github.com/avvasiliev888/albion-prototype/pull/10/checks) — success (202/202 тестов после исправлений Human-Gate, coverage gate).
 
 ## M9 Human-Gate (ожидает оператора)
 
@@ -69,12 +70,21 @@ Onboarding: completed
 1. Плагины и конфиги: `pwsh -File tools/unity/build-plugins.ps1` (копирует JSON в `StreamingAssets/Config`).
 2. Сервер: `dotnet run --project src/Server -c Release -- --udp 9050` — в логе строка `config: … hash: <sha256>`.
 3. Unity 6.3 → `unity-client` → дождаться реимпорта → `Assets/Scenes/SampleScene.unity` → Play. В HUD видно `cfg: <первые 8 символов хеша>` — он должен совпадать с серверным.
-4. Проверить data-driven: изменить `config/abilities.json` (`cooldownSeconds: 2.0` → `6.0`, `damage: 25` → `5`) **и** `config/actors.json` (`moveSpeed: 4.0` → `6.0`), перезапустить сервер, снова `build-plugins.ps1`, перезапустить Play (код не перекомпилируется).
+4. Проверить способность: стоя на месте нажать Space — HP падает на 25, в HUD `cd: 40` и уменьшается до 0; во время кулдауна Space игнорируется (HP не меняется, команда не уходит); по истечении 2 с Space снова работает. В движении — то же самое.\n5. Проверить data-driven: изменить `config/abilities.json` (`cooldownSeconds: 2.0` → `6.0`, `damage: 25` → `5`) **и** `config/actors.json` (`moveSpeed: 4.0` → `6.0`), перезапустить сервер, снова `build-plugins.ps1`, перезапустить Play (код не перекомпилируется).
    - движение стало быстрее (6 ед/с);
    - после Space кулдаун в HUD ~120 тиков вместо 40, HP падает на 5, а не на 25;
    - `cfg:` хеш изменился.
 5. Проверить отсутствие тихого фолбэка: временно переименовать `StreamingAssets/Config` → в HUD `config error: …` с подсказкой про скрипт, клиент не подключается.
 6. Space по себе — ожидаемо (других сущностей нет); HP восстанавливается только респавном/новым подключением, это прототип M9.
+
+## M9 Human-Gate: исправления после первой проверки (2026-11-09)
+
+Оператор проверил M9 вживую и нашёл 4 связанных дефекта. Разбор и исправления:
+
+1. **Space стоя на месте «не срабатывает».** `UnityInputSource` читал `Input.GetKeyDown(Space)` только внутри клиентского тика (20 Гц), а Unity вызывает `Update` ~60 раз в секунду: фронт нажатия терялся на кадрах, где тик не выполнялся (стоя на месте это почти всегда, в движении — «через раз»). **Исправление:** `PollFrame()` вызывается каждый кадр из `ClientRuntime.Update` и запоминает нажатие; `TryReadCommand` забирает его на ближайшем тике. Способность больше не зависит от движения.
+2. **Кулдаун в HUD «cd: 3098 тиков».** `ClientPrediction` хранил абсолютный тик `serverTick + 40`, а `CooldownRemainingTicks` вычитал клиентский тик, который начинается с нуля при каждом Play. **Исправление:** кулдаун хранится в относительных тиках и уменьшается на 1 каждый клиентский тик (`AdvanceCooldown`); при реконсиляции серверный `CooldownUntilTick` переводится в остаток как `cooldownUntil - snapshot.Tick`. Тест `Reconcile_MapsServerCooldownToClientTicks_NotAbsoluteTick`.
+3. **Спам Space во время кулдауна.** Клиент отправлял команду на каждое нажатие и только сервер её отбрасывал. **Исправление:** `ClientPipeline` проверяет `ClientPrediction.TryStartAbility` **до отправки**; если кулдаун идёт — команда не уходит, предсказание не накручивается. Тест `Pipeline_IgnoresAbilityWhileCooldownActive_AndFiresAfterIt` (пока кулдаун идёт — 0 новых команд и HP не меняется; после истечения — снова урон).
+4. **«Локальный урон во время кулдауна».** Локального применения урона в клиенте нет: HP приходит только из серверных снапшотов (`Simulation.ApplyAbility`), сервер проверяет `CooldownUntilTick` (строка 188). Наблюдаемый эффект давал баг №2: HUD показывал «кулдаун 3000+ тиков» постоянно, и каждый успешный каст (раз в 2 с) выглядел как удар «во время кулдауна». После исправления часов и гейта урон в HUD идёт строго раз в конфиг-кулдаун. `LocalPredictionSmoother` кулдаун/урон не считает и не должен: он отвечает только за сглаживание позиции.
 
 ## M8: Human-Gate пройден
 

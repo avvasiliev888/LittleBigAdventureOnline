@@ -139,19 +139,23 @@ namespace Client.Network
             {
                 _tickAccumulator -= TickIntervalSeconds;
                 _clientTick++;
+                Prediction?.AdvanceCooldown();
 
                 ICommand? command = null;
                 var hasCommand = HasSession && _input.TryReadCommand(_clientTick, out command) && command != null;
+
+                // M9: локальный кулдаун проверяется ДО отправки. Пока кулдаун идёт, нажатие
+                // игнорируется: сервер не спамится, предсказание урона не накручивается.
+                if (hasCommand && command is AbilityCommand ability && Prediction != null && !Prediction.TryStartAbility(ability.Sequence))
+                {
+                    hasCommand = false;
+                    command = null;
+                }
+
                 if (hasCommand)
                 {
                     _transport.Send(MessageFraming.Wrap(MessageType.Command, CommandCodec.Encode(command!)), DeliveryMode.ReliableOrdered);
                     Prediction?.ApplyLocalCommand(command!);
-
-                    // M9: кулдаун предсказывается по конфигу способности; сервер подтвердит его в снапшоте.
-                    if (command is AbilityCommand ability)
-                    {
-                        Prediction?.PredictAbility(ability.ClientTick, ability.Sequence);
-                    }
                 }
 
                 // Сэмпл каждый клиентский тик, а не только на снапшоте: тайминг сэмплов ровный даже

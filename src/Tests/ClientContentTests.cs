@@ -93,11 +93,11 @@ namespace Tests
             Assert.Equal(40, fast.AbilityCooldownTicks);
             Assert.Equal(100, slow.AbilityCooldownTicks);
 
-            fast.PredictAbility(0, 1);
-            slow.PredictAbility(0, 1);
+            Assert.True(fast.TryStartAbility(1));
+            Assert.True(slow.TryStartAbility(1));
 
-            Assert.Equal(40u, fast.CooldownUntilTick);
-            Assert.Equal(100u, slow.CooldownUntilTick);
+            Assert.Equal(40, fast.CooldownRemainingTicks);
+            Assert.Equal(100, slow.CooldownRemainingTicks);
         }
 
         [Fact]
@@ -111,23 +111,74 @@ namespace Tests
         }
 
         [Fact]
-        public void PredictAbility_ReconciliationUsesServerCooldownAfterAck()
+        public void TryStartAbility_IsRejectedWhileCooldownActive()
         {
             var content = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f));
             var prediction = new ClientPrediction(7, content.GetActor(1), content.GetAbility(1));
             prediction.Reset(Vector3.Zero);
 
-            prediction.PredictAbility(10, 1);
-            Assert.Equal(50u, prediction.CooldownUntilTick);
+            Assert.True(prediction.TryStartAbility(1));
+            Assert.Equal(40, prediction.CooldownRemainingTicks);
+            Assert.False(prediction.TryStartAbility(2));
+            Assert.Equal(40, prediction.CooldownRemainingTicks);
+        }
+
+        [Fact]
+        public void AdvanceCooldown_CountsDownAndStopsAtZero()
+        {
+            var content = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f));
+            var prediction = new ClientPrediction(7, content.GetActor(1), content.GetAbility(1));
+            prediction.Reset(Vector3.Zero);
+            prediction.TryStartAbility(1);
+
+            for (var i = 0; i < 40; i++)
+            {
+                Assert.False(prediction.IsAbilityReady);
+                prediction.AdvanceCooldown();
+            }
+
+            Assert.Equal(0, prediction.CooldownRemainingTicks);
+            Assert.True(prediction.IsAbilityReady);
+
+            prediction.AdvanceCooldown();
+            Assert.Equal(0, prediction.CooldownRemainingTicks);
+        }
+
+        [Fact]
+        public void Reconcile_MapsServerCooldownToClientTicks_NotAbsoluteTick()
+        {
+            var content = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f));
+            var prediction = new ClientPrediction(7, content.GetActor(1), content.GetAbility(1));
+            prediction.Reset(Vector3.Zero);
+
+            prediction.TryStartAbility(1);
+            prediction.Reconcile(Snapshot(cooldownUntilTick: 3040, tick: 3000), acknowledgedSequence: 1);
+
+            // Клиентский тик маленький, серверный — 3000: остаток должен считаться как 3040-3000,
+            // а не как «3040 минус клиентский тик» (баг HUD «cd: 3098 тиков»).
+            Assert.Equal(40, prediction.CooldownRemainingTicks);
+        }
+
+        [Fact]
+        public void Reconcile_KeepsPredictedCooldownUntilAbilityAcked()
+        {
+            var content = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f));
+            var prediction = new ClientPrediction(7, content.GetActor(1), content.GetAbility(1));
+            prediction.Reset(Vector3.Zero);
+
+            Assert.True(prediction.TryStartAbility(1));
+            prediction.AdvanceCooldown();
+            prediction.AdvanceCooldown();
+            Assert.Equal(38, prediction.CooldownRemainingTicks);
 
             // Сервер ещё не подтвердил команду — предсказанный кулдаун сохраняется.
             prediction.Reconcile(Snapshot(cooldownUntilTick: 0), acknowledgedSequence: 0);
-            Assert.Equal(50u, prediction.CooldownUntilTick);
+            Assert.Equal(38, prediction.CooldownRemainingTicks);
 
             // Команда подтверждена, но сервер её отклонил (кулдаун 0) — истина серверная.
             prediction.Reconcile(Snapshot(cooldownUntilTick: 0), acknowledgedSequence: 1);
-            Assert.Equal(0u, prediction.CooldownUntilTick);
-            Assert.Equal(0, prediction.CooldownRemainingTicks(10));
+            Assert.Equal(0, prediction.CooldownRemainingTicks);
+            Assert.True(prediction.IsAbilityReady);
         }
 
         [Fact]
@@ -147,10 +198,10 @@ namespace Tests
             return prediction;
         }
 
-        private static SimulationSnapshot Snapshot(uint cooldownUntilTick)
+        private static SimulationSnapshot Snapshot(uint cooldownUntilTick, uint tick = 11)
         {
             var position = Vector3.Zero;
-            return new SimulationSnapshot(11, new[]
+            return new SimulationSnapshot(tick, new[]
             {
                 new EntitySnapshot(7, 1, position, position, 100, 100, 100, 100, cooldownUntilTick, 0, false),
             });

@@ -30,7 +30,7 @@ namespace Client.Network
         private readonly List<ICommand> _unacknowledged = new List<ICommand>();
         private Vector3 _position;
         private bool _hasPosition;
-        private uint _cooldownUntilTick;
+        private int _cooldownRemainingTicks;
         private uint _pendingAbilitySequence;
 
         /// <summary>Создаёт предсказание для сущности игрока.</summary>
@@ -94,33 +94,49 @@ namespace Client.Network
         public int AbilityCooldownTicks =>
             _ability == null ? 0 : (int)Math.Ceiling(_ability.CooldownSeconds / TickDelta);
 
-        /// <summary>Кулдаун, предсказанный локально (тик, до которого способность недоступна).</summary>
-        public uint CooldownUntilTick => _cooldownUntilTick;
+        /// <summary>
+        /// Сколько тиков осталось до конца кулдауна. Считается в относительных тиках (не в номерах
+        /// тиков сервера/клиента), поэтому не зависит от расхождения часов: M9-баг «cd: 3098 тиков».
+        /// </summary>
+        public int CooldownRemainingTicks => _cooldownRemainingTicks;
 
-        /// <summary>Сколько тиков осталось до конца предсказанного кулдауна.</summary>
-        /// <param name="tick">Текущий тик.</param>
-        /// <returns>Число тиков; 0, если способность готова.</returns>
-        public int CooldownRemainingTicks(uint tick) => _cooldownUntilTick > tick ? (int)(_cooldownUntilTick - tick) : 0;
+        /// <summary>Готова ли способность (кулдаун истёк) — клиент проверяет это до отправки команды.</summary>
+        public bool IsAbilityReady => _cooldownRemainingTicks <= 0;
 
         /// <summary>
-        /// Предсказывает кулдаун после отправки <see cref="AbilityCommand"/> (M9): длительность берётся
-        /// из конфига способности. Сервер подтвердит или отменит предсказание при реконсиляции.
+        /// Уменьшает кулдаун на один клиентский тик; вызывается конвейером каждый тик.
         /// </summary>
-        /// <param name="clientTick">Клиентский тик команды.</param>
+        public void AdvanceCooldown()
+        {
+            if (_cooldownRemainingTicks > 0)
+            {
+                _cooldownRemainingTicks--;
+            }
+        }
+
+        /// <summary>
+        /// Пытается начать способность локально (M9). Если кулдаун ещё идёт, возвращает <c>false</c>:
+        /// команда не отправляется, сервер не спамится, урон не предсказывается.
+        /// При успехе сразу ставит кулдаун из конфига и запоминает sequence для реконсиляции.
+        /// </summary>
         /// <param name="sequence">Sequence команды способности.</param>
-        public void PredictAbility(uint clientTick, uint sequence)
+        /// <returns><c>true</c>, если способность разрешена и команду надо отправить.</returns>
+        public bool TryStartAbility(uint sequence)
         {
             if (_ability == null)
             {
-                return;
+                // Без конфига кулдаун неизвестен: не блокируем (легаси-путь), но и не предсказываем.
+                return true;
             }
 
-            _pendingAbilitySequence = Math.Max(_pendingAbilitySequence, sequence);
-            var until = clientTick + (uint)AbilityCooldownTicks;
-            if (until > _cooldownUntilTick)
+            if (_cooldownRemainingTicks > 0)
             {
-                _cooldownUntilTick = until;
+                return false;
             }
+
+            _cooldownRemainingTicks = AbilityCooldownTicks;
+            _pendingAbilitySequence = Math.Max(_pendingAbilitySequence, sequence);
+            return true;
         }
 
         /// <summary>Порог, выше которого расхождение считается реальным и запускает реконсиляцию.</summary>
@@ -183,10 +199,14 @@ namespace Client.Network
             }
 
             var serverPosition = new Vector3(ownEntity.Position.X, ownEntity.Position.Y, ownEntity.Position.Z);
-            if (_pendingAbilitySequence <= acknowledgedSequence)
+            if (_pendingAbilitySequence != 0 && _pendingAbilitySequence <= acknowledgedSequence)
             {
                 // Сервер обработал способность: его кулдаун — истина (0, если команду отклонили).
-                _cooldownUntilTick = ownEntity.CooldownUntilTick;
+                // Переводим абсолютный серверный тик в относительные тики клиента, иначе HUD
+                // показывал бы разницу между тиком сервера и клиентским тиком (баг «cd: 3098»).
+                _cooldownRemainingTicks = ownEntity.CooldownUntilTick > snapshot.Tick
+                    ? (int)(ownEntity.CooldownUntilTick - snapshot.Tick)
+                    : 0;
                 _pendingAbilitySequence = 0;
             }
 
@@ -227,7 +247,7 @@ namespace Client.Network
             _unacknowledged.Clear();
             _position = position;
             _hasPosition = true;
-            _cooldownUntilTick = 0;
+            _cooldownRemainingTicks = 0;
             _pendingAbilitySequence = 0;
         }
 

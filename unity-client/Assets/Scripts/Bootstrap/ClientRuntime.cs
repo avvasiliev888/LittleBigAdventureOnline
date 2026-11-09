@@ -116,6 +116,7 @@ namespace Albion.Client
                 return;
             }
 
+            _input.PollFrame();
             _pipeline.Update(Time.deltaTime);
 
             if (_cameraFollow != null && _cameraFollow.Target == null && _view.Player != null)
@@ -155,7 +156,7 @@ namespace Albion.Client
                     + " | pos=(" + prediction.Position.X.ToString("0.##") + ", " + prediction.Position.Z.ToString("0.##") + ")"
                     + " | unacked=" + prediction.Unacknowledged.Count
                     + " | hp: " + OwnHpText()
-                    + " | cd: " + prediction.CooldownRemainingTicks(_pipeline.ClientTick) + " тиков"
+                    + " | cd: " + prediction.CooldownRemainingTicks + " тиков"
                     + " | range: " + prediction.AbilityRange.ToString("0.##"));
             }
         }

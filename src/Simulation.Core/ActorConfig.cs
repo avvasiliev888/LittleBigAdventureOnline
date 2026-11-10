@@ -14,7 +14,18 @@ namespace Simulation.Core
         /// <param name="maxResource">Максимальный запас ресурса; неотрицательный.</param>
         /// <param name="respawnSeconds">Время респавна после смерти, с; положительное и конечное.</param>
         /// <param name="abilityId">Идентификатор способности актора; должен существовать в конфиге способностей.</param>
-        public ActorConfig(uint id, int maxHp, float moveSpeed, int maxResource, float respawnSeconds, uint abilityId)
+        /// <param name="resourceRegenPerSecond">
+        /// Восстановление ресурса, единиц в секунду; неотрицательное и конечное. 0 — без регенерации
+        /// (легаси-конструктор тестов).
+        /// </param>
+        public ActorConfig(
+            uint id,
+            int maxHp,
+            float moveSpeed,
+            int maxResource,
+            float respawnSeconds,
+            uint abilityId,
+            float resourceRegenPerSecond = 0f)
         {
             if (id == 0)
             {
@@ -46,12 +57,22 @@ namespace Simulation.Core
                 throw new ArgumentOutOfRangeException(nameof(abilityId), abilityId, "AbilityId должен быть положительным.");
             }
 
+            if (float.IsNaN(resourceRegenPerSecond) || float.IsInfinity(resourceRegenPerSecond)
+                || resourceRegenPerSecond < 0f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(resourceRegenPerSecond),
+                    resourceRegenPerSecond,
+                    "ResourceRegenPerSecond должен быть конечным неотрицательным числом.");
+            }
+
             Id = id;
             MaxHp = maxHp;
             MoveSpeed = moveSpeed;
             MaxResource = maxResource;
             RespawnSeconds = respawnSeconds;
             AbilityId = abilityId;
+            ResourceRegenPerSecond = resourceRegenPerSecond;
         }
 
         /// <summary>Идентификатор типа актора.</summary>
@@ -71,5 +92,8 @@ namespace Simulation.Core
 
         /// <summary>Идентификатор способности актора.</summary>
         public uint AbilityId { get; }
+
+        /// <summary>Восстановление ресурса в секунду; 0 — без регенерации.</summary>
+        public float ResourceRegenPerSecond { get; }
     }
 }

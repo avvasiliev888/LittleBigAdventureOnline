@@ -97,11 +97,6 @@ namespace Shared
                     }
 
                     var targetId = reader.ReadUInt32();
-                    if (targetId == 0)
-                    {
-                        return false;
-                    }
-
                     command = new AbilityCommand(targetId, clientTick, sequence);
                     return true;
 

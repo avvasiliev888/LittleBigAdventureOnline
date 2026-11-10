@@ -25,12 +25,14 @@
 
 - `Assets/Resources/Rendering/UniversalRendererDesktop.asset` — **deferred**;
 - `Assets/Resources/Rendering/UniversalRendererMobile.asset` — **forward**;
-- `Assets/Resources/Rendering/UrpDesktop.asset` — HDR, MSAA 4x, render scale 1.0, тени 2048,
+- `Assets/Resources/Rendering/UrpDesktop.asset` — HDR, MSAA выключен (не поддерживается
+  deferred; сглаживание SMAA на камере), render scale 1.0, мягкие тени 2048, два каскада,
   shadow distance 60, GPU Resident Drawer включён;
 - `Assets/Resources/Rendering/UrpMobile.asset` — без HDR/MSAA, render scale 0.8, тени 1024,
   shadow distance 25, тени выключены, GPU Resident Drawer выключен;
 - `Assets/Resources/Rendering/AlbionPostProcess.asset` — VolumeProfile (Bloom, Vignette,
-  ColorAdjustments).
+  ColorAdjustments, ACES Tonemapping); overrides сохраняются как subassets через
+  `AssetDatabase.AddObjectToAsset` и проверяются после синхронного reimport с диска.
 
 Ассеты лежат в `Resources`, потому что `QualityProfile` грузит их через `Resources.Load`:
 переключение профиля не требует ни перезапуска, ни отдельной сборки. Desktop назначается
@@ -50,7 +52,8 @@ HUD показывает `profile: desktop|mobile` и сглаженный FPS, 
 - `Assets/Shaders/ToonLit.shader` — двухцветная рампа, мягкая тень, rim-подсветка, ambient и
   **второй проход-контур** (inverted hull). Проход помечен `UniversalForwardOnly`, поэтому
   материал работает и в forward, и в deferred renderer (в deferred такие материалы идут в
-  forward-only проход).
+  forward-only проход). Отдельные `ShadowCaster` и `DepthOnly` работают по исходной геометрии,
+  не по расширенному контуру. Основной проход и контур компилируют fog variants и применяют `MixFog`.
 - `Assets/Shaders/ToonGround.shader` — шахматка в мировых координатах + toon-освещение, без текстур.
 - `UnityView` собирает персонажа из простых форм (тело, голова, наплечники, оружие) с
   палитрой: герой зелёно-золотой, чужие синие, мёртвые серые. Коллайдеры удаляются — физики на
@@ -68,7 +71,7 @@ HUD показывает `profile: desktop|mobile` и сглаженный FPS, 
 Статичная геометрия помечена `BatchingStatic | OccluderStatic | OccludeeStatic`;
 `StaticOcclusionCulling.Compute()` вызывается в batchmode; данные запекаются в
 `Assets/Scenes/Arena/OcclusionCullingData.asset` (в логе batchmode предупреждение о размере
-появляется из-за гонки с асинхронным завершением, но ассет создаётся). Валидатор проверяет
+возможно, при этом ассет создаётся; причина расхождения размера не установлена). Валидатор проверяет
 наличие данных; если их нет, оператор повторяет запекание в редакторе
 (`Window/Rendering/Occlusion Culling`).
 GPU Resident Drawer включён в desktop-ассете через `m_GPUResidentDrawerMode` (Instanced) — это

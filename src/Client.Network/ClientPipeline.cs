@@ -139,17 +139,36 @@ namespace Client.Network
             {
                 _tickAccumulator -= TickIntervalSeconds;
                 _clientTick++;
-                Prediction?.AdvanceCooldown();
 
+                // Ввод читаем ДО декремента кулдауна: на тике, где остаток равен 1, команда
+                // ещё не отправляется. Следующий тик начнётся с 0 и отправит способность уже
+                // после того, как серверный тик перешагнул CooldownUntilTick. Иначе команда
+                // уходит ровно на границе и сервер отклоняет её как OnCooldown; с жёстким
+                // кулдауном каждый такой отказ снова ставил полный кулдаун (голодание).
                 ICommand? command = null;
                 var hasCommand = HasSession && _input.TryReadCommand(_clientTick, out command) && command != null;
+                var abilityStarted = false;
 
                 // M9: локальный кулдаун проверяется ДО отправки. Пока кулдаун идёт, нажатие
                 // игнорируется: сервер не спамится, предсказание урона не накручивается.
-                if (hasCommand && command is AbilityCommand ability && Prediction != null && !Prediction.TryStartAbility(ability.Sequence))
+                if (hasCommand && command is AbilityCommand ability && Prediction != null)
                 {
-                    hasCommand = false;
-                    command = null;
+                    if (!Prediction.IsAbilityReady || !Prediction.TryStartAbility(ability.Sequence))
+                    {
+                        hasCommand = false;
+                        command = null;
+                    }
+                    else
+                    {
+                        abilityStarted = true;
+                    }
+                }
+
+                // Новый удар уже выставил полный кулдаун: не уменьшаем его в том же тике.
+                // Во всех остальных случаях кулдаун идёт вниз ровно на один тик.
+                if (Prediction != null && !abilityStarted)
+                {
+                    Prediction.AdvanceCooldown();
                 }
 
                 if (hasCommand)
@@ -390,10 +409,12 @@ namespace Client.Network
 
         /// <summary>
         /// Ближайшая к предсказанной позиции сущность (кроме указанной) — цель для способности (M9).
-        /// Возвращает 0, если снапшота ещё нет или других сущностей нет.
+        /// Живая цель имеет приоритет; если живых нет, возвращается ближайшая мёртвая сущность
+        /// (M10.8.1): клиент не должен «терять» манекен в окне между смертью и респавном, а сервер
+        /// сам решит, наносить ли урон. 0 возвращается только если в снапшоте вообще нет других сущностей.
         /// </summary>
         /// <param name="excludeEntityId">Идентификатор, который надо исключить (обычно свой).</param>
-        /// <returns>Идентификатор цели или 0.</returns>
+        /// <returns>Идентификатор цели или 0, если целей нет.</returns>
         public uint FindNearestEntity(uint excludeEntityId)
         {
             if (_lastSnapshot == null)
@@ -402,25 +423,35 @@ namespace Client.Network
             }
 
             var origin = Prediction?.Position ?? Vector3.Zero;
-            var bestId = 0u;
-            var bestDistance = float.MaxValue;
+            var livingId = 0u;
+            var livingDistance = float.MaxValue;
+            var deadId = 0u;
+            var deadDistance = float.MaxValue;
 
             foreach (var entity in _lastSnapshot.Entities)
             {
-                if (entity.Id == excludeEntityId || entity.IsDead)
+                if (entity.Id == excludeEntityId)
                 {
                     continue;
                 }
 
                 var distance = Vector3.Distance(origin, entity.Position);
-                if (distance < bestDistance)
+                if (!entity.IsDead)
                 {
-                    bestDistance = distance;
-                    bestId = entity.Id;
+                    if (distance < livingDistance)
+                    {
+                        livingDistance = distance;
+                        livingId = entity.Id;
+                    }
+                }
+                else if (distance < deadDistance)
+                {
+                    deadDistance = distance;
+                    deadId = entity.Id;
                 }
             }
 
-            return bestId;
+            return livingId != 0 ? livingId : deadId;
         }
 
         private void RequestFullSnapshot(bool force = false)

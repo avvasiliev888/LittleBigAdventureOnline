@@ -13,11 +13,11 @@
 ## Решение
 
 1. **Формат — JSON** (`System.Text.Json`, `Shared.Config`). Файлы — в `config/` в корне репозитория; при сборке клиента копируются в `StreamingAssets` (M9), сервер читает их из рабочей директории (путь — параметр запуска).
-2. **Наборы:** `config/actors.json` (тип актора: `id`, `maxHp`, `moveSpeed`, `respawnSeconds`), `config/abilities.json` (`id`, `damage`, `range`, `cooldownSeconds`, `resourceCost`, ссылка на актора/эффект). Минимально необходимый набор для M3; расширение — по задачам плана, не «на всякий случай».
+2. **Наборы:** `config/actors.json` (тип актора: `id`, `maxHp`, `moveSpeed`, `maxResource`, `resourceRegenPerSecond`, `respawnSeconds`), `config/abilities.json` (`id`, `damage`, `range`, `cooldownSeconds`, `resourceCost`, ссылка на актора/эффект). Минимально необходимый набор для M3; расширение — по задачам плана, не «на всякий случай».
 3. **DTO — простые `record`-классы в `Shared.Config`** без логики; загрузчик (`ConfigLoader`) валидирует и возвращает иммутабельный снимок (`GameConfig`), который получает `Simulation.Core` через конструктор. Симуляция не читает файлы.
 4. **Валидация (fail-fast, до первого тика):**
    - уникальность `id` в пределах набора;
-   - числовые диапазоны: `maxHp > 0`, `moveSpeed > 0`, `damage >= 0`, `range >= 0`, `cooldownSeconds >= 0`, `respawnSeconds >= 0`;
+   - числовые диапазоны: `maxHp > 0`, `moveSpeed > 0`, `maxResource >= 0`, `resourceRegenPerSecond >= 0`, `damage >= 0`, `range >= 0`, `cooldownSeconds >= 0`, `respawnSeconds >= 0`;
    - ссылочная целостность: `abilities[].actorId` существует в `actors`;
    - запрет `NaN`/`Infinity`, запрет неизвестных полей (`JsonSerializerOptions` с `UnmappedMemberHandling.Disallow`).
    Ошибка → исключение `ConfigValidationException` с **путём к файлу, полем и значением**, а не «config is invalid».

@@ -4,6 +4,16 @@
     "maxHp": 100,
     "moveSpeed": 4.0,
     "maxResource": 100,
+    "resourceRegenPerSecond": 5.0,
+    "respawnSeconds": 5.0,
+    "abilityId": 1
+  },
+  {
+    "id": 2,
+    "maxHp": 100,
+    "moveSpeed": 1.0,
+    "maxResource": 100,
+    "resourceRegenPerSecond": 0.0,
     "respawnSeconds": 5.0,
     "abilityId": 1
   }

@@ -33,6 +33,19 @@ namespace Tests
         }
 
         [Fact]
+        public void MoveCommand_WithWalkMagnitude_MovesAtWalkSpeed()
+        {
+            var config = TestWorld.Config(moveSpeed: 4f);
+            var simulation = TestWorld.Simulation(config, TestWorld.Entity(1, config));
+
+            // Ctrl sends 1.5 / 4 = 0.375 direction magnitude, so prediction and server both
+            // move at 1.5 m/s and the Animator can select the Walk blend child.
+            TestWorld.Tick(simulation, TestWorld.Move(1, 0.375f, 0f));
+
+            SnapshotAssert.Equal(new Vector3(0.075f, 0f, 0f), simulation.State.Entities[0].Position);
+        }
+
+        [Fact]
         public void MoveCommand_ForDeadEntity_IsIgnored()
         {
             var config = TestWorld.Config();

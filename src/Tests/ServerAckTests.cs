@@ -57,7 +57,7 @@ namespace Tests
         }
 
         [Fact]
-        public void RejectedCommand_IsAcknowledged_ButDoesNotChangeState()
+        public void MissCommand_IsAcknowledged_AndChargesCooldown()
         {
             using var transport = new InMemoryServerTransport();
             using var server = new GameServer(TestWorld.Config(), transport, new ServerOptions());
@@ -69,8 +69,8 @@ namespace Tests
             _ = Receive(transport, clientId, MessageType.HelloAck);
             Assert.True(server.TryGetSessionEntity(clientId, out var entityId));
 
-            // Цель 999 не существует — команда отклоняется валидатором, но подтверждается клиенту,
-            // иначе клиент повторял бы её при реконсиляции бесконечно.
+            // Unknown target is a legal miss (M10.8): it still activates the ability, so the
+            // cooldown/resource are charged and no damage is dealt.
             transport.SendFromClient(
                 clientId,
                 MessageFraming.Wrap(MessageType.Command, CommandCodec.Encode(new AbilityCommand(999, 1, 4))));
@@ -82,7 +82,9 @@ namespace Tests
 
             Assert.True(server.Simulation.State.TryGetEntity(entityId, out var entity));
             Assert.Equal(100, entity!.Hp);
-            Assert.Contains(server.LogEntries, entry => entry.Contains("UnknownTarget", StringComparison.Ordinal));
+            Assert.Equal(90, entity.Resource);
+            Assert.True(entity.CooldownUntilTick > 0);
+            Assert.DoesNotContain(server.LogEntries, entry => entry.Contains("UnknownTarget", StringComparison.Ordinal));
         }
 
         private static MessageFrame Receive(InMemoryServerTransport transport, int clientId, MessageType type)

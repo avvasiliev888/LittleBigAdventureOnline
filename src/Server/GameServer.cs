@@ -24,6 +24,10 @@ namespace Server
         private SimulationSnapshot? _previousSnapshot;
         private readonly List<string> _log = new List<string>();
         private readonly Action<string>? _logSink;
+        private readonly uint _trainingDummyId;
+        private readonly float _trainingDummyMinX;
+        private readonly float _trainingDummyMaxX;
+        private float _trainingDummyDirection = 1f;
         private uint _nextEntityId = 1;
         private bool _disposed;
 
@@ -52,6 +56,26 @@ namespace Server
 
             _validator = new InputValidator(config, options);
             Simulation = new CoreSimulation(config);
+
+            if (options.SpawnTrainingDummy)
+            {
+                if (options.TrainingDummyEntityId == 0)
+                {
+                    throw new ArgumentOutOfRangeException(
+                        nameof(options),
+                        options.TrainingDummyEntityId,
+                        "TrainingDummyEntityId должен быть положительным.");
+                }
+
+                var dummyActor = config.GetActor(options.TrainingDummyActorId);
+                var dummy = new EntityState(options.TrainingDummyEntityId, dummyActor, options.TrainingDummySpawn);
+                Simulation.State.AddEntity(dummy);
+                _trainingDummyId = dummy.Id;
+                _trainingDummyMinX = options.TrainingDummySpawn.X - 0.5f;
+                _trainingDummyMaxX = options.TrainingDummySpawn.X + 0.5f;
+                Log("[t0] training dummy: entity " + dummy.Id + ", actor " + dummyActor.Id
+                    + ", spawn " + dummy.SpawnPosition);
+            }
 
             _transport.ClientConnected += OnClientConnected;
             _transport.ClientDisconnected += OnClientDisconnected;
@@ -92,13 +116,18 @@ namespace Server
             var pending = _pendingCommands.Count == 0 ? Array.Empty<PendingCommand>() : _pendingCommands.ToArray();
             _pendingCommands.Clear();
 
-            var commands = new CommandEnvelope[pending.Length];
+            var commands = new List<CommandEnvelope>(pending.Length + 1);
             for (var i = 0; i < pending.Length; i++)
             {
-                commands[i] = pending[i].Envelope;
+                commands.Add(pending[i].Envelope);
             }
 
+            // The dummy is server-driven: it walks a short patrol so remote interpolation and
+            // the Walk blend can be verified without trusting client input for an NPC.
+            AddTrainingDummyCommand(commands);
+
             Simulation.Tick(SimulationConstants.FixedDeltaTime, commands);
+            ClampTrainingDummyToPatrolWindow();
 
             var current = Simulation.CreateSnapshot();
             var fullPayload = _serializer.Serialize(current);
@@ -145,8 +174,47 @@ namespace Server
             if (_options.LogTicks)
             {
                 Log("[t" + Simulation.State.Tick + "] tick: entities=" + Simulation.State.Entities.Count
-                    + ", commands=" + commands.Length + ", sessions=" + _sessions.Count);
+                    + ", commands=" + commands.Count + ", sessions=" + _sessions.Count);
             }
+        }
+
+        private void ClampTrainingDummyToPatrolWindow()
+        {
+            if (_trainingDummyId == 0
+                || !Simulation.State.TryGetEntity(_trainingDummyId, out var dummy)
+                || dummy.IsDead)
+            {
+                return;
+            }
+
+            var x = Math.Clamp(dummy.Position.X, _trainingDummyMinX, _trainingDummyMaxX);
+            if (x != dummy.Position.X)
+            {
+                dummy.Position = new Vector3(x, dummy.Position.Y, dummy.Position.Z);
+            }
+        }
+
+        private void AddTrainingDummyCommand(List<CommandEnvelope> commands)
+        {
+            if (_trainingDummyId == 0
+                || !Simulation.State.TryGetEntity(_trainingDummyId, out var dummy)
+                || dummy.IsDead)
+            {
+                return;
+            }
+
+            if (dummy.Position.X >= _trainingDummyMaxX)
+            {
+                _trainingDummyDirection = -1f;
+            }
+            else if (dummy.Position.X <= _trainingDummyMinX)
+            {
+                _trainingDummyDirection = 1f;
+            }
+
+            commands.Add(new CommandEnvelope(
+                _trainingDummyId,
+                new MoveCommand(new Vector2(_trainingDummyDirection, 0f), Simulation.State.Tick, 0)));
         }
 
         /// <summary>Возвращает сущность клиента, если он уже прошёл Hello.</summary>
@@ -241,6 +309,12 @@ namespace Server
             var actor = actorId == 0 ? DefaultActor() : _config.GetActor(actorId);
 
             var entityId = _nextEntityId++;
+            // Never reuse the training dummy's reserved id, even if a player disconnects.
+            if (entityId == _trainingDummyId)
+            {
+                entityId = _nextEntityId++;
+            }
+
             var spawn = new Vector3((_sessions.Count + 1) * _options.SpawnSpacing, 0f, 0f);
             Simulation.State.AddEntity(new EntityState(entityId, actor, spawn));
 

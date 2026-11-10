@@ -71,6 +71,10 @@ namespace Simulation.Core
                     "Команды требуют SimulationConfig: геймплейные параметры не могут быть захардкожены (ADR-005).");
             }
 
+            // Регенерация идёт до способностей: на тике, где ресурс добрал до стоимости,
+            // удар уже возможен. Мёртвые не регенерируют; респавн ниже восстанавливает полный запас.
+            RegenerateResources(deltaTime);
+
             for (var i = 0; i < commands.Count; i++)
             {
                 ApplyCommand(commands[i], deltaTime);
@@ -185,6 +189,13 @@ namespace Simulation.Core
 
             var ability = _config!.GetAbility(_config.GetActor(caster.ActorId).AbilityId);
 
+            // Self-target is never a valid hit. It is also the one target error that does not
+            // activate the ability, so a direct simulation caller cannot spend the cooldown on it.
+            if (command.TargetId == caster.Id)
+            {
+                return;
+            }
+
             if (caster.CooldownUntilTick > _state.Tick)
             {
                 return;
@@ -195,7 +206,14 @@ namespace Simulation.Core
                 return;
             }
 
-            if (!_state.TryGetEntity(command.TargetId, out var target) || target.IsDead)
+            // Activation is charged first: a miss (no target, dead target, out of range) still
+            // spends the resource and starts the cooldown, exactly like the client prediction.
+            caster.Resource -= ability.ResourceCost;
+            caster.CooldownUntilTick = _state.Tick + ToTicks(ability.CooldownSeconds);
+
+            if (command.TargetId == 0
+                || !_state.TryGetEntity(command.TargetId, out var target)
+                || target.IsDead)
             {
                 return;
             }
@@ -205,15 +223,54 @@ namespace Simulation.Core
                 return;
             }
 
-            caster.Resource -= ability.ResourceCost;
-            caster.CooldownUntilTick = _state.Tick + ToTicks(ability.CooldownSeconds);
-
             target.Hp -= ability.Damage;
             if (target.Hp <= 0)
             {
                 target.Hp = 0;
                 target.CooldownUntilTick = 0;
                 target.RespawnAtTick = _state.Tick + ToTicks(target.Actor.RespawnSeconds);
+            }
+        }
+
+        private void RegenerateResources(float deltaTime)
+        {
+            for (var i = 0; i < _state.Entities.Count; i++)
+            {
+                var entity = _state.Entities[i];
+                if (entity.IsDead || entity.Resource >= entity.MaxResource)
+                {
+                    entity.ResourceRegenRemainder = 0f;
+                    continue;
+                }
+
+                var regen = entity.Actor.ResourceRegenPerSecond;
+                if (!(regen > 0f))
+                {
+                    entity.ResourceRegenRemainder = 0f;
+                    continue;
+                }
+
+                entity.ResourceRegenRemainder += regen * deltaTime;
+                if (entity.ResourceRegenRemainder < 1f)
+                {
+                    continue;
+                }
+
+                // Floor, а не Round: дробный остаток копится, целые единицы начисляются по мере
+                // накопления. При достижении максимума остаток обнуляется, чтобы не «переполнить»
+                // ресурс и не тратить накопленное за впустую.
+                var gain = (int)MathF.Floor(entity.ResourceRegenRemainder);
+                var room = entity.MaxResource - entity.Resource;
+                if (gain >= room)
+                {
+                    entity.Resource = entity.MaxResource;
+                    entity.ResourceRegenRemainder = 0f;
+                }
+                else
+                {
+                    entity.Resource += gain;
+                    entity.ResourceRegenRemainder -= gain;
+                }
             }
         }
 
@@ -229,6 +286,7 @@ namespace Simulation.Core
 
                 entity.Hp = entity.MaxHp;
                 entity.Resource = entity.MaxResource;
+                entity.ResourceRegenRemainder = 0f;
                 entity.Position = entity.SpawnPosition;
                 entity.CooldownUntilTick = 0;
                 entity.RespawnAtTick = 0;

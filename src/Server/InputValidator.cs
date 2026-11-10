@@ -1,5 +1,4 @@
 using System;
-using System.Numerics;
 using Simulation.Core;
 
 namespace Server
@@ -25,13 +24,13 @@ namespace Server
         /// <summary>Тип команды не поддерживается.</summary>
         UnsupportedCommand = 5,
 
-        /// <summary>Цели нет в мире.</summary>
+        /// <summary>Цели нет в мире (историческая причина; теперь такой удар — miss без урона).</summary>
         UnknownTarget = 6,
 
-        /// <summary>Цель мертва.</summary>
+        /// <summary>Цель мертва (историческая причина; теперь такой удар — miss без урона).</summary>
         DeadTarget = 7,
 
-        /// <summary>Цель вне радиуса способности.</summary>
+        /// <summary>Цель вне радиуса способности (историческая причина; теперь такой удар — miss без урона).</summary>
         OutOfRange = 8,
 
         /// <summary>Способность на кулдауне.</summary>
@@ -39,6 +38,9 @@ namespace Server
 
         /// <summary>Не хватает ресурса.</summary>
         NotEnoughResource = 10,
+
+        /// <summary>Цель совпадает с кастером: урон по себе запрещён.</summary>
+        SelfTarget = 11,
     }
 
     /// <summary>Результат валидации команды.</summary>
@@ -75,7 +77,7 @@ namespace Server
     }
 
     /// <summary>
-    /// Валидатор входящих команд (M4): дистанция, кулдаун, ресурс, лимит частоты, направление.
+    /// Валидатор входящих команд (M4): лимит частоты, направление, кулдаун и ресурс способности.
     /// Отклонённая команда не применяется — иначе валидатор был бы «мягким» (AI-Failure Mode M4).
     /// </summary>
     public sealed class InputValidator
@@ -142,7 +144,7 @@ namespace Server
                     return ValidationResult.Accept();
 
                 case AbilityCommand ability:
-                    return ValidateAbility(state, tick, caster, ability);
+                    return ValidateAbility(tick, caster, ability);
 
                 default:
                     return ValidationResult.Reject(
@@ -151,26 +153,15 @@ namespace Server
             }
         }
 
-        private ValidationResult ValidateAbility(SimulationState state, uint tick, EntityState caster, AbilityCommand ability)
+        private ValidationResult ValidateAbility(uint tick, EntityState caster, AbilityCommand ability)
         {
             var abilityConfig = _config.GetAbility(_config.GetActor(caster.ActorId).AbilityId);
 
-            if (!state.TryGetEntity(ability.TargetId, out var target))
+            // Self-target is still invalid; a missing, dead or out-of-range target is a legal miss.
+            // The cooldown is charged for any valid activation, hit or miss (M10.8).
+            if (ability.TargetId == caster.Id)
             {
-                return ValidationResult.Reject(CommandRejectReason.UnknownTarget, "цели " + ability.TargetId + " нет");
-            }
-
-            if (target.IsDead)
-            {
-                return ValidationResult.Reject(CommandRejectReason.DeadTarget, "цель мертва");
-            }
-
-            var distance = HorizontalDistance(caster.Position, target.Position);
-            if (distance > abilityConfig.Range)
-            {
-                return ValidationResult.Reject(
-                    CommandRejectReason.OutOfRange,
-                    "дистанция " + distance.ToString("0.###") + " > радиуса " + abilityConfig.Range.ToString("0.###"));
+                return ValidationResult.Reject(CommandRejectReason.SelfTarget, "цель совпадает с кастером");
             }
 
             if (caster.CooldownUntilTick > tick)
@@ -188,13 +179,6 @@ namespace Server
             }
 
             return ValidationResult.Accept();
-        }
-
-        private static float HorizontalDistance(Vector3 left, Vector3 right)
-        {
-            var dx = left.X - right.X;
-            var dz = left.Z - right.Z;
-            return MathF.Sqrt((dx * dx) + (dz * dz));
         }
     }
 }

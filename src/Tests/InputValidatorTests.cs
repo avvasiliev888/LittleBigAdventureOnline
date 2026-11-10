@@ -108,35 +108,55 @@ namespace Tests
         }
 
         [Fact]
-        public void AbilityOutOfRange_IsRejected()
+        public void AbilityOutOfRange_IsAcceptedAsMiss()
         {
             var (validator, state) = Create();
             state.Entities[1].Position = new Vector3(10f, 0f, 0f);
 
             var result = validator.Validate(state, 0, Envelope(1, new AbilityCommand(2, 0, 0)), commandsFromClientThisTick: 0);
 
-            Assert.Equal(CommandRejectReason.OutOfRange, result.Reason);
+            Assert.True(result.IsValid);
         }
 
         [Fact]
-        public void AbilityAtTarget_IsRejected()
+        public void AbilityAtDeadTarget_IsAcceptedAsMiss()
         {
             var (validator, state) = Create();
             state.Entities[1].Hp = 0;
 
             var result = validator.Validate(state, 0, Envelope(1, new AbilityCommand(2, 0, 0)), commandsFromClientThisTick: 0);
 
-            Assert.Equal(CommandRejectReason.DeadTarget, result.Reason);
+            Assert.True(result.IsValid);
         }
 
         [Fact]
-        public void AbilityForUnknownTarget_IsRejected()
+        public void AbilityTargetingSelf_IsRejected()
+        {
+            var (validator, state) = Create();
+
+            var result = validator.Validate(state, 0, Envelope(1, new AbilityCommand(1, 0, 0)), commandsFromClientThisTick: 0);
+
+            Assert.Equal(CommandRejectReason.SelfTarget, result.Reason);
+        }
+
+        [Fact]
+        public void AbilityForUnknownTarget_IsAcceptedAsMiss()
         {
             var (validator, state) = Create();
 
             var result = validator.Validate(state, 0, Envelope(1, new AbilityCommand(404, 0, 0)), commandsFromClientThisTick: 0);
 
-            Assert.Equal(CommandRejectReason.UnknownTarget, result.Reason);
+            Assert.True(result.IsValid);
+        }
+
+        [Fact]
+        public void AbilityWithNoTarget_IsAcceptedAsMiss()
+        {
+            var (validator, state) = Create();
+
+            var result = validator.Validate(state, 0, Envelope(1, new AbilityCommand(0, 0, 0)), commandsFromClientThisTick: 0);
+
+            Assert.True(result.IsValid);
         }
 
         [Fact]

@@ -57,6 +57,12 @@ namespace Simulation.Core
         /// <summary>Текущий ресурс.</summary>
         public int Resource { get; set; }
 
+        /// <summary>
+        /// Накопленная дробная часть регенерации ресурса (серверная деталь; в снапшот не входит).
+        /// Нужна, чтобы при 5 ед/с и тике 0.05 с не терять 0.25 ресурса каждый тик.
+        /// </summary>
+        public float ResourceRegenRemainder { get; set; }
+
         /// <summary>Максимальный ресурс.</summary>
         public int MaxResource { get; }
 

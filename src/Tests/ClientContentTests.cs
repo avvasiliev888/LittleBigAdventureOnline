@@ -16,7 +16,7 @@ namespace Tests
     public sealed class ClientContentTests
     {
         private const string ActorsTemplate = @"[
-  {{ ""id"": 1, ""maxHp"": {0}, ""moveSpeed"": {1}, ""maxResource"": 100, ""respawnSeconds"": 5.0, ""abilityId"": 1 }}
+  {{ ""id"": 1, ""maxHp"": {0}, ""moveSpeed"": {1}, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1 }}
 ]";
 
         private const string AbilitiesTemplate = @"[
@@ -175,8 +175,56 @@ namespace Tests
             prediction.Reconcile(Snapshot(cooldownUntilTick: 0), acknowledgedSequence: 0);
             Assert.Equal(38, prediction.CooldownRemainingTicks);
 
-            // Команда подтверждена, но сервер её отклонил (кулдаун 0) — истина серверная.
+            // Команда подтверждена, но сервер её отклонил (кулдаун 0): отказ не обнуляет
+            // локальный кулдаун, иначе получается цикл «отказ → cd=0 → новый удар».
             prediction.Reconcile(Snapshot(cooldownUntilTick: 0), acknowledgedSequence: 1);
+            Assert.Equal(38, prediction.CooldownRemainingTicks);
+            Assert.False(prediction.IsAbilityReady);
+        }
+
+        [Fact]
+        public void Reconcile_ServerRejectionAfterLocalCooldownExpired_AppliesFullPenalty()
+        {
+            var content = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f));
+            var prediction = new ClientPrediction(7, content.GetActor(1), content.GetAbility(1));
+            prediction.Reset(Vector3.Zero);
+
+            Assert.True(prediction.TryStartAbility(1));
+            for (var i = 0; i < prediction.AbilityCooldownTicks; i++)
+            {
+                prediction.AdvanceCooldown();
+            }
+
+            Assert.Equal(0, prediction.CooldownRemainingTicks);
+            Assert.True(prediction.IsAbilityReady);
+
+            // Отказ пришёл после того, как локальный кулдаун уже дошёл до 0. Жёсткий штраф
+            // не даёт спамить способность каждый тик, пока сервер отвечает отказом.
+            prediction.Reconcile(Snapshot(cooldownUntilTick: 0), acknowledgedSequence: 1);
+
+            Assert.Equal(prediction.AbilityCooldownTicks, prediction.CooldownRemainingTicks);
+            Assert.False(prediction.IsAbilityReady);
+        }
+
+        [Fact]
+        public void Reconcile_RejectionAtCooldownBoundary_WaitsOneTick()
+        {
+            var content = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f));
+            var prediction = new ClientPrediction(7, content.GetActor(1), content.GetAbility(1));
+            prediction.Reset(Vector3.Zero);
+
+            Assert.True(prediction.TryStartAbility(1));
+            for (var i = 0; i < prediction.AbilityCooldownTicks; i++)
+            {
+                prediction.AdvanceCooldown();
+            }
+
+            // Сервер обработал команду на тик раньше, чем истёк CooldownUntilTick: это не
+            // полноценный отказ, а граница. Ждём один тик, а не полный кулдаун.
+            prediction.Reconcile(Snapshot(cooldownUntilTick: 11, tick: 11), acknowledgedSequence: 1);
+
+            Assert.Equal(1, prediction.CooldownRemainingTicks);
+            prediction.AdvanceCooldown();
             Assert.Equal(0, prediction.CooldownRemainingTicks);
             Assert.True(prediction.IsAbilityReady);
         }

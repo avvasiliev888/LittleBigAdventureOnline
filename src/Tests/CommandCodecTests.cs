@@ -56,15 +56,15 @@ namespace Tests
         }
 
         [Fact]
-        public void Decode_ZeroTarget_ReturnsFalse()
+        public void Decode_ZeroTarget_IsValidMiss()
         {
-            var bytes = CommandCodec.Encode(new AbilityCommand(targetId: 1, clientTick: 0, sequence: 0));
-            bytes[9] = 0;
-            bytes[10] = 0;
-            bytes[11] = 0;
-            bytes[12] = 0;
+            var bytes = CommandCodec.Encode(new AbilityCommand(targetId: 0, clientTick: 4, sequence: 2));
 
-            Assert.False(CommandCodec.TryDecode(bytes, out _));
+            var ability = Assert.IsType<AbilityCommand>(Decode(bytes));
+
+            Assert.Equal(0u, ability.TargetId);
+            Assert.Equal(4u, ability.ClientTick);
+            Assert.Equal(2u, ability.Sequence);
         }
 
         private static ICommand Decode(byte[] payload)

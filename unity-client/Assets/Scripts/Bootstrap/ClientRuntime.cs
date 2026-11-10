@@ -57,6 +57,12 @@ namespace Albion.Client
             EnsureGround();
             EnsureAmbient();
 
+            // M10.10: мышь — часть управления. В оконном/редакторном режиме курсор не должен
+            // быть захвачен, а приложение продолжает получать ввод, пока окно активно.
+            Application.runInBackground = true;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+
             _quality = gameObject.AddComponent<QualityProfile>();
             _quality.ApplyFromEnvironment(EnsureVolume());
 
@@ -76,9 +82,18 @@ namespace Albion.Client
 
             var worldRoot = new GameObject("Entities").transform;
             _view = new UnityView(worldRoot);
-            _input = new UnityInputSource(ResolveAbilityTarget);
+            var moveSpeed = _content.GetActor(1).MoveSpeed;
+            _input = new UnityInputSource(
+                ResolveAbilityTarget,
+                moveSpeed > 1.5f ? 1.5f / moveSpeed : 1f,
+                () => _view.IsPlayerAttackPlaying,
+                () => _pipeline != null && _pipeline.Prediction != null && _pipeline.Prediction.IsAbilityReady,
+                PlayerPosition,
+                () => _cameraFollow != null ? _cameraFollow.GetComponent<Camera>() : Camera.main,
+                equipWeapon: _view.EquipWeapon);
             _transport = new LiteNetLibTransport(host, port);
             _pipeline = new ClientPipeline(_transport, _input, _view, content: _content);
+            gameObject.AddComponent<CooldownHud>().Initialize(_pipeline);
 
             _pipeline.SessionReady += entityId =>
             {
@@ -115,8 +130,21 @@ namespace Albion.Client
                 return 0;
             }
 
-            var nearest = _pipeline.FindNearestEntity(_pipeline.EntityId);
-            return nearest != 0 ? nearest : _pipeline.EntityId;
+            // Живая цель имеет приоритет; если живых нет, берём ближайшую мёртвую. Удар по
+            // мёртвой цели — легальный miss с кулдауном, а стабильный id переживает респавн.
+            // target 0 остаётся только для пустого мира.
+            return _pipeline.FindNearestEntity(_pipeline.EntityId);
+        }
+
+        private Vector3 PlayerPosition()
+        {
+            if (_pipeline != null && _pipeline.Prediction != null)
+            {
+                var predicted = _pipeline.Prediction.Position;
+                return new Vector3(predicted.X, predicted.Y, predicted.Z);
+            }
+
+            return _view != null && _view.Player != null ? _view.Player.position : Vector3.zero;
         }
 
         private void Update()
@@ -127,7 +155,13 @@ namespace Albion.Client
             }
 
             _input.PollFrame();
+            var cooldownBefore = _pipeline.Prediction?.CooldownRemainingTicks ?? 0;
             _pipeline.Update(Time.deltaTime);
+            var cooldownAfter = _pipeline.Prediction?.CooldownRemainingTicks ?? 0;
+            // The pipeline owns ability acceptance; readiness before the update plus a jump in
+            // cooldown is the "attack actually started" signal. Requiring readiness avoids
+            // restarting the swing on reconciliation jitter in the middle of a cooldown.
+            if (cooldownBefore <= 1 && cooldownAfter > cooldownBefore + 1) _view.TriggerAttack();
             UpdateFps();
 
             if (_cameraFollow != null && _cameraFollow.Target == null && _view.Player != null)
@@ -158,7 +192,7 @@ namespace Albion.Client
                 + " | cfg: " + configHash
                 + " | profile: " + (_quality == null ? "-" : _quality.ModeName)
                 + " | fps: " + _fpsSmoothed.ToString("0")
-                + " | WASD — движение, Space — способность");
+                + " | WASD/ПКМ — движение, Ctrl — шаг, Space/ЛКМ — способность, 1/2 — оружие");
 
             if (_pipeline?.Prediction != null)
             {
@@ -170,6 +204,7 @@ namespace Albion.Client
                     + " | pos=(" + prediction.Position.X.ToString("0.##") + ", " + prediction.Position.Z.ToString("0.##") + ")"
                     + " | unacked=" + prediction.Unacknowledged.Count
                     + " | hp: " + OwnHpText()
+                    + " | res: " + OwnResourceText()
                     + " | cd: " + prediction.CooldownRemainingTicks + " тиков"
                     + " | range: " + prediction.AbilityRange.ToString("0.##"));
             }
@@ -177,21 +212,33 @@ namespace Albion.Client
 
         private string OwnHpText()
         {
+            var entity = OwnEntity();
+            return entity.HasValue ? entity.Value.Hp + "/" + entity.Value.MaxHp : "-";
+        }
+
+        private string OwnResourceText()
+        {
+            var entity = OwnEntity();
+            return entity.HasValue ? entity.Value.Resource + "/" + entity.Value.MaxResource : "-";
+        }
+
+        private EntitySnapshot? OwnEntity()
+        {
             var snapshot = _pipeline?.LastSnapshot;
             if (snapshot == null)
             {
-                return "-";
+                return null;
             }
 
             foreach (var entity in snapshot.Entities)
             {
                 if (entity.Id == _pipeline!.EntityId)
                 {
-                    return entity.Hp + "/" + entity.MaxHp;
+                    return entity;
                 }
             }
 
-            return "-";
+            return null;
         }
 
         private void EnsureCamera()
@@ -222,12 +269,7 @@ namespace Albion.Client
 
             var lightObject = new GameObject("Directional Light");
             var light = lightObject.AddComponent<Light>();
-            light.type = LightType.Directional;
-            light.color = new Color(1f, 0.94f, 0.82f);
-            light.intensity = 1.15f;
-            light.shadows = LightShadows.Soft;
-            light.shadowStrength = 0.6f;
-            lightObject.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            ArenaEnvironment.ConfigureSun(light);
         }
 
         private static void EnsureGround()
@@ -268,14 +310,7 @@ namespace Albion.Client
 
         private static void EnsureAmbient()
         {
-            RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.58f, 0.66f, 0.78f);
-            RenderSettings.ambientEquatorColor = new Color(0.40f, 0.42f, 0.40f);
-            RenderSettings.ambientGroundColor = new Color(0.17f, 0.19f, 0.17f);
-            RenderSettings.fog = true;
-            RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogColor = new Color(0.46f, 0.55f, 0.58f);
-            RenderSettings.fogDensity = 0.012f;
+            ArenaEnvironment.ApplyAmbientAndFog();
         }
 
         private static Volume EnsureVolume()

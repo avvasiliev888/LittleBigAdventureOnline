@@ -1,4 +1,3 @@
-using System;
 using System.Numerics;
 using Simulation.Core;
 using Xunit;
@@ -25,7 +24,21 @@ namespace Tests
         }
 
         [Fact]
-        public void Ability_OutOfRange_DealsNoDamage()
+        public void Ability_TargetingSelf_DealsNoDamage()
+        {
+            var config = TestWorld.Config(damage: 25, range: 3f);
+            var simulation = TestWorld.Simulation(
+                config,
+                TestWorld.Entity(1, config));
+
+            TestWorld.Tick(simulation, TestWorld.Attack(1, 1));
+
+            Assert.Equal(100, simulation.State.Entities[0].Hp);
+            Assert.Equal(100, simulation.State.Entities[0].Resource);
+        }
+
+        [Fact]
+        public void Ability_OutOfRange_DealsNoDamage_ButActivates()
         {
             var config = TestWorld.Config(damage: 25, range: 3f);
             var simulation = TestWorld.Simulation(
@@ -36,6 +49,22 @@ namespace Tests
             TestWorld.Tick(simulation, TestWorld.Attack(1, 2));
 
             Assert.Equal(100, simulation.State.Entities[1].Hp);
+            Assert.Equal(90, simulation.State.Entities[0].Resource);
+            Assert.True(simulation.State.Entities[0].CooldownUntilTick > 0);
+        }
+
+        [Fact]
+        public void Ability_WithoutTarget_ActivatesAndCoolsDown()
+        {
+            var config = TestWorld.Config(damage: 25, cooldownSeconds: 2f);
+            var simulation = TestWorld.Simulation(config, TestWorld.Entity(1, config));
+
+            TestWorld.Tick(simulation, TestWorld.Attack(1, 0));
+
+            var caster = simulation.State.Entities[0];
+            Assert.Equal(100, caster.Hp);
+            Assert.Equal(90, caster.Resource);
+            Assert.Equal(40u, caster.CooldownUntilTick);
         }
 
         [Fact]
@@ -146,7 +175,7 @@ namespace Tests
         }
 
         [Fact]
-        public void Ability_AgainstDeadTarget_IsIgnored()
+        public void Ability_AgainstDeadTarget_DealsNoDamage_ButActivates()
         {
             var config = TestWorld.Config(damage: 25);
             var target = TestWorld.Entity(2, config, x: 1f);
@@ -156,10 +185,12 @@ namespace Tests
             TestWorld.Tick(simulation, TestWorld.Attack(1, 2));
 
             Assert.Equal(0, simulation.State.Entities[1].Hp);
+            Assert.Equal(90, simulation.State.Entities[0].Resource);
+            Assert.True(simulation.State.Entities[0].CooldownUntilTick > 0);
         }
 
         [Fact]
-        public void Ability_ForUnknownTarget_IsIgnored()
+        public void Ability_ForUnknownTarget_DealsNoDamage_ButActivates()
         {
             var config = TestWorld.Config();
             var simulation = TestWorld.Simulation(config, TestWorld.Entity(1, config));
@@ -167,6 +198,8 @@ namespace Tests
             TestWorld.Tick(simulation, TestWorld.Attack(1, 999));
 
             Assert.Equal(1u, simulation.State.Tick);
+            Assert.Equal(90, simulation.State.Entities[0].Resource);
+            Assert.True(simulation.State.Entities[0].CooldownUntilTick > 0);
         }
 
         [Theory]
@@ -187,9 +220,13 @@ namespace Tests
         }
 
         [Fact]
-        public void AbilityCommand_WithZeroTarget_Throws()
+        public void AbilityCommand_WithZeroTarget_RepresentsMiss()
         {
-            Assert.Throws<ArgumentOutOfRangeException>(() => new AbilityCommand(0, 0, 0));
+            var command = new AbilityCommand(0, 7, 3);
+
+            Assert.Equal(0u, command.TargetId);
+            Assert.Equal(7u, command.ClientTick);
+            Assert.Equal(3u, command.Sequence);
         }
     }
 }

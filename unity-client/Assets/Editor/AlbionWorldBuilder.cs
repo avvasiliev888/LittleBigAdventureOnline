@@ -49,19 +49,13 @@ namespace Albion.Editor
             CreateVolume();
             CreateCamera();
 
-            RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.58f, 0.66f, 0.78f);
-            RenderSettings.ambientEquatorColor = new Color(0.40f, 0.42f, 0.40f);
-            RenderSettings.ambientGroundColor = new Color(0.17f, 0.19f, 0.17f);
-            RenderSettings.fog = true;
-            RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogColor = new Color(0.46f, 0.55f, 0.58f);
-            RenderSettings.fogDensity = 0.012f;
+            Albion.Client.ArenaEnvironment.ApplyAmbientAndFog();
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
 
             BakeOcclusion();
+            EditorSceneManager.SaveScene(scene, ScenePath);
 
             AssetDatabase.SaveAssets();
             Debug.Log("M10: сцена арены собрана — " + ScenePath);
@@ -166,12 +160,7 @@ namespace Albion.Editor
         {
             var lightObject = new GameObject("Directional Light");
             var light = lightObject.AddComponent<Light>();
-            light.type = LightType.Directional;
-            light.color = new Color(1f, 0.94f, 0.82f);
-            light.intensity = 1.15f;
-            light.shadows = LightShadows.Soft;
-            light.shadowStrength = 0.6f;
-            lightObject.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            Albion.Client.ArenaEnvironment.ConfigureSun(light);
         }
 
         private static void CreateVolume()
@@ -198,10 +187,15 @@ namespace Albion.Editor
             var camera = cameraObject.AddComponent<Camera>();
             cameraObject.AddComponent<AudioListener>();
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.43f, 0.55f, 0.62f);
+            camera.backgroundColor = new Color(0.46f, 0.57f, 0.64f);
+            camera.allowHDR = true;
+            var cameraData = camera.GetUniversalAdditionalCameraData();
+            cameraData.renderPostProcessing = true;
+            cameraData.volumeLayerMask = 1;
+            cameraData.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
             camera.farClipPlane = 120f;
-            camera.transform.position = new Vector3(0f, 12f, -10f);
-            camera.transform.LookAt(new Vector3(0f, 1f, 0f));
+            camera.transform.position = new Vector3(0f, 10f, -8f);
+            camera.transform.LookAt(Vector3.zero);
         }
 
         private static Material CreateGroundMaterial()
@@ -220,8 +214,9 @@ namespace Albion.Editor
                 AssetDatabase.CreateAsset(material, GroundMaterialPath);
             }
 
-            material.SetColor("_ColorA", new Color(0.27f, 0.40f, 0.32f));
-            material.SetColor("_ColorB", new Color(0.21f, 0.31f, 0.27f));
+            material.shader = Shader.Find("Albion/Toon Ground");
+            material.SetColor("_ColorA", new Color(0.39f, 0.52f, 0.40f));
+            material.SetColor("_ColorB", new Color(0.34f, 0.46f, 0.37f));
             material.SetFloat("_TileSize", 2f);
             EditorUtility.SetDirty(material);
             return material;
@@ -243,8 +238,10 @@ namespace Albion.Editor
                 AssetDatabase.CreateAsset(material, StoneMaterialPath);
             }
 
-            material.SetColor("_BaseColor", new Color(0.42f, 0.46f, 0.52f));
-            material.SetColor("_ShadeColor", new Color(0.14f, 0.16f, 0.22f));
+            material.shader = Shader.Find("Albion/Toon Lit");
+            material.SetFloat("_RimStrength", 0.16f);
+            material.SetColor("_BaseColor", new Color(0.65f, 0.66f, 0.68f));
+            material.SetColor("_ShadeColor", new Color(0.25f, 0.29f, 0.36f));
             material.SetColor("_RimColor", new Color(0.80f, 0.86f, 0.95f));
             material.SetFloat("_OutlineWidth", 0.012f);
             EditorUtility.SetDirty(material);
@@ -263,10 +260,12 @@ namespace Albion.Editor
                 AssetDatabase.CreateAsset(material, path);
             }
 
+            material.shader = Shader.Find("Albion/Toon Lit");
             material.SetColor("_BaseColor", new Color(0.35f, 0.75f, 0.95f));
             material.SetColor("_ShadeColor", new Color(0.08f, 0.20f, 0.35f));
             material.SetColor("_RimColor", new Color(0.75f, 0.95f, 1f));
-            material.SetFloat("_RimStrength", 0.6f);
+            material.SetFloat("_RimStrength", 0.3f);
+            material.SetColor("_EmissionColor", new Color(0.15f, 1.0f, 1.8f));
             EditorUtility.SetDirty(material);
             return material;
         }

@@ -233,10 +233,18 @@ namespace Shared
             var maxResource = RequireInt(dto, label, "maxResource");
             var respawnSeconds = RequireFloat(dto, label, "respawnSeconds");
             var abilityId = RequireUint(dto, label, "abilityId");
+            var resourceRegenPerSecond = RequireFloat(dto, label, "resourceRegenPerSecond");
 
             try
             {
-                return new ActorConfig(id, maxHp, moveSpeed, maxResource, respawnSeconds, abilityId);
+                return new ActorConfig(
+                    id,
+                    maxHp,
+                    moveSpeed,
+                    maxResource,
+                    respawnSeconds,
+                    abilityId,
+                    resourceRegenPerSecond);
             }
             catch (ArgumentException exception)
             {

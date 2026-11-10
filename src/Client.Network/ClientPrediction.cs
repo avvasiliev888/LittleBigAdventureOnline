@@ -201,12 +201,28 @@ namespace Client.Network
             var serverPosition = new Vector3(ownEntity.Position.X, ownEntity.Position.Y, ownEntity.Position.Z);
             if (_pendingAbilitySequence != 0 && _pendingAbilitySequence <= acknowledgedSequence)
             {
-                // Сервер обработал способность: его кулдаун — истина (0, если команду отклонили).
-                // Переводим абсолютный серверный тик в относительные тики клиента, иначе HUD
-                // показывал бы разницу между тиком сервера и клиентским тиком (баг «cd: 3098»).
-                _cooldownRemainingTicks = ownEntity.CooldownUntilTick > snapshot.Tick
+                // Сервер обработал способность. Его кулдаун — истина, но только если он ненулевой:
+                // при отказе (self-target/cooldown/resource) сервер не выставляет CooldownUntilTick,
+                // и наивный сброс в 0 открывал бесконечный цикл «отказ → cd=0 → новый удар».
+                // Поэтому отказ никогда не обнуляет локальный кулдаун: сохраняем уже идущий остаток,
+                // а если он успел дойти до 0 — ставим полный штрафной кулдаун. Это касается и
+                // промаха/мёртвой цели, если конкретный сервер считает такую команду отказом.
+                var serverRemaining = ownEntity.CooldownUntilTick > snapshot.Tick
                     ? (int)(ownEntity.CooldownUntilTick - snapshot.Tick)
                     : 0;
+                if (serverRemaining > 0)
+                {
+                    _cooldownRemainingTicks = serverRemaining;
+                }
+                else if (_cooldownRemainingTicks <= 0)
+                {
+                    // Отказ на самой границе кулдауна: сервер обработал команду на тик
+                    // раньше, чем истёк CooldownUntilTick. Это не повод для полного штрафа —
+                    // один тик гарантирует повтор уже на следующем серверном тике.
+                    var serverCooldownAtBoundary = ownEntity.CooldownUntilTick != 0
+                        && snapshot.Tick == ownEntity.CooldownUntilTick;
+                    _cooldownRemainingTicks = serverCooldownAtBoundary ? 1 : AbilityCooldownTicks;
+                }
                 _pendingAbilitySequence = 0;
             }
 

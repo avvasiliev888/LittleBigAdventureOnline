@@ -201,7 +201,8 @@ namespace Tests
         public void Pipeline_UsesConfigForPredictionAndAbilityCooldown()
         {
             var serverTransport = new InMemoryServerTransport();
-            using var server = new GameServer(TestWorld.Config(cooldownSeconds: 2f), serverTransport, new ServerOptions());
+            var config = TestWorld.Config(cooldownSeconds: 2f);
+            using var server = new GameServer(config, serverTransport, new ServerOptions());
             server.Start();
 
             var clientId = serverTransport.ConnectClient();
@@ -224,8 +225,9 @@ namespace Tests
             Assert.Equal(40, pipeline.Prediction!.AbilityCooldownTicks);
             Assert.Equal(3f, pipeline.Prediction.AbilityRange, 3);
 
-            // Space → AbilityCommand по себе (единственная цель): клиент сразу рисует кулдаун из конфига.
-            input.Command = new AbilityCommand(pipeline.EntityId, pipeline.ClientTick, 1);
+            // Space → AbilityCommand по манекену: клиент сразу рисует кулдаун из конфига.
+            server.Simulation.State.AddEntity(TestWorld.Entity(2, config, x: 1f));
+            input.Command = new AbilityCommand(2, pipeline.ClientTick, 1);
             pipeline.Update(ClientPipeline.TickIntervalSeconds);
 
             Assert.True(pipeline.Prediction.CooldownRemainingTicks > 0,
@@ -242,15 +244,169 @@ namespace Tests
 
             Assert.NotNull(pipeline.LastSnapshot);
             var own = Array.Find(pipeline.LastSnapshot!.Entities.ToArray(), entity => entity.Id == pipeline.EntityId);
-            Assert.True(own.Hp < own.MaxHp, "сервер не применил способность: hp=" + own.Hp + "/" + own.MaxHp);
+            Assert.Equal(own.MaxHp, own.Hp); // Self-damage is forbidden (M10.7).
+            var target = Array.Find(pipeline.LastSnapshot.Entities.ToArray(), entity => entity.Id == 2);
+            Assert.Equal(75, target.Hp);
             Assert.True(pipeline.Prediction.CooldownRemainingTicks > 0);
+        }
+
+        [Fact]
+        public void Pipeline_TargetsRespawnedDummy_Again_AfterSnapshotRefresh()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            var config = TestWorld.ServerConfig();
+            using var server = new GameServer(
+                config,
+                serverTransport,
+                new ServerOptions { SpawnTrainingDummy = true });
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            var input = new SpamAbilityInputSource();
+            using var pipeline = new ClientPipeline(transport, input, new RecordingView(), content: content);
+            pipeline.Start();
+            Step(pipeline, server, 5);
+
+            Assert.True(server.Simulation.State.TryGetEntity(2, out var dummy));
+            dummy!.Hp = 0;
+            dummy.RespawnAtTick = server.Simulation.State.Tick + 5;
+
+            Step(pipeline, server, 2);
+            Assert.Equal(2u, pipeline.FindNearestEntity(pipeline.EntityId));
+            Assert.True(dummy.IsDead);
+
+            // Wait for the server respawn and for the snapshot to reach the client.
+            Step(pipeline, server, 8);
+            Assert.False(dummy.IsDead);
+            Assert.Equal(100, dummy.Hp);
+            Assert.Equal(2u, pipeline.FindNearestEntity(pipeline.EntityId));
+            Assert.Contains(
+                pipeline.LastSnapshot!.Entities,
+                entity => entity.Id == 2 && !entity.IsDead && entity.Hp == 100);
+
+            // The first and the next attack after respawn must both reach the dummy.
+            input.TargetId = 2;
+            Step(pipeline, server, 2);
+            Assert.Equal(75, EntityHp(pipeline, 2));
+
+            Step(pipeline, server, 45);
+            Assert.Equal(50, EntityHp(pipeline, 2));
+
+            // И ещё один полный цикл: после respawn цель не «одноразовая».
+            Step(pipeline, server, 45);
+            Assert.Equal(25, EntityHp(pipeline, 2));
+        }
+
+        [Fact]
+        public void Pipeline_DeadTargetMiss_DoesNotBlockRespawnedTarget()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            var config = TestWorld.ServerConfig();
+            using var server = new GameServer(
+                config,
+                serverTransport,
+                new ServerOptions { SpawnTrainingDummy = true });
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            var input = new SpamAbilityInputSource();
+            using var pipeline = new ClientPipeline(transport, input, new RecordingView(), content: content);
+            pipeline.Start();
+            Step(pipeline, server, 5);
+
+            Assert.True(server.Simulation.State.TryGetEntity(2, out var dummy));
+            dummy!.Hp = 0;
+            dummy.RespawnAtTick = server.Simulation.State.Tick + 5;
+            input.TargetId = 2;
+
+            // Удар по мёртвому манекену — легальный miss: сервер списывает кулдаун, урона нет.
+            Step(pipeline, server, 2);
+            Assert.Equal(0, EntityHp(pipeline, 2));
+            Assert.True(server.Simulation.State.TryGetEntity(1, out var caster));
+            Assert.True(caster!.CooldownUntilTick > server.Simulation.State.Tick);
+
+            Step(pipeline, server, 8);
+            Assert.False(dummy.IsDead);
+            Assert.Equal(100, dummy.Hp);
+
+            // После respawn кулдаун не «залип»: следующий удар снова наносит урон.
+            Step(pipeline, server, 45);
+            Assert.Equal(75, EntityHp(pipeline, 2));
+        }
+
+        [Fact]
+        public void Pipeline_TargetlessMiss_StartsCooldown_AndDealsNoDamage()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            var config = TestWorld.Config(cooldownSeconds: 2f);
+            using var server = new GameServer(config, serverTransport, new ServerOptions());
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            var input = new SingleCommandInputSource();
+            var pipeline = new ClientPipeline(transport, input, new RecordingView(), content: content);
+            using (pipeline)
+            {
+                pipeline.Start();
+                Step(pipeline, server, 5);
+                input.Command = new AbilityCommand(0, pipeline.ClientTick, 1);
+                Step(pipeline, server, 1);
+
+                Assert.Single(transport.SentAbilities);
+                Assert.Equal(0u, transport.SentAbilities[0].TargetId);
+                Assert.Equal(40, pipeline.Prediction!.CooldownRemainingTicks);
+                Assert.Equal(100, OwnHp(pipeline));
+                Assert.True(server.Simulation.State.TryGetEntity(pipeline.EntityId, out var own));
+                Assert.Equal(90, own!.Resource);
+                Assert.Equal(100, own.Hp);
+
+                // The server accepts a miss and the reconciled cooldown must stay active; it must
+                // not be rolled back to 0 just because no damage was dealt.
+                Step(pipeline, server, 2);
+                Assert.True(pipeline.Prediction.CooldownRemainingTicks > 0);
+            }
+        }
+
+        [Fact]
+        public void Pipeline_FindNearestEntity_PrefersLiving_AndFallsBackToDead()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            var config = TestWorld.Config();
+            using var server = new GameServer(config, serverTransport, new ServerOptions());
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            using var pipeline = new ClientPipeline(transport, new ScriptedInputSource(Vector2.Zero), new RecordingView());
+            pipeline.Start();
+
+            Step(pipeline, server, 5);
+            Assert.Equal(0u, pipeline.FindNearestEntity(pipeline.EntityId));
+
+            var target = TestWorld.Entity(2, config, x: 1f);
+            server.Simulation.State.AddEntity(target);
+            Step(pipeline, server, 2);
+            Assert.Equal(2u, pipeline.FindNearestEntity(pipeline.EntityId));
+
+            // A dead entity is still a valid swing target; the server charges cooldown but deals
+            // no damage. Falling back to it also keeps the id stable across a respawn window.
+            target.Hp = 0;
+            Step(pipeline, server, 2);
+            Assert.Equal(2u, pipeline.FindNearestEntity(pipeline.EntityId));
         }
 
         [Fact]
         public void Pipeline_IgnoresAbilityWhileCooldownActive_AndFiresAfterIt()
         {
             var serverTransport = new InMemoryServerTransport();
-            using var server = new GameServer(TestWorld.Config(cooldownSeconds: 2f), serverTransport, new ServerOptions());
+            var config = TestWorld.Config(cooldownSeconds: 2f);
+            using var server = new GameServer(config, serverTransport, new ServerOptions());
             server.Start();
 
             var clientId = serverTransport.ConnectClient();
@@ -261,28 +417,32 @@ namespace Tests
             pipeline.Start();
 
             Step(pipeline, server, 5);
-            input.TargetId = pipeline.EntityId;
+            server.Simulation.State.AddEntity(TestWorld.Entity(2, config, x: 1f));
+            input.TargetId = 2;
 
             // Первая способность: команда уходит, кулдаун из конфига (2 с = 40 тиков) ставится сразу.
             Step(pipeline, server, 1);
             Assert.Single(transport.SentAbilities);
             Assert.Equal(40, pipeline.Prediction!.CooldownRemainingTicks);
+            Assert.Equal(100, OwnHp(pipeline));
 
             Step(pipeline, server, 3);
-            var hpAfterFirst = OwnHp(pipeline);
+            var hpAfterFirst = EntityHp(pipeline, 2);
             Assert.Equal(75, hpAfterFirst);
 
             // Пока кулдаун идёт, спам Space игнорируется локально: ни команды, ни урона.
             var sentAfterFirst = transport.SentAbilities.Count;
             Step(pipeline, server, 10);
             Assert.Equal(sentAfterFirst, transport.SentAbilities.Count);
-            Assert.Equal(hpAfterFirst, OwnHp(pipeline));
+            Assert.Equal(hpAfterFirst, EntityHp(pipeline, 2));
+            Assert.Equal(100, OwnHp(pipeline));
             Assert.True(pipeline.Prediction.CooldownRemainingTicks > 0);
 
-            // Кулдаун истёк — способность снова срабатывает (сервер применяет урон).
+            // Кулдаун истёк — способность снова срабатывает (сервер применяет урон по манекену).
             Step(pipeline, server, 45);
             Assert.True(transport.SentAbilities.Count > sentAfterFirst);
-            Assert.True(OwnHp(pipeline) < hpAfterFirst, "способность не сработала после кулдауна");
+            Assert.True(EntityHp(pipeline, 2) < hpAfterFirst, "способность не сработала после кулдауна");
+            Assert.Equal(100, OwnHp(pipeline));
         }
 
         private static void Step(ClientPipeline pipeline, GameServer server, int ticks)
@@ -293,6 +453,25 @@ namespace Tests
                 server.Poll();
                 server.Tick();
             }
+        }
+
+        private static int EntityHp(ClientPipeline pipeline, uint entityId)
+        {
+            var snapshot = pipeline.LastSnapshot;
+            if (snapshot == null)
+            {
+                return -1;
+            }
+
+            foreach (var entity in snapshot.Entities)
+            {
+                if (entity.Id == entityId)
+                {
+                    return entity.Hp;
+                }
+            }
+
+            return -1;
         }
 
         private static int OwnHp(ClientPipeline pipeline)

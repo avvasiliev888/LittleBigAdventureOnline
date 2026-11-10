@@ -47,7 +47,7 @@ namespace Tests
         }
 
         [Fact]
-        public void RejectedCommand_DoesNotChangeState_AndIsLoggedWithReason()
+        public void MissCommand_ActivatesCooldown_ButDealsNoDamage()
         {
             using var harness = new Harness();
             var clientId = harness.Connect();
@@ -57,16 +57,19 @@ namespace Tests
             var ack = harness.Receive(clientId, MessageType.HelloAck);
             var entityId = ReadUInt32(ack.Payload, 0);
 
+            // Unknown target is no longer a rejected command: it is a legal miss (M10.8).
             harness.Send(clientId, MessageType.Command, CommandCodec.Encode(new AbilityCommand(999, 1, 0)));
             harness.Server.Poll();
             harness.Server.Tick();
 
             var snapshot = harness.ReceiveSnapshot(clientId);
             Assert.Equal(100, snapshot.Entities[0].Hp);
-            Assert.Contains(harness.Server.LogEntries, entry => entry.Contains("UnknownTarget", StringComparison.Ordinal));
+            Assert.DoesNotContain(harness.Server.LogEntries, entry => entry.Contains("UnknownTarget", StringComparison.Ordinal));
 
             Assert.True(harness.Server.Simulation.State.TryGetEntity(entityId, out var entity));
             Assert.Equal(100, entity!.Hp);
+            Assert.Equal(90, entity.Resource);
+            Assert.True(entity.CooldownUntilTick > snapshot.Tick);
         }
 
         [Fact]
@@ -157,6 +160,82 @@ namespace Tests
             Assert.Single(harness.Server.Simulation.State.Entities);
         }
 
+        [Fact]
+        public void SelfTargetCommand_DoesNotDamageCaster_AndIsLogged()
+        {
+            using var harness = new Harness();
+            var clientId = harness.Connect();
+
+            harness.Send(clientId, MessageType.Hello, Array.Empty<byte>());
+            harness.Server.Poll();
+            var ack = harness.Receive(clientId, MessageType.HelloAck);
+            var entityId = ReadUInt32(ack.Payload, 0);
+
+            harness.Send(clientId, MessageType.Command, CommandCodec.Encode(new AbilityCommand(entityId, 1, 0)));
+            harness.Server.Poll();
+            harness.Server.Tick();
+
+            var snapshot = harness.ReceiveSnapshot(clientId);
+            Assert.Equal(100, snapshot.Entities[0].Hp);
+            Assert.Contains(harness.Server.LogEntries, entry => entry.Contains("SelfTarget", StringComparison.Ordinal));
+            Assert.True(harness.Server.Simulation.State.TryGetEntity(entityId, out var caster));
+            Assert.Equal(100, caster!.Resource);
+        }
+
+        [Fact]
+        public void TrainingDummy_IsSpawnedAtId2_AndDamagedWithoutSelfDamage()
+        {
+            var config = TestWorld.ServerConfig();
+            using var harness = new Harness(new ServerOptions { SpawnTrainingDummy = true }, config);
+            var clientId = harness.Connect();
+
+            harness.Send(clientId, MessageType.Hello, Array.Empty<byte>());
+            harness.Server.Poll();
+            var ack = harness.Receive(clientId, MessageType.HelloAck);
+            var playerId = ReadUInt32(ack.Payload, 0);
+
+            Assert.Equal(1u, playerId);
+            Assert.True(harness.Server.Simulation.State.TryGetEntity(2, out var dummy));
+            Assert.Equal(100, dummy!.Hp);
+            Assert.Equal(TestWorld.DummyActorId, dummy.ActorId);
+            Assert.Equal(1f, dummy.Actor.MoveSpeed);
+            Assert.Equal(4f, dummy.Position.X, 3);
+
+            harness.Send(clientId, MessageType.Command, CommandCodec.Encode(new AbilityCommand(2, 1, 0)));
+            harness.Server.Poll();
+            harness.Server.Tick();
+
+            Assert.True(harness.Server.Simulation.State.TryGetEntity(2, out dummy));
+            Assert.Equal(75, dummy!.Hp);
+            Assert.True(harness.Server.Simulation.State.TryGetEntity(playerId, out var player));
+            Assert.Equal(100, player!.Hp);
+
+            var snapshot = harness.ReceiveSnapshot(clientId);
+            Assert.Contains(snapshot.Entities, entity => entity.Id == 2 && entity.Hp == 75);
+        }
+
+        [Fact]
+        public void TrainingDummy_PatrolsSlowlyWithinSpawnWindow()
+        {
+            var config = TestWorld.ServerConfig();
+            using var harness = new Harness(new ServerOptions { SpawnTrainingDummy = true }, config);
+
+            Assert.True(harness.Server.Simulation.State.TryGetEntity(2, out var dummy));
+            var startX = dummy!.Position.X;
+            var sawRight = false;
+            var sawLeft = false;
+
+            for (var i = 0; i < 80; i++)
+            {
+                harness.Server.Tick();
+                Assert.InRange(dummy.Position.X, 3.5f, 4.5f);
+                sawRight |= dummy.Position.X > startX;
+                sawLeft |= dummy.Position.X < startX;
+            }
+
+            Assert.True(sawRight && sawLeft, "манекен не прошёл патруль в обе стороны");
+        }
+
         private static uint ReadUInt32(byte[] buffer, int offset)
         {
             return (uint)(buffer[offset] | (buffer[offset + 1] << 8) | (buffer[offset + 2] << 16) | (buffer[offset + 3] << 24));
@@ -167,10 +246,10 @@ namespace Tests
             private readonly BinarySnapshotSerializer _serializer = new BinarySnapshotSerializer();
             private SimulationSnapshot? _lastSnapshot;
 
-            public Harness(ServerOptions? options = null)
+            public Harness(ServerOptions? options = null, SimulationConfig? config = null)
             {
                 Transport = new InMemoryServerTransport();
-                Server = new GameServer(TestWorld.Config(), Transport, options ?? new ServerOptions());
+                Server = new GameServer(config ?? TestWorld.Config(), Transport, options ?? new ServerOptions());
                 Server.Start();
             }
 

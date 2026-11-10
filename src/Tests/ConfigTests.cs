@@ -9,7 +9,7 @@ namespace Tests
     public sealed class ConfigTests
     {
         private const string ValidActors = @"[
-  { ""id"": 1, ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""respawnSeconds"": 5.0, ""abilityId"": 1 }
+  { ""id"": 1, ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1 }
 ]";
 
         private const string ValidAbilities = @"[
@@ -28,11 +28,24 @@ namespace Tests
         }
 
         [Fact]
+        public void LoadFromJson_ActorWithoutResourceRegen_ThrowsWithFieldName()
+        {
+            const string actors = @"[
+  { ""id"": 1, ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""respawnSeconds"": 5.0, ""abilityId"": 1 }
+]";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(actors, ValidAbilities));
+
+            Assert.Contains("resourceRegenPerSecond", exception.Message);
+        }
+
+        [Fact]
         public void LoadFromJson_CommentsAndTrailingCommas_AreAllowed()
         {
             const string actors = @"[
   // комментарий допустим
-  { ""id"": 1, ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""respawnSeconds"": 5.0, ""abilityId"": 1, },
+  { ""id"": 1, ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1, },
 ]";
 
             var config = ConfigLoader.LoadFromJson(actors, ValidAbilities);
@@ -69,7 +82,7 @@ namespace Tests
         public void LoadFromJson_MissingAbilityReference_Throws()
         {
             const string actors = @"[
-  { ""id"": 1, ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""respawnSeconds"": 5.0, ""abilityId"": 99 }
+  { ""id"": 1, ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 99 }
 ]";
 
             var exception = Assert.Throws<ConfigValidationException>(
@@ -135,6 +148,17 @@ namespace Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => new Simulation.Core.ActorConfig(1, 100, 4f, -1, 5f, 1));
             Assert.Throws<ArgumentOutOfRangeException>(() => new Simulation.Core.ActorConfig(1, 100, 4f, 100, 0f, 1));
             Assert.Throws<ArgumentOutOfRangeException>(() => new Simulation.Core.ActorConfig(1, 100, 4f, 100, 5f, 0));
+        }
+
+        [Fact]
+        public void ActorConfig_RejectsInvalidResourceRegen()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new Simulation.Core.ActorConfig(1, 100, 4f, 100, 5f, 1, -0.1f));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new Simulation.Core.ActorConfig(1, 100, 4f, 100, 5f, 1, float.NaN));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new Simulation.Core.ActorConfig(1, 100, 4f, 100, 5f, 1, float.PositiveInfinity));
         }
 
         [Fact]

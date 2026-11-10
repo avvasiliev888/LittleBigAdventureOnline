@@ -85,7 +85,11 @@ namespace Server
             }
 
             using var transport = new InMemoryServerTransport();
-            using var server = new GameServer(config, transport, new ServerOptions { LogTicks = true }, Console.WriteLine);
+            using var server = new GameServer(
+                config,
+                transport,
+                new ServerOptions { LogTicks = true, SpawnTrainingDummy = true },
+                Console.WriteLine);
             var serializer = new BinarySnapshotSerializer();
             SimulationSnapshot? lastSnapshot = null;
             var loop = new ServerLoop(server, new SystemClock(), 20);
@@ -181,7 +185,11 @@ namespace Server
                     + lossPercent + "% ненадёжных пакетов");
             }
 
-            using var server = new GameServer(config, transport, new ServerOptions(), Console.WriteLine);
+            using var server = new GameServer(
+                config,
+                transport,
+                new ServerOptions { SpawnTrainingDummy = true },
+                Console.WriteLine);
             started = server;
             var loop = new ServerLoop(server, new SystemClock(), 20);
 

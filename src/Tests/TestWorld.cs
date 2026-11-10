@@ -10,6 +10,7 @@ namespace Tests
     {
         public const uint PlayerActorId = 1;
         public const uint PlayerAbilityId = 1;
+        public const uint DummyActorId = 2;
 
         public static SimulationConfig Config(
             int damage = 25,
@@ -19,10 +20,18 @@ namespace Tests
             int maxHp = 100,
             float moveSpeed = 4f,
             float respawnSeconds = 5f,
-            int maxResource = 100)
+            int maxResource = 100,
+            float resourceRegenPerSecond = 0f)
         {
             var ability = new AbilityConfig(PlayerAbilityId, damage, range, cooldownSeconds, resourceCost);
-            var actor = new ActorConfig(PlayerActorId, maxHp, moveSpeed, maxResource, respawnSeconds, PlayerAbilityId);
+            var actor = new ActorConfig(
+                PlayerActorId,
+                maxHp,
+                moveSpeed,
+                maxResource,
+                respawnSeconds,
+                PlayerAbilityId,
+                resourceRegenPerSecond);
 
             return new SimulationConfig(new[] { actor }, new[] { ability });
         }
@@ -35,6 +44,15 @@ namespace Tests
             uint actorId = PlayerActorId)
         {
             return new EntityState(id, config.GetActor(actorId), new Vector3(x, 0f, z));
+        }
+
+        /// <summary>Player actor 1 plus training dummy actor 2 for server/dummy tests (M10.7).</summary>
+        public static SimulationConfig ServerConfig(float dummyMoveSpeed = 1f, float range = 3f)
+        {
+            var ability = new AbilityConfig(PlayerAbilityId, 25, range, 2f, 10);
+            var player = new ActorConfig(PlayerActorId, 100, 4f, 100, 5f, PlayerAbilityId);
+            var dummy = new ActorConfig(DummyActorId, 100, dummyMoveSpeed, 100, 5f, PlayerAbilityId);
+            return new SimulationConfig(new[] { player, dummy }, new[] { ability });
         }
 
         public static CoreSimulation Simulation(SimulationConfig config, params EntityState[] entities)

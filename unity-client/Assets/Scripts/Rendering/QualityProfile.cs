@@ -6,8 +6,8 @@ using UnityEngine.Rendering.Universal;
 namespace Albion.Client
 {
     /// <summary>
-    /// Два профиля качества M10: <c>desktop</c> (deferred, HDR, MSAA 4x, тени 2048, пост-обработка)
-    /// и <c>mobile</c> (forward, без HDR/MSAA/пост-обработки, render scale 0.8, тени 1024).
+    /// Два профиля качества M10: <c>desktop</c> (deferred, HDR, SMAA камеры, тени 2048, пост-обработка)
+    /// и <c>mobile</c> (forward, без HDR/MSAA/пост-обработки и теней, render scale 0.8).
     /// </summary>
     /// <remarks>
     /// Профиль — это два готовых URP-ассета (ADR-012). Переключение не требует перезапуска плеера:
@@ -69,12 +69,18 @@ namespace Albion.Client
             }
 
             GraphicsSettings.defaultRenderPipeline = asset;
+            // A per-quality override takes precedence over GraphicsSettings.
+            QualitySettings.renderPipeline = asset;
 
             var camera = Camera.main;
             if (camera != null)
             {
                 var cameraData = camera.GetUniversalAdditionalCameraData();
                 cameraData.renderPostProcessing = mode == Mode.Desktop;
+                cameraData.volumeLayerMask = 1;
+                cameraData.renderShadows = mode == Mode.Desktop;
+                camera.allowHDR = mode == Mode.Desktop;
+                camera.backgroundColor = RenderSettings.fogColor;
                 cameraData.antialiasing = mode == Mode.Desktop
                     ? AntialiasingMode.SubpixelMorphologicalAntiAliasing
                     : AntialiasingMode.None;

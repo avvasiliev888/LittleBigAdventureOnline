@@ -24,6 +24,7 @@ namespace Server
         private SimulationSnapshot? _previousSnapshot;
         private readonly List<string> _log = new List<string>();
         private readonly Action<string>? _logSink;
+        private readonly ServerMetrics _metrics = new ServerMetrics();
         private readonly uint _trainingDummyId;
         private readonly float _trainingDummyMinX;
         private readonly float _trainingDummyMaxX;
@@ -52,6 +53,14 @@ namespace Server
             if (options.TickRate <= 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(options), options.TickRate, "TickRate должен быть положительным.");
+            }
+
+            if (options.LogTickMetricsEvery < 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(options),
+                    options.LogTickMetricsEvery,
+                    "LogTickMetricsEvery не может быть отрицательным.");
             }
 
             _validator = new InputValidator(config, options);
@@ -88,6 +97,9 @@ namespace Server
         /// <summary>Валидатор входящих команд.</summary>
         public InputValidator Validator => _validator;
 
+        /// <summary>Метрики длительности тика (M11).</summary>
+        public ServerMetrics Metrics => _metrics;
+
         /// <summary>Записи лога сервера (включая отклонённые команды) — для тестов и демо.</summary>
         public IReadOnlyList<string> LogEntries => _log;
 
@@ -112,6 +124,30 @@ namespace Server
 
         /// <summary>Выполняет один тик: применяет накопленные команды и рассылает снапшот.</summary>
         public void Tick()
+        {
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            try
+            {
+                TickCore();
+            }
+            finally
+            {
+                var elapsedMs = (System.Diagnostics.Stopwatch.GetTimestamp() - started)
+                    * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                Metrics.Record(elapsedMs);
+                if (_options.LogTickMetricsEvery > 0
+                    && Simulation.State.Tick % (uint)_options.LogTickMetricsEvery == 0)
+                {
+                    Log(Metrics.Format("tick"));
+                }
+            }
+        }
+
+        /// <summary>Пишет в лог текущий снимок метрик (например, при остановке сервера).</summary>
+        /// <param name="label">Префикс строки.</param>
+        public void LogMetrics(string label = "tick") => Log(Metrics.Format(label));
+
+        private void TickCore()
         {
             var pending = _pendingCommands.Count == 0 ? Array.Empty<PendingCommand>() : _pendingCommands.ToArray();
             _pendingCommands.Clear();

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Numerics;
 using Shared;
@@ -18,6 +19,8 @@ namespace Server
         /// <summary>Запускает сервер: демо с in-process клиентом или UDP-сервер.</summary>
         /// <param name="args">
         /// `--udp [порт]` для реального UDP; `--delay &lt;мс&gt;` и `--loss &lt;процент&gt;` — имитация плохой сети (M7);
+        /// `--metrics-every &lt;тиков&gt;` — период лога метрик (по умолчанию 200, 0 — выкл.);
+        /// `--seconds &lt;сек&gt;` — остановиться через N секунд (для нагрузочного теста);
         /// иначе путь к каталогу конфигов (необязательно).
         /// </param>
         /// <returns>Код возврата процесса.</returns>
@@ -27,6 +30,8 @@ namespace Server
             int? udpPort = null;
             var delayMs = 0;
             var lossPercent = 0;
+            var metricsEvery = 200;
+            int? runSeconds = null;
 
             for (var i = 0; i < args.Length; i++)
             {
@@ -59,6 +64,22 @@ namespace Server
                     continue;
                 }
 
+                if (args[i] == "--metrics-every" && i + 1 < args.Length
+                    && int.TryParse(args[i + 1], out var every))
+                {
+                    metricsEvery = Math.Max(0, every);
+                    i++;
+                    continue;
+                }
+
+                if (args[i] == "--seconds" && i + 1 < args.Length
+                    && int.TryParse(args[i + 1], out var seconds))
+                {
+                    runSeconds = Math.Max(1, seconds);
+                    i++;
+                    continue;
+                }
+
                 positional.Add(args[i]);
             }
 
@@ -81,7 +102,7 @@ namespace Server
 
             if (udpPort.HasValue)
             {
-                return RunUdpServer(config, udpPort.Value, delayMs, lossPercent);
+                return RunUdpServer(config, udpPort.Value, delayMs, lossPercent, metricsEvery, runSeconds);
             }
 
             using var transport = new InMemoryServerTransport();
@@ -157,7 +178,13 @@ namespace Server
             return 0;
         }
 
-        private static int RunUdpServer(SimulationConfig config, int port, int delayMs, int lossPercent)
+        private static int RunUdpServer(
+            SimulationConfig config,
+            int port,
+            int delayMs,
+            int lossPercent,
+            int metricsEvery,
+            int? runSeconds)
         {
             using var socket = new LiteNetLibServerTransport(port);
             IServerTransport transport = socket;
@@ -188,7 +215,11 @@ namespace Server
             using var server = new GameServer(
                 config,
                 transport,
-                new ServerOptions { SpawnTrainingDummy = true },
+                new ServerOptions
+                {
+                    SpawnTrainingDummy = true,
+                    LogTickMetricsEvery = metricsEvery,
+                },
                 Console.WriteLine);
             started = server;
             var loop = new ServerLoop(server, new SystemClock(), 20);
@@ -196,6 +227,10 @@ namespace Server
             server.Start();
             Console.WriteLine("UDP-сервер слушает порт " + socket.LocalPort + " (protocol v" + Protocol.Version
                 + ", тик " + loop.TickRate + " Гц). Ctrl+C — остановка.");
+            if (runSeconds.HasValue)
+            {
+                Console.WriteLine("сервер остановится через " + runSeconds.Value + " с (нагрузочный тест)");
+            }
 
             var running = true;
             Console.CancelKeyPress += (_, eventArgs) =>
@@ -204,12 +239,16 @@ namespace Server
                 running = false;
             };
 
-            while (running)
+            var stopwatch = Stopwatch.StartNew();
+            while (running
+                && (!runSeconds.HasValue || stopwatch.Elapsed.TotalSeconds < runSeconds.Value))
             {
                 loop.RunOnce();
             }
 
-            Console.WriteLine("остановлено: тиков=" + loop.TicksExecuted + ", лог-записей=" + server.LogEntries.Count);
+            server.LogMetrics("tick final");
+            Console.WriteLine("остановлено: тиков=" + loop.TicksExecuted + ", лог-записей=" + server.LogEntries.Count
+                + ", полных снапшотов=" + server.FullSnapshotsSent + ", дельт=" + server.DeltasSent);
             return 0;
         }
 

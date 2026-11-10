@@ -41,5 +41,11 @@ namespace Server
 
         /// <summary>Логировать каждый тик (для демо; в тестах выключено).</summary>
         public bool LogTicks { get; init; }
+
+        /// <summary>
+        /// Период логирования метрик длительности тика в тиках (M11). 0 — не логировать.
+        /// При 20 Гц значение 200 даёт строку раз в 10 секунд.
+        /// </summary>
+        public int LogTickMetricsEvery { get; init; }
     }
 }

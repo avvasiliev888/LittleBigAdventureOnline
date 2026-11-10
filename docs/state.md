@@ -1,9 +1,9 @@
 # State
 
-Last updated: 2026-11-10 15:38 UTC
-Last heartbeat: 2026-11-10 15:38 UTC
-Current milestone: M10 — Визуализация: URP, стилизация, два профиля качества
-Current task: M10.11 weapon switching — 2026-11-10. При спавне виден только меч; 1/2 переключают меч/топор клиентски, без протокола. Активное оружие следует за Attack. 223/223 tests, Unity/GPU, живой лог и оба build прошли; ждёт проверки оператора. PR #12 open, M11 не начат.
+Last updated: 2026-11-10 16:01 UTC
+Last heartbeat: 2026-11-10 16:01 UTC
+Current milestone: M11 — Нагрузочный тест 20 ботами
+Current task: M11 load test — 2026-11-10. `tools/bot-client` (20 UDP-ботов: движение + способность), метрики тика в серверном логе, `tools/load-test.ps1` с порогами avg≤25/p99≤50. 20 ботов 60 с: avg 0.080 мс, p99 0.348 мс, 20/20 со снапшотами, 0 разрывов, 0 reject. 229/229 tests, CI green (push 42850560389, PR 42850591846); PR #13 open, M12 не начат.
 Onboarding: completed
 
 ## Onboarding: completed
@@ -24,8 +24,8 @@ Onboarding: completed
 | M7 | ✅ | ✅ | done (2026-11-09, merged `9206efe`, PR #8) |
 | M8 | ✅ | ✅ | done (2026-11-09, merged `ccfb19d`, PR #9) |
 | M9 | ✅ | ✅ | done (Human-Gate пройден 2026-11-09, PR #10 смержен `1e85782`) |
-| M10 | ✅ GPU + 223 tests | ✅ принят оператором 2026-11-10; M10.11 weapon switching в PR #12 | `M10.11`, [PR #12](https://github.com/avvasiliev888/albion-prototype/pull/12), merge pending |
-| M11 | — | — | todo |
+| M10 | ✅ GPU + 223 tests | ✅ принят оператором 2026-11-10 | merged in #12 |
+| M11 | ✅ 20/60: avg 0.080 ms, p99 0.348 ms | ⏳ ждёт оператора | `M11`, PR #13 open |
 | M12 | — | — | todo |
 
 ## M10 tasks
@@ -95,6 +95,20 @@ Onboarding: completed
 - Unity `ConfigureAndVerify` после правок: exit0, GPU 13/13, combat checks passed (лог `m10-8-1-configure.log`). Оба build: Succeeded, size93163186, errors0; `Assembly-CSharp.dll` 15:16:39/15:17:27; логи `m10-8-1-{desktop,mobile}.log`.
 - 213/213 и оба build проверены локально. CI `d33cf64`: [pull_request 42814723909](https://github.com/avvasiliev888/albion-prototype/actions/runs/42814723909), [push 42814738483](https://github.com/avvasiliev888/albion-prototype/actions/runs/42814738483) — success.
 
+
+## M11: нагрузочный тест 20 ботами — 2026-11-10
+
+| Task | Статус | Заметки |
+|---|---|---|
+| `ServerMetrics` + замер `GameServer.Tick` | ✅ | ring-buffer 12 000; avg/p50/p99/max |
+| Лог метрик и CLI | ✅ | `--metrics-every`, `--seconds`, `tick final metrics` |
+| `tools/bot-client` | ✅ | 20 UDP-ботов, Hello, движение, способность по тренировочному манекену |
+| `tools/load-test.ps1` | ✅ | пороги avg≤25/p99≤50, артефакты в `artifacts/m11-load/` |
+| Тесты | ✅ | 229/229, `ServerMetricsTests`; 100% покрытие Simulation; CI green |
+| Прогон 20×60 | ✅ | avg 0.080 мс, p99 0.348 мс, max 5.5 мс, 0 разрывов, 0 reject |
+| Human-Gate | ⏳ | оператор запускает 20 ботов, смотрит метрики/деградацию |
+
+Подробно: [m11-load-test.md](m11-load-test.md). CI: [push 42850560389](https://github.com/avvasiliev888/albion-prototype/actions/runs/42850560389), [PR 42850591846](https://github.com/avvasiliev888/albion-prototype/actions/runs/42850591846).
 
 ## M10.11: переключение оружия — 2026-11-10
 

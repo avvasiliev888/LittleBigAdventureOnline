@@ -291,6 +291,17 @@ Asset Store «бесплатный» не означает CC0: исходник
 `res: X/Y` из снапшота. Тест `RepeatedCasts_DoNotStarveAndKeepDamagingAfterRespawn` прогоняет 12
 ударов с респавном.
 
+## Серверный нагрузочный тест (M11)
+
+`tools/bot-client` — headless UDP-боты на том же протоколе, что Unity-клиент; сервер логирует
+`tick metrics: n=... avg=... p99=...`. Прогон 20 ботов на 60 секунд:
+
+```powershell
+pwsh -File tools/load-test.ps1 -Bots 20 -Seconds 60
+```
+
+Порог M11: средний тик ≤25 мс, p99 ≤50 мс. Подробности и результат — `docs/m11-load-test.md`.
+
 ## Ограничения M6–M10
 
 - Рендер-пайплайн — URP; персонаж Warrior подключён, но окружение всё ещё из простых форм.

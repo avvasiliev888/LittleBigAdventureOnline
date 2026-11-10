@@ -1,9 +1,9 @@
 # State
 
-Last updated: 2026-11-10 16:01 UTC
-Last heartbeat: 2026-11-10 16:01 UTC
-Current milestone: M11 — Нагрузочный тест 20 ботами
-Current task: M11 load test — 2026-11-10. `tools/bot-client` (20 UDP-ботов: движение + способность), метрики тика в серверном логе, `tools/load-test.ps1` с порогами avg≤25/p99≤50. 20 ботов 60 с: avg 0.080 мс, p99 0.348 мс, 20/20 со снапшотами, 0 разрывов, 0 reject. 229/229 tests, CI green (push 42850560389, PR 42850591846); PR #13 open, M12 не начат.
+Last updated: 2026-11-10 17:30 UTC
+Last heartbeat: 2026-11-10 17:30 UTC
+Current milestone: M12 — Полировка, демо, документация
+Current task: M12 final — 2026-11-10. README с нуля, `docs/demo.md`, `tools/demo/start-demo.ps1`, исправлен спавн второго игрока внутри манекена (dummy `(4,0,1.5)`), 230/230 tests, demo smoke 2/2 на стабильной сети и при 100 мс/30%. Ветка `agent/M12/final-polish`, финальный [PR #14](https://github.com/avvasiliev888/albion-prototype/pull/14) открыт, CI green; merge — за оператором.
 Onboarding: completed
 
 ## Onboarding: completed
@@ -25,8 +25,8 @@ Onboarding: completed
 | M8 | ✅ | ✅ | done (2026-11-09, merged `ccfb19d`, PR #9) |
 | M9 | ✅ | ✅ | done (Human-Gate пройден 2026-11-09, PR #10 смержен `1e85782`) |
 | M10 | ✅ GPU + 223 tests | ✅ принят оператором 2026-11-10 | merged in #12 |
-| M11 | ✅ 20/60: avg 0.080 ms, p99 0.348 ms | ⏳ ждёт оператора | `M11`, PR #13 open |
-| M12 | — | — | todo |
+| M11 | ✅ 20/60: avg 0.080 ms, p99 0.348 ms | ✅ принят оператором; merged #13 `9aafbc1` | done (2026-11-10) |
+| M12 | ✅ 230/230, demo smoke, README | ⏳ ждёт оператора | `agent/M12/final-polish`, [PR #14](https://github.com/avvasiliev888/albion-prototype/pull/14) open, CI green |
 
 ## M10 tasks
 
@@ -109,6 +109,48 @@ Onboarding: completed
 | Human-Gate | ⏳ | оператор запускает 20 ботов, смотрит метрики/деградацию |
 
 Подробно: [m11-load-test.md](m11-load-test.md). CI: [push 42850560389](https://github.com/avvasiliev888/albion-prototype/actions/runs/42850560389), [PR 42850591846](https://github.com/avvasiliev888/albion-prototype/actions/runs/42850591846).
+
+## M12: полировка, демо, документация — 2026-11-10
+
+M11 принят оператором и смержен squash-merge в `main` (`9aafbc1`). M12 — финальный этап.
+
+| Задача | Статус | Заметки |
+|---|---|---|
+| README с нуля | ✅ | корневой `README.md`: LFS, .NET, тесты, плагины, сервер, Unity, desktop build, управление, демо, плохая сеть, боты, конфиг, troubleshooting |
+| Демо-сценарий | ✅ | `docs/demo.md` + `tools/demo/start-demo.ps1` (два клиента, движение, способность, смерть/респавн, 100 мс/30%) |
+| Полировка спавна | ✅ | dummy сдвинут `(4,0,0)` → `(4,0,1.5)`: второй игрок (x=4) больше не появляется внутри манекена; regression-тест |
+| Финальные gate'ы | ✅ | 230/230 tests, coverage 100%, arch/Unity-boundaries, demo smoke, load test, desktop/mobile builds |
+| `docs/state.md` | ✅ | этот раздел; done/deferred/cut ниже |
+| Human-Gate | ⏳ | оператор проходит демо и чеклист готовности |
+
+**Проверки M12:**
+
+- `pwsh -File tools/dev/test-local.ps1 -Configuration Release` — **230/230**, `Simulation.Core.Simulation` 100%.
+  Новый тест `TwoClientsAndDummy_DoNotShareSpawnPoint`.
+- Demo smoke: `pwsh -File tools/demo/start-demo.ps1 -Seconds 8` — сервер принял **2/2 Hello**;
+  тот же прогон с `-DelayMs 100 -LossPercent 30` — **2/2**.
+- Нагрузка 20 ботов/60 с: `connected=20/20`, `disconnects=0`, `avg=0.05 ms`, `p99=0.202 ms`,
+  `max=5.195 ms` (порог avg≤25/p99≤50), 0 reject.
+- Unity desktop/mobile: `result=Succeeded, errors=0`, size **93 170 090**; desktop build лог
+  `m12-build-desktop.log`, mobile — `m12-build-mobile.log`; `Assembly-CSharp.dll` mobile 20:21:11.
+- Arch checks: `check-architecture.sh`, `check-unity-boundaries.sh` — passed.
+- `dotnet build Prototype.sln -c Release` — 0 ошибок (3 pre-existing nullable warnings в тестах).
+
+**Сделано:**
+- README, демо-документ и лаунчер; инструкции проверены на чистом клоне (restore/build/test/server).
+- Исправлен визуальный дефект: второй клиент появлялся в одной точке с манекеном.
+- Уточнён порог восстановления: серия потерь 10–12 лечится за ≤3 тика (`BurstOfThreeLostSnapshots_RecoversWithinThreeTicks`);
+  при 30% i.i.d. потерь и задержке 2 тика лаг снапшота ≤8 тиков — это разные метрики.
+
+**Отложено (не блокирует прототип):**
+- Автоматический визуальный regression-тест смерти/респавна и «плохой сети» — проверяется глазом на Human-Gate;
+  headless-тесты покрывают симуляцию и сетевой конвейер.
+- Полноценный reconnect к перезапущенному серверу: сейчас клиент нужно открыть заново.
+- Реальный сетевой emulator (tc/netem): задержка/потери детерминированно имитируются `LossyServerTransport`.
+
+**Вырезано из прототипа:**
+- Аккаунты/БД/матчмейкинг/экономика/крафт, ИИ противников, античит, мобильные платформы iOS/Android,
+  финальный арт и звук. Mobile-профиль — desktop-билд с forward-рендером, не мобильная сборка.
 
 ## M10.11: переключение оружия — 2026-11-10
 

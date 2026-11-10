@@ -236,6 +236,34 @@ namespace Tests
             Assert.True(sawRight && sawLeft, "манекен не прошёл патруль в обе стороны");
         }
 
+        [Fact]
+        public void TwoClientsAndDummy_DoNotShareSpawnPoint()
+        {
+            using var harness = new Harness(
+                new ServerOptions { SpawnTrainingDummy = true },
+                TestWorld.ServerConfig());
+            var first = harness.Connect();
+            harness.Send(first, MessageType.Hello, Array.Empty<byte>());
+            harness.Server.Poll();
+            harness.Receive(first, MessageType.HelloAck);
+
+            var second = harness.Connect();
+            harness.Send(second, MessageType.Hello, Array.Empty<byte>());
+            harness.Server.Poll();
+            harness.Receive(second, MessageType.HelloAck);
+
+            Assert.True(harness.Server.TryGetSessionEntity(first, out var firstId));
+            Assert.True(harness.Server.TryGetSessionEntity(second, out var secondId));
+            Assert.True(harness.Server.Simulation.State.TryGetEntity(2, out var dummy));
+            Assert.True(harness.Server.Simulation.State.TryGetEntity(firstId, out var firstEntity));
+            Assert.True(harness.Server.Simulation.State.TryGetEntity(secondId, out var secondEntity));
+
+            // M12: второй игрок спавнится в x=4 и раньше оказывался ровно внутри манекена.
+            Assert.True(Vector3.Distance(dummy!.Position, secondEntity!.Position) > 0.75f);
+            Assert.True(Vector3.Distance(dummy.Position, firstEntity!.Position) < 3f);
+            Assert.True(Vector3.Distance(firstEntity.Position, secondEntity.Position) > 0.75f);
+        }
+
         private static uint ReadUInt32(byte[] buffer, int offset)
         {
             return (uint)(buffer[offset] | (buffer[offset + 1] << 8) | (buffer[offset + 2] << 16) | (buffer[offset + 3] << 24));

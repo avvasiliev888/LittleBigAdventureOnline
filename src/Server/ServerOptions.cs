@@ -37,7 +37,10 @@ namespace Server
         public uint TrainingDummyActorId { get; init; } = 2;
 
         /// <summary>Точка спавна манекена; он медленно патрулирует вокруг неё по X.</summary>
-        public Vector3 TrainingDummySpawn { get; init; } = new Vector3(4f, 0f, 0f);
+        /// <remarks>
+        /// M12: сдвинут по Z, чтобы второй игрок (spawn x=4) не появлялся внутри манекена.
+        /// </remarks>
+        public Vector3 TrainingDummySpawn { get; init; } = new Vector3(4f, 0f, 1.5f);
 
         /// <summary>Логировать каждый тик (для демо; в тестах выключено).</summary>
         public bool LogTicks { get; init; }

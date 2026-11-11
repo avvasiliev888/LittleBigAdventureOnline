@@ -7,7 +7,11 @@ namespace Simulation.Core
     /// </summary>
     public sealed class ItemStack
     {
-        internal ItemStack(uint itemId, int quantity)
+        /// <summary>Создаёт стопку предметов.</summary>
+        /// <param name="itemId">Идентификатор предмета; положительный.</param>
+        /// <param name="quantity">Количество; положительное.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Если идентификатор или количество не положительны.</exception>
+        public ItemStack(uint itemId, int quantity)
         {
             if (itemId == 0)
             {

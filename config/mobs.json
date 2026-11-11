@@ -1,0 +1,109 @@
+[
+  {
+    "id": 1,
+    "key": "blue_scavenger",
+    "name": "Падальщик",
+    "actorId": 101,
+    "zoneKey": "blue",
+    "abilityId": 1,
+    "maxHp": 60,
+    "damage": 4,
+    "moveSpeed": 2.2,
+    "attackRange": 1.6,
+    "attackSeconds": 2.0,
+    "aggroRange": 5.0,
+    "leashRange": 10.0,
+    "respawnSeconds": 12.0,
+    "fameOnKill": 4,
+    "silverMin": 3,
+    "silverMax": 8,
+    "lootRange": 2.0,
+    "corpseSeconds": 60.0,
+    "patrolPauseSeconds": 2.0,
+    "patrol": [
+      { "x": 3.0, "z": 0.0 },
+      { "x": 0.0, "z": 3.0 },
+      { "x": -3.0, "z": 0.0 }
+    ],
+    "spawns": [
+      { "x": -18.0, "z": 12.0 },
+      { "x": -8.0, "z": -14.0 }
+    ],
+    "loot": [
+      { "itemId": 1, "minQuantity": 1, "maxQuantity": 2, "chance": 1.0 },
+      { "itemId": 2, "minQuantity": 1, "maxQuantity": 2, "chance": 0.7 }
+    ]
+  },
+  {
+    "id": 2,
+    "key": "yellow_bandit",
+    "name": "Разбойник",
+    "actorId": 102,
+    "zoneKey": "yellow",
+    "abilityId": 1,
+    "maxHp": 180,
+    "damage": 12,
+    "moveSpeed": 3.0,
+    "attackRange": 2.0,
+    "attackSeconds": 1.5,
+    "aggroRange": 9.0,
+    "leashRange": 16.0,
+    "respawnSeconds": 20.0,
+    "fameOnKill": 12,
+    "silverMin": 15,
+    "silverMax": 30,
+    "lootRange": 2.0,
+    "corpseSeconds": 60.0,
+    "patrolPauseSeconds": 1.5,
+    "patrol": [
+      { "x": 4.0, "z": 0.0 },
+      { "x": 0.0, "z": 4.0 },
+      { "x": -4.0, "z": 0.0 }
+    ],
+    "spawns": [
+      { "x": 16.0, "z": 10.0 },
+      { "x": 22.0, "z": -12.0 }
+    ],
+    "loot": [
+      { "itemId": 20, "minQuantity": 2, "maxQuantity": 4, "chance": 1.0 },
+      { "itemId": 21, "minQuantity": 1, "maxQuantity": 3, "chance": 0.8 }
+    ]
+  },
+  {
+    "id": 3,
+    "key": "red_warlord",
+    "name": "Владыка пепла",
+    "actorId": 103,
+    "zoneKey": "red",
+    "abilityId": 1,
+    "maxHp": 420,
+    "damage": 28,
+    "moveSpeed": 3.4,
+    "attackRange": 2.4,
+    "attackSeconds": 1.2,
+    "aggroRange": 14.0,
+    "leashRange": 22.0,
+    "respawnSeconds": 30.0,
+    "fameOnKill": 22,
+    "silverMin": 60,
+    "silverMax": 120,
+    "lootRange": 2.5,
+    "corpseSeconds": 90.0,
+    "patrolPauseSeconds": 1.0,
+    "patrol": [
+      { "x": 4.0, "z": 0.0 },
+      { "x": 0.0, "z": 4.0 },
+      { "x": -4.0, "z": 0.0 }
+    ],
+    "spawns": [
+      { "x": 32.0, "z": 8.0 },
+      { "x": 35.0, "z": -10.0 }
+    ],
+    "loot": [
+      { "itemId": 22, "minQuantity": 2, "maxQuantity": 4, "chance": 1.0 },
+      { "itemId": 23, "minQuantity": 1, "maxQuantity": 3, "chance": 0.8 },
+      { "itemId": 24, "minQuantity": 1, "maxQuantity": 2, "chance": 0.25 },
+      { "itemId": 10, "minQuantity": 1, "maxQuantity": 1, "chance": 0.1 }
+    ]
+  }
+]

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace Simulation.Core
 {
@@ -15,8 +16,11 @@ namespace Simulation.Core
         private readonly Dictionary<uint, Recipe> _recipes;
         private readonly List<ResourceNodeConfig> _resourceNodes;
         private readonly List<NpcTrader> _traders;
+        private readonly Dictionary<uint, MobDefinition> _mobs;
+        private readonly Dictionary<uint, MobDefinition> _mobsByActorId;
+        private readonly List<MobDefinition> _mobTypes;
 
-        /// <summary>Создаёт конфигурацию мира из акторов, способностей, зон, предметов, дерева навыков, жил, рецептов и торговцев.</summary>
+        /// <summary>Создаёт конфигурацию мира из акторов, способностей, зон, предметов, дерева навыков, жил, рецептов, торговцев и мобов.</summary>
         /// <param name="actors">Типы акторов; идентификаторы уникальны.</param>
         /// <param name="abilities">Способности; идентификаторы уникальны, все ссылки акторов разрешаются.</param>
         /// <param name="zones">Зоны мира; покрывают мир без разрывов и пересечений.</param>
@@ -25,6 +29,7 @@ namespace Simulation.Core
         /// <param name="resourceNodes">Ресурсные жилы; <c>null</c> — жил нет.</param>
         /// <param name="recipes">Рецепты крафта; <c>null</c> — крафта нет.</param>
         /// <param name="traders">NPC-торговцы; <c>null</c> — торговли нет.</param>
+        /// <param name="mobs">Типы PvE-мобов; <c>null</c> — мобов нет (тесты и миры без PvE).</param>
         /// <exception cref="ArgumentNullException">Если коллекция равна <c>null</c>.</exception>
         /// <exception cref="ArgumentException">
         /// При дубликатах идентификаторов, неразрешённых ссылках и противоречивых зонах.
@@ -37,7 +42,8 @@ namespace Simulation.Core
             SkillTree? skillTree = null,
             IEnumerable<ResourceNodeConfig>? resourceNodes = null,
             IEnumerable<Recipe>? recipes = null,
-            IEnumerable<NpcTrader>? traders = null)
+            IEnumerable<NpcTrader>? traders = null,
+            IEnumerable<MobDefinition>? mobs = null)
         {
             if (actors == null)
             {
@@ -108,6 +114,35 @@ namespace Simulation.Core
             _traders = traders == null ? new List<NpcTrader>() : new List<NpcTrader>(traders);
             ValidateTraders();
 
+            _mobs = new Dictionary<uint, MobDefinition>();
+            _mobsByActorId = new Dictionary<uint, MobDefinition>();
+            _mobTypes = new List<MobDefinition>();
+            if (mobs != null)
+            {
+                foreach (var mob in mobs)
+                {
+                    if (mob == null)
+                    {
+                        throw new ArgumentException("Список мобов содержит null.", nameof(mobs));
+                    }
+
+                    if (!_mobs.TryAdd(mob.Id, mob))
+                    {
+                        throw new ArgumentException("Дубликат Id моба: " + mob.Id + ".", nameof(mobs));
+                    }
+
+                    if (_mobsByActorId.ContainsKey(mob.ActorId))
+                    {
+                        throw new ArgumentException(
+                            "Дубликат ActorId моба: " + mob.ActorId + ".",
+                            nameof(mobs));
+                    }
+
+                    _mobsByActorId.Add(mob.ActorId, mob);
+                    _mobTypes.Add(mob);
+                }
+            }
+
             _actors = new Dictionary<uint, ActorConfig>();
             foreach (var actor in actors)
             {
@@ -125,6 +160,8 @@ namespace Simulation.Core
 
                 ValidateStarterLoadout(actor);
             }
+
+            ValidateMobs();
 
             Actors = _actors;
             Abilities = _abilities;
@@ -153,6 +190,34 @@ namespace Simulation.Core
 
         /// <summary>NPC-торговцы мира (ADR-017).</summary>
         public IReadOnlyList<NpcTrader> Traders => _traders;
+
+        /// <summary>Типы PvE-мобов по идентификатору (ADR-019).</summary>
+        public IReadOnlyDictionary<uint, MobDefinition> Mobs => _mobs;
+
+        /// <summary>Типы мобов в порядке объявления: детерминированный порядок спавна.</summary>
+        public IReadOnlyList<MobDefinition> MobTypes => _mobTypes;
+
+        /// <summary>Возвращает тип моба по идентификатору.</summary>
+        /// <param name="mobId">Идентификатор типа моба.</param>
+        /// <exception cref="InvalidOperationException">Если такого моба нет в конфиге.</exception>
+        public MobDefinition GetMob(uint mobId)
+        {
+            if (!_mobs.TryGetValue(mobId, out var mob))
+            {
+                throw new InvalidOperationException("Моба с Id " + mobId + " нет в конфиге.");
+            }
+
+            return mob;
+        }
+
+        /// <summary>Пытается найти тип моба по идентификатору синтезированного актора.</summary>
+        /// <param name="actorId">Идентификатор актора из снапшота.</param>
+        /// <param name="mob">Найденный моб или <c>null</c>.</param>
+        /// <returns><c>true</c>, если это актор моба.</returns>
+        public bool TryGetMobByActorId(uint actorId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out MobDefinition? mob)
+        {
+            return _mobsByActorId.TryGetValue(actorId, out mob);
+        }
 
         /// <summary>Возвращает тип актора по идентификатору.</summary>
         /// <param name="actorId">Идентификатор типа актора.</param>
@@ -308,6 +373,85 @@ namespace Simulation.Core
                         throw new ArgumentException(
                             "Торговец '" + trader.Key + "' торгует '" + item.Key + "' неизвестного вида.",
                             "traders");
+                    }
+                }
+            }
+        }
+
+        private void ValidateMobs()
+        {
+            var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < _mobTypes.Count; i++)
+            {
+                var mob = _mobTypes[i];
+                if (!keys.Add(mob.Key))
+                {
+                    throw new ArgumentException("Дубликат ключа моба: '" + mob.Key + "'.", "mobs");
+                }
+
+                if (!Zones.TryGetZoneByKey(mob.ZoneKey, out var zone) || zone == null)
+                {
+                    throw new ArgumentException(
+                        "Моб '" + mob.Key + "' ссылается на отсутствующую зону '" + mob.ZoneKey + "'.",
+                        "mobs");
+                }
+
+                if (_actors.ContainsKey(mob.ActorId))
+                {
+                    throw new ArgumentException(
+                        "ActorId моба '" + mob.Key + "' (" + mob.ActorId + ") совпадает с актором из actors.json.",
+                        "mobs");
+                }
+
+                if (!_abilities.ContainsKey(mob.Actor.AbilityId))
+                {
+                    throw new ArgumentException(
+                        "Моб '" + mob.Key + "' ссылается на отсутствующую способность " + mob.Actor.AbilityId + ".",
+                        "mobs");
+                }
+
+                for (var s = 0; s < mob.Spawns.Count; s++)
+                {
+                    var spawn = mob.Spawns[s];
+                    var position = new Vector3(spawn.X, 0f, spawn.Y);
+                    if (!zone.Contains(position))
+                    {
+                        throw new ArgumentException(
+                            "Точка спавна " + s + " моба '" + mob.Key + "' вне зоны '" + mob.ZoneKey + "'.",
+                            "mobs");
+                    }
+
+                    // Патруль задаётся смещениями от спавна: каждая точка обязана остаться в зоне,
+                    // иначе моб на законном маршруте окажется в чужой зоне с другими правилами.
+                    for (var p = 0; p < mob.PatrolPoints.Count; p++)
+                    {
+                        var patrol = mob.PatrolPoints[p];
+                        var patrolPosition = new Vector3(spawn.X + patrol.X, 0f, spawn.Y + patrol.Y);
+                        if (!zone.Contains(patrolPosition))
+                        {
+                            throw new ArgumentException(
+                                "Точка патруля " + p + " моба '" + mob.Key + "' выходит за зону '"
+                                + mob.ZoneKey + "'.",
+                                "mobs");
+                        }
+                    }
+                }
+
+                for (var l = 0; l < mob.Loot.Count; l++)
+                {
+                    var entry = mob.Loot[l];
+                    if (!_items.TryGetValue(entry.ItemId, out var item))
+                    {
+                        throw new ArgumentException(
+                            "Моб '" + mob.Key + "' ссылается на отсутствующий предмет лута " + entry.ItemId + ".",
+                            "mobs");
+                    }
+
+                    if (item.ItemKind != ItemKind.Material && item.ItemKind != ItemKind.Equipment)
+                    {
+                        throw new ArgumentException(
+                            "Моб '" + mob.Key + "' роняет '" + item.Key + "' неизвестного вида.",
+                            "mobs");
                     }
                 }
             }

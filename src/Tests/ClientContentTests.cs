@@ -71,6 +71,7 @@ namespace Tests
                     ConfigLoader.ResourcesFileName,
                     ConfigLoader.RecipesFileName,
                     ConfigLoader.TradersFileName,
+                    ConfigLoader.MobsFileName,
                 })
                 {
                     File.Copy(Path.Combine(RepoConfigDirectory(), fileName), Path.Combine(temp, fileName));

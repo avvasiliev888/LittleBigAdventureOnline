@@ -29,7 +29,6 @@ namespace Server
         private readonly float _trainingDummyMinX;
         private readonly float _trainingDummyMaxX;
         private float _trainingDummyDirection = 1f;
-        private uint _nextEntityId = 1;
         private bool _disposed;
 
         /// <summary>Создаёт сервер поверх конфигурации и транспорта.</summary>
@@ -84,6 +83,14 @@ namespace Server
                 _trainingDummyMaxX = options.TrainingDummySpawn.X + 0.5f;
                 Log("[t0] training dummy: entity " + dummy.Id + ", actor " + dummyActor.Id
                     + ", spawn " + dummy.SpawnPosition);
+            }
+
+            // PvE: мобы спавнятся из mobs.json по точкам конфига. Идентификаторы выдаёт симуляция,
+            // поэтому спавн не конфликтует с манекеном и будущими подключениями игроков (ADR-019).
+            var mobsSpawned = Simulation.SpawnMobs();
+            if (mobsSpawned > 0)
+            {
+                Log("[t0] mobs spawned: " + mobsSpawned + " (типов: " + _config.MobTypes.Count + ")");
             }
 
             _transport.ClientConnected += OnClientConnected;
@@ -344,12 +351,7 @@ namespace Server
             var actorId = payload.Length >= 4 ? ReadUInt32(payload, 0) : 0u;
             var actor = actorId == 0 ? DefaultActor() : _config.GetActor(actorId);
 
-            var entityId = _nextEntityId++;
-            // Never reuse the training dummy's reserved id, even if a player disconnects.
-            if (entityId == _trainingDummyId)
-            {
-                entityId = _nextEntityId++;
-            }
+            var entityId = Simulation.AllocateEntityId();
 
             var spawn = _config.Zones.ClampToBounds(
                 new Vector3((_sessions.Count + 1) * _options.SpawnSpacing, 0f, 0f));

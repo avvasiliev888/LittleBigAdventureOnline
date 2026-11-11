@@ -38,6 +38,22 @@ namespace Simulation.Core
             Inventory = new Inventory(actor.InventorySlots);
         }
 
+        /// <summary>
+        /// Создаёт моба по конфигу <c>mobs.json</c>: характеристики берутся из синтезированного
+        /// профиля <see cref="MobDefinition.Actor"/>, состояние автомата стартует с патруля.
+        /// </summary>
+        /// <param name="id">Идентификатор сущности в мире.</param>
+        /// <param name="mob">Описание типа моба из конфига.</param>
+        /// <param name="spawnPosition">Точка появления и респавна.</param>
+        /// <exception cref="ArgumentNullException">Если <paramref name="mob"/> равен <c>null</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Если идентификатор сущности равен нулю.</exception>
+        public EntityState(uint id, MobDefinition mob, Vector3 spawnPosition)
+            : this(id, (mob ?? throw new ArgumentNullException(nameof(mob))).Actor, spawnPosition)
+        {
+            Mob = mob;
+            AiState = mob.PatrolPoints.Count > 0 ? MobAiState.Patrol : MobAiState.Idle;
+        }
+
         /// <summary>Идентификатор сущности в мире.</summary>
         public uint Id { get; }
 
@@ -46,6 +62,27 @@ namespace Simulation.Core
 
         /// <summary>Тип актора из конфига.</summary>
         public ActorConfig Actor { get; }
+
+        /// <summary>
+        /// Описание моба из <c>mobs.json</c>; <c>null</c> у игроков. Серверное состояние,
+        /// в снапшот не входит (ADR-019).
+        /// </summary>
+        public MobDefinition? Mob { get; }
+
+        /// <summary>Состояние серверного автомата моба; у игроков не используется.</summary>
+        public MobAiState AiState { get; set; }
+
+        /// <summary>Идентификатор цели моба; 0 — цели нет.</summary>
+        public uint AiTargetId { get; set; }
+
+        /// <summary>Тик, на котором моб может ударить снова.</summary>
+        public uint NextAttackTick { get; set; }
+
+        /// <summary>Индекс текущей точки патруля в <see cref="MobDefinition.PatrolPoints"/>.</summary>
+        public uint PatrolIndex { get; set; }
+
+        /// <summary>Тик, до которого моб стоит в ожидании (Idle).</summary>
+        public uint AiWaitUntilTick { get; set; }
 
         /// <summary>Точка появления и респавна.</summary>
         public Vector3 SpawnPosition { get; }

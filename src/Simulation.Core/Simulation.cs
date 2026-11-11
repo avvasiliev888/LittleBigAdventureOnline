@@ -12,6 +12,7 @@ namespace Simulation.Core
     {
         private readonly SimulationConfig? _config;
         private SimulationState _state;
+        private uint _nextEntityId;
 
         /// <summary>
         /// Создаёт пустой мир без конфигурации. Допустим только до появления команд:
@@ -45,6 +46,23 @@ namespace Simulation.Core
             _state = initialState ?? throw new ArgumentNullException(nameof(initialState));
             _config = config;
 
+            _nextEntityId = 1;
+            for (var i = 0; i < _state.Entities.Count; i++)
+            {
+                if (_state.Entities[i].Id >= _nextEntityId)
+                {
+                    _nextEntityId = _state.Entities[i].Id + 1;
+                }
+            }
+
+            for (var i = 0; i < _state.Corpses.Count; i++)
+            {
+                if (_state.Corpses[i].Id >= _nextEntityId)
+                {
+                    _nextEntityId = _state.Corpses[i].Id + 1;
+                }
+            }
+
             // Сущности могли получить снаряжение и Славу до создания симуляции (спавн сервера,
             // тестовые миры): производные характеристики обязаны учитывать их с первого тика.
             if (_config != null)
@@ -58,6 +76,50 @@ namespace Simulation.Core
 
         /// <inheritdoc />
         public SimulationState State => _state;
+
+        /// <summary>
+        /// Выдаёт свободный идентификатор сущности или трупа. Единый счётчик не даёт спавну мобов
+        /// и подключению игроков выдать один и тот же Id (ADR-019).
+        /// </summary>
+        /// <returns>Положительный идентификатор, свободный в текущем мире.</returns>
+        public uint AllocateEntityId()
+        {
+            while (true)
+            {
+                var id = _nextEntityId++;
+                if (!_state.TryGetEntity(id, out _) && !_state.TryGetCorpse(id, out _))
+                {
+                    return id;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Спавнит всех мобов из конфига: по одной сущности на каждую точку спавна (ADR-019).
+        /// Повторный вызов добавит мобов ещё раз — сервер вызывает метод один раз при старте.
+        /// </summary>
+        /// <returns>Сколько мобов заспавнено.</returns>
+        public int SpawnMobs()
+        {
+            if (_config == null)
+            {
+                return 0;
+            }
+
+            var spawned = 0;
+            for (var i = 0; i < _config.MobTypes.Count; i++)
+            {
+                var mob = _config.MobTypes[i];
+                for (var j = 0; j < mob.Spawns.Count; j++)
+                {
+                    var spawn = new Vector3(mob.Spawns[j].X, 0f, mob.Spawns[j].Y);
+                    _state.AddEntity(new EntityState(AllocateEntityId(), mob, spawn));
+                    spawned++;
+                }
+            }
+
+            return spawned;
+        }
 
         /// <inheritdoc />
         public void Tick(float deltaTime, IReadOnlyList<CommandEnvelope> commands)
@@ -89,6 +151,11 @@ namespace Simulation.Core
             {
                 ApplyCommand(commands[i], deltaTime);
             }
+
+            // Мобы ходят и бьют после команд игроков: удар по мобу на этом же тике уже поднимает
+            // его агрессию, а не запаздывает на тик. Истёкшие трупы убираются до респавна.
+            UpdateMobs(deltaTime);
+            _state.RemoveExpiredCorpses(_state.Tick);
 
             ProcessRespawns();
 
@@ -137,14 +204,21 @@ namespace Simulation.Core
             for (var i = 0; i < entities.Length; i++)
             {
                 var saved = snapshot.Entities[i];
-                var entity = new EntityState(saved.Id, _config.GetActor(saved.ActorId), saved.SpawnPosition)
+                EntityState entity;
+                if (_config.TryGetMobByActorId(saved.ActorId, out var mob))
                 {
-                    Position = saved.Position,
-                    Hp = saved.Hp,
-                    Resource = saved.Resource,
-                    CooldownUntilTick = saved.CooldownUntilTick,
-                    RespawnAtTick = saved.RespawnAtTick,
-                };
+                    entity = new EntityState(saved.Id, mob, saved.SpawnPosition);
+                }
+                else
+                {
+                    entity = new EntityState(saved.Id, _config.GetActor(saved.ActorId), saved.SpawnPosition);
+                }
+
+                entity.Position = saved.Position;
+                entity.Hp = saved.Hp;
+                entity.Resource = saved.Resource;
+                entity.CooldownUntilTick = saved.CooldownUntilTick;
+                entity.RespawnAtTick = saved.RespawnAtTick;
                 entities[i] = entity;
             }
 
@@ -208,6 +282,14 @@ namespace Simulation.Core
                     if (_state.TryGetEntity(envelope.EntityId, out var seller))
                     {
                         ApplySell(seller, sell);
+                    }
+
+                    return;
+
+                case LootCommand loot:
+                    if (_state.TryGetEntity(envelope.EntityId, out var looter))
+                    {
+                        ApplyLoot(looter, loot);
                     }
 
                     return;
@@ -301,6 +383,13 @@ namespace Simulation.Core
                 (ability.Damage + caster.Equipment.DamageBonus) * caster.DamageMultiplier,
                 MidpointRounding.AwayFromZero);
             target.Hp -= damage;
+
+            // Ответный удар: моб запоминает обидчика. В синей зоне это единственный способ
+            // поднять его агрессию — пассивные мобы не нападают первыми (ADR-019).
+            if (target.Mob != null)
+            {
+                target.AiTargetId = caster.Id;
+            }
 
             if (targetZone != null)
             {
@@ -515,6 +604,48 @@ namespace Simulation.Core
             entity.Silver += (int)revenue;
         }
 
+        /// <summary>
+        /// Сбор лута из трупа (ADR-019): предметы переносятся, пока помещаются в инвентарь,
+        /// серебро — целиком (с защитой от переполнения). Частично собранный труп остаётся в мире
+        /// до истечения срока; пустой удаляется сразу.
+        /// </summary>
+        /// <param name="looter">Сущность, собирающая лут.</param>
+        /// <param name="command">Команда с идентификатором трупа.</param>
+        private void ApplyLoot(EntityState looter, LootCommand command)
+        {
+            if (looter.IsDead || !_state.TryGetCorpse(command.CorpseId, out var corpse))
+            {
+                return;
+            }
+
+            if (!IsNear(looter.Position, corpse.Position, corpse.LootRange))
+            {
+                return;
+            }
+
+            var loot = corpse.MutableLoot;
+            for (var i = loot.Count - 1; i >= 0; i--)
+            {
+                var stack = loot[i];
+                var item = _config!.GetItem(stack.ItemId);
+                if (looter.Inventory.Add(item, stack.Quantity))
+                {
+                    loot.RemoveAt(i);
+                }
+            }
+
+            if (corpse.Silver > 0 && looter.Silver <= int.MaxValue - corpse.Silver)
+            {
+                looter.Silver += corpse.Silver;
+                corpse.Silver = 0;
+            }
+
+            if (corpse.IsEmpty)
+            {
+                _state.RemoveCorpse(corpse.Id);
+            }
+        }
+
         private Recipe? FindRecipe(uint recipeId)
         {
             return _config!.Recipes.TryGetValue(recipeId, out var recipe) ? recipe : null;
@@ -568,8 +699,288 @@ namespace Simulation.Core
         }
 
         /// <summary>
+        /// Один шаг серверного автомата мобов (ADR-019): агрессия по зоне, патруль, преследование,
+        /// удар и возврат домой с лечением.
+        /// </summary>
+        /// <param name="deltaTime">Длительность тика, с.</param>
+        private void UpdateMobs(float deltaTime)
+        {
+            for (var i = 0; i < _state.Entities.Count; i++)
+            {
+                var entity = _state.Entities[i];
+                if (entity.Mob == null)
+                {
+                    continue;
+                }
+
+                if (entity.IsDead)
+                {
+                    ResetMobAi(entity);
+                    continue;
+                }
+
+                UpdateMob(entity, entity.Mob, deltaTime);
+            }
+        }
+
+        private void UpdateMob(EntityState mob, MobDefinition definition, float deltaTime)
+        {
+            if (mob.AiState == MobAiState.Return)
+            {
+                if (MoveMobTowards(mob, mob.SpawnPosition, deltaTime))
+                {
+                    ArriveHome(mob, definition);
+                }
+
+                return;
+            }
+
+            // Синяя зона пассивна: моб отвечает только тому, кто ударил его первым (AiTargetId).
+            // В жёлтой и красной зоне (PvP включён) он сам берёт ближайшую цель в радиусе агрессии.
+            var zone = _config!.Zones.GetZone(mob.Position);
+            var target = FindMobTarget(mob, zone, out var targetDistance);
+
+            if (target != null)
+            {
+                mob.AiTargetId = target.Id;
+
+                if (HorizontalDistance(mob.Position, mob.SpawnPosition) > definition.LeashRange)
+                {
+                    mob.AiTargetId = 0;
+                    mob.AiState = MobAiState.Return;
+                    return;
+                }
+
+                if (targetDistance <= definition.AttackRange)
+                {
+                    mob.AiState = MobAiState.Attack;
+                    if (_state.Tick >= mob.NextAttackTick)
+                    {
+                        mob.NextAttackTick = _state.Tick + ToTicks(definition.AttackSeconds);
+                        target.Hp -= definition.Damage;
+                        if (target.Hp <= 0)
+                        {
+                            Kill(target, mob);
+                        }
+                    }
+
+                    return;
+                }
+
+                mob.AiState = MobAiState.Chase;
+                MoveMobTowards(mob, target.Position, deltaTime);
+                return;
+            }
+
+            mob.AiTargetId = 0;
+
+            // Погоня без цели (цель умерла или вышла за leash) — домой. Патрулирующий моб не
+            // «возвращается» на каждом шаге: его смещение от спавна — это и есть маршрут.
+            if (mob.AiState == MobAiState.Chase || mob.AiState == MobAiState.Attack)
+            {
+                mob.AiState = MobAiState.Return;
+                if (MoveMobTowards(mob, mob.SpawnPosition, deltaTime))
+                {
+                    ArriveHome(mob, definition);
+                }
+
+                return;
+            }
+
+            if (definition.PatrolPoints.Count == 0)
+            {
+                mob.AiState = MobAiState.Idle;
+                return;
+            }
+
+            if (mob.AiState == MobAiState.Idle)
+            {
+                if (_state.Tick < mob.AiWaitUntilTick)
+                {
+                    return;
+                }
+
+                mob.AiState = MobAiState.Patrol;
+            }
+
+            var index = (int)(mob.PatrolIndex % (uint)definition.PatrolPoints.Count);
+            var point = definition.PatrolPoints[index];
+            var destination = new Vector3(
+                mob.SpawnPosition.X + point.X,
+                0f,
+                mob.SpawnPosition.Z + point.Y);
+            if (MoveMobTowards(mob, destination, deltaTime))
+            {
+                mob.PatrolIndex = (uint)((index + 1) % definition.PatrolPoints.Count);
+                mob.AiState = MobAiState.Idle;
+                mob.AiWaitUntilTick = _state.Tick + ToTicks(definition.PatrolPauseSeconds);
+            }
+        }
+
+        private void ArriveHome(EntityState mob, MobDefinition definition)
+        {
+            mob.Position = mob.SpawnPosition;
+            mob.Hp = mob.MaxHp;
+            mob.AiState = MobAiState.Idle;
+            mob.AiWaitUntilTick = _state.Tick + ToTicks(definition.PatrolPauseSeconds);
+        }
+
+        private EntityState? FindMobTarget(EntityState mob, ZoneConfig zone, out float distance)
+        {
+            // Ответная агрессия: обидчик остаётся целью, пока моб не выйдет за радиус возврата.
+            if (mob.AiTargetId != 0
+                && _state.TryGetEntity(mob.AiTargetId, out var attacker)
+                && !attacker.IsDead
+                && attacker.Actor.Kind == ActorKind.Player
+                && HorizontalDistance(mob.Position, attacker.Position) <= mob.Mob!.LeashRange)
+            {
+                distance = HorizontalDistance(mob.Position, attacker.Position);
+                return attacker;
+            }
+
+            distance = float.MaxValue;
+            if (!zone.PvpEnabled)
+            {
+                return null;
+            }
+
+            EntityState? best = null;
+            var bestDistance = float.MaxValue;
+            for (var i = 0; i < _state.Entities.Count; i++)
+            {
+                var candidate = _state.Entities[i];
+                if (candidate.Actor.Kind != ActorKind.Player || candidate.IsDead)
+                {
+                    continue;
+                }
+
+                var candidateDistance = HorizontalDistance(mob.Position, candidate.Position);
+                if (candidateDistance <= mob.Mob!.AggroRange && candidateDistance < bestDistance)
+                {
+                    best = candidate;
+                    bestDistance = candidateDistance;
+                }
+            }
+
+            if (best != null)
+            {
+                distance = bestDistance;
+            }
+
+            return best;
+        }
+
+        private bool MoveMobTowards(EntityState mob, Vector3 destination, float deltaTime)
+        {
+            var dx = destination.X - mob.Position.X;
+            var dz = destination.Z - mob.Position.Z;
+            var distance = MathF.Sqrt((dx * dx) + (dz * dz));
+            var step = mob.MoveSpeed * deltaTime;
+
+            if (distance <= step || distance <= 0.0001f)
+            {
+                mob.Position = _config!.Zones.ClampToBounds(new Vector3(destination.X, 0f, destination.Z));
+                return true;
+            }
+
+            var scale = step / distance;
+            mob.Position = _config!.Zones.ClampToBounds(
+                new Vector3(mob.Position.X + (dx * scale), 0f, mob.Position.Z + (dz * scale)));
+            return false;
+        }
+
+        private static void ResetMobAi(EntityState mob)
+        {
+            mob.AiState = MobAiState.Idle;
+            mob.AiTargetId = 0;
+            mob.NextAttackTick = 0;
+            mob.AiWaitUntilTick = 0;
+            mob.PatrolIndex = 0;
+        }
+
+        /// <summary>
+        /// Создаёт труп убитого моба: детерминированные серебро и лут из таблицы (ADR-003, ADR-019).
+        /// Детерминизм важен для replay-тестов и одинакового результата боя на сервере и в тестах.
+        /// </summary>
+        /// <param name="victim">Погибший моб.</param>
+        private void CreateCorpse(EntityState victim)
+        {
+            var mob = victim.Mob!;
+            var silverSpan = mob.SilverMax - mob.SilverMin;
+            var silver = mob.SilverMin;
+            if (silverSpan > 0)
+            {
+                silver += (int)(LootHash(victim.Id, 1u, _state.Tick) % (uint)(silverSpan + 1));
+            }
+
+            var loot = new List<ItemStack>();
+            for (var i = 0; i < mob.Loot.Count; i++)
+            {
+                var entry = mob.Loot[i];
+                if (entry.Chance <= 0f)
+                {
+                    continue;
+                }
+
+                if (entry.Chance < 1f)
+                {
+                    var roll = (LootHash(victim.Id, entry.ItemId, _state.Tick) % 10000u) / 10000f;
+                    if (roll >= entry.Chance)
+                    {
+                        continue;
+                    }
+                }
+
+                var quantitySpan = entry.MaxQuantity - entry.MinQuantity;
+                var quantity = entry.MinQuantity;
+                if (quantitySpan > 0)
+                {
+                    quantity += (int)(LootHash(victim.Id, entry.ItemId + 1u, _state.Tick) % (uint)(quantitySpan + 1));
+                }
+
+                var merged = false;
+                for (var j = 0; j < loot.Count; j++)
+                {
+                    if (loot[j].ItemId == entry.ItemId)
+                    {
+                        loot[j].Quantity += quantity;
+                        merged = true;
+                        break;
+                    }
+                }
+
+                if (!merged)
+                {
+                    loot.Add(new ItemStack(entry.ItemId, quantity));
+                }
+            }
+
+            _state.AddCorpse(new CorpseState(
+                AllocateEntityId(),
+                victim.Position,
+                mob.LootRange,
+                silver,
+                loot,
+                _state.Tick + ToTicks(mob.CorpseSeconds)));
+        }
+
+        private static uint LootHash(uint entityId, uint salt, uint tick)
+        {
+            unchecked
+            {
+                var hash = entityId * 2654435761u;
+                hash ^= salt * 2246822519u;
+                hash ^= tick * 3266489917u;
+                hash ^= hash >> 13;
+                hash *= 0x5BD1E995u;
+                hash ^= hash >> 15;
+                return hash;
+            }
+        }
+
+        /// <summary>
         /// Применяет смерть по правилам зоны жертвы (ADR-013): в красной зоне игрок теряет снаряжение
-        /// и инвентарь, в остальных зонах — только прочность; мобы правилам игроков не подчиняются.
+        /// и инвентарь, в остальных зонах — только прочность; мобы оставляют труп с лутом (ADR-019).
         /// Убийца-игрок получает Славу в ветку оружия в руке (ADR-015).
         /// </summary>
         /// <param name="victim">Погибшая сущность.</param>
@@ -585,6 +996,15 @@ namespace Simulation.Core
             if (killer.Id != victim.Id && killer.Actor.Kind == ActorKind.Player)
             {
                 killer.AwardFame(_config!, victim.Actor.FameOnKill);
+            }
+
+            // Моб не игрок: вместо потери снаряжения он оставляет труп, который игрок собирает
+            // командой LootCommand (ADR-019). Труп переживает моба и исчезает по таймеру.
+            if (victim.Mob != null)
+            {
+                ResetMobAi(victim);
+                CreateCorpse(victim);
+                return;
             }
 
             if (victim.Actor.Kind != ActorKind.Player)
@@ -667,6 +1087,16 @@ namespace Simulation.Core
                 entity.CooldownUntilTick = 0;
                 entity.HostileUntilTick = 0;
                 entity.RespawnAtTick = 0;
+
+                // Моб после респавна снова патрулирует от точки спавна, а не продолжает погоню.
+                if (entity.Mob != null)
+                {
+                    entity.AiState = entity.Mob.PatrolPoints.Count > 0 ? MobAiState.Patrol : MobAiState.Idle;
+                    entity.AiTargetId = 0;
+                    entity.NextAttackTick = 0;
+                    entity.AiWaitUntilTick = 0;
+                    entity.PatrolIndex = 0;
+                }
 
                 // Страховочный набор: игрок не возрождается голым, если терять было нечего
                 // (полный лут в красной зоне). Если предметы уцелели, набор не дублируется.

@@ -90,7 +90,8 @@ namespace Tests
             string resourcesJson = "[]",
             string recipesJson = Shared.ConfigLoader.EmptyRecipesJson,
             string tradersJson = Shared.ConfigLoader.EmptyTradersJson,
-            string? itemsJson = null)
+            string? itemsJson = null,
+            string mobsJson = Shared.ConfigLoader.EmptyMobsJson)
         {
             const string actors = @"[
   { ""id"": 1, ""kind"": ""player"", ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1 }
@@ -108,7 +109,8 @@ namespace Tests
                 skillTreeJson,
                 resourcesJson,
                 recipesJson,
-                tradersJson);
+                tradersJson,
+                mobsJson);
         }
 
         public static SimulationConfig Config(
@@ -133,7 +135,8 @@ namespace Tests
             IReadOnlyList<Recipe>? recipes = null,
             IReadOnlyList<NpcTrader>? traders = null,
             int inventorySlots = Inventory.DefaultCapacity,
-            int startingSilver = 0)
+            int startingSilver = 0,
+            IReadOnlyList<MobDefinition>? mobs = null)
         {
             var ability = new AbilityConfig(PlayerAbilityId, damage, range, cooldownSeconds, resourceCost);
             var actor = new ActorConfig(
@@ -163,7 +166,8 @@ namespace Tests
                 tree,
                 resourceNodes,
                 recipes,
-                traders);
+                traders,
+                mobs);
         }
 
         /// <summary>Конфиг с оружием в руках: меч воина или лук лучника (для смены архетипа).</summary>
@@ -289,6 +293,11 @@ namespace Tests
             return new CommandEnvelope(entityId, new SellCommand(traderId, itemId, quantity, clientTick, sequence));
         }
 
+        public static CommandEnvelope Loot(uint entityId, uint corpseId, uint clientTick = 0, uint sequence = 0)
+        {
+            return new CommandEnvelope(entityId, new LootCommand(corpseId, clientTick, sequence));
+        }
+
         public static Recipe Recipe(
             uint id,
             uint outputItemId,
@@ -315,6 +324,64 @@ namespace Tests
         {
             return new TraderPrice(itemId, buyPrice, sellPrice);
         }
+
+        public static MobDefinition Mob(
+            uint id = 1,
+            uint actorId = 101,
+            string zoneKey = "test",
+            int maxHp = 60,
+            int damage = 5,
+            float moveSpeed = 2f,
+            float attackRange = 1.5f,
+            float attackSeconds = 1f,
+            float aggroRange = 5f,
+            float leashRange = 12f,
+            float respawnSeconds = 5f,
+            int fameOnKill = 4,
+            int silverMin = 0,
+            int silverMax = 0,
+            float lootRange = 2f,
+            float corpseSeconds = 10f,
+            float patrolPauseSeconds = 0f,
+            Vector2[]? patrol = null,
+            Vector2[]? spawns = null,
+            MobLootEntry[]? loot = null,
+            uint abilityId = PlayerAbilityId)
+        {
+            return new MobDefinition(
+                id,
+                "mob_" + id,
+                "Mob " + id,
+                actorId,
+                zoneKey,
+                abilityId,
+                maxHp,
+                damage,
+                moveSpeed,
+                attackRange,
+                attackSeconds,
+                aggroRange,
+                leashRange,
+                respawnSeconds,
+                fameOnKill,
+                silverMin,
+                silverMax,
+                lootRange,
+                corpseSeconds,
+                patrolPauseSeconds,
+                patrol ?? Array.Empty<Vector2>(),
+                spawns ?? new[] { new Vector2(0f, 0f) },
+                loot);
+        }
+
+        public static MobLootEntry MobLoot(uint itemId, int minQuantity, int maxQuantity, float chance = 1f)
+        {
+            return new MobLootEntry(itemId, minQuantity, maxQuantity, chance);
+        }
+
+        public static Vector2 Point(float x, float z) => new Vector2(x, z);
+
+        public static ItemStack Stack(uint itemId, int quantity) => new ItemStack(itemId, quantity);
 
         public static void Tick(CoreSimulation simulation, params CommandEnvelope[] commands)
         {

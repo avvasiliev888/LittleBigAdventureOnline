@@ -84,6 +84,12 @@ namespace Server
 
         /// <summary>Торговец не покупает этот предмет.</summary>
         TraderDoesNotBuy = 25,
+
+        /// <summary>Трупа с таким Id нет в мире (истёк или уже собран).</summary>
+        UnknownCorpse = 26,
+
+        /// <summary>Труп вне радиуса сбора лута.</summary>
+        CorpseOutOfRange = 27,
     }
 
     /// <summary>Результат валидации команды.</summary>
@@ -203,6 +209,9 @@ namespace Server
 
                 case SellCommand sell:
                     return ValidateSell(caster, sell);
+
+                case LootCommand loot:
+                    return ValidateLoot(state, caster, loot);
 
                 default:
                     return ValidationResult.Reject(
@@ -373,6 +382,25 @@ namespace Server
                 return ValidationResult.Reject(
                     CommandRejectReason.ItemNotInInventory,
                     "в инвентаре " + caster.Inventory.CountOf(command.ItemId) + " < " + command.Quantity);
+            }
+
+            return ValidationResult.Accept();
+        }
+
+        private ValidationResult ValidateLoot(SimulationState state, EntityState caster, LootCommand command)
+        {
+            if (!state.TryGetCorpse(command.CorpseId, out var corpse))
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.UnknownCorpse,
+                    "трупа " + command.CorpseId + " нет в мире");
+            }
+
+            if (!IsNear(caster.Position, corpse.Position, corpse.LootRange))
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.CorpseOutOfRange,
+                    "труп " + command.CorpseId + " вне радиуса " + corpse.LootRange.ToString("0.###"));
             }
 
             return ValidationResult.Accept();

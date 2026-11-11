@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using Simulation.Core;
@@ -66,6 +67,9 @@ namespace Shared
         /// <summary>Имя файла с NPC-торговцами (ADR-017).</summary>
         public const string TradersFileName = "npc-traders.json";
 
+        /// <summary>Имя файла с PvE-мобами (ADR-019).</summary>
+        public const string MobsFileName = "mobs.json";
+
         /// <summary>Пустое дерево навыков: используется тестами и мирами без прогрессии.</summary>
         public const string EmptySkillTreeJson = "{\"archetypes\": []}";
 
@@ -78,11 +82,15 @@ namespace Shared
         /// <summary>Пустой список торговцев: используется тестами и мирами без торговли.</summary>
         public const string EmptyTradersJson = "[]";
 
+        /// <summary>Пустой список мобов: используется тестами и мирами без PvE.</summary>
+        public const string EmptyMobsJson = "[]";
+
         /// <summary>Загружает конфигурацию из каталога.</summary>
         /// <param name="directory">
         /// Каталог с <see cref="ActorsFileName"/>, <see cref="AbilitiesFileName"/>,
         /// <see cref="ZonesFileName"/>, <see cref="ItemsFileName"/>, <see cref="SkillTreeFileName"/>,
-        /// <see cref="ResourcesFileName"/>, <see cref="RecipesFileName"/> и <see cref="TradersFileName"/>.
+        /// <see cref="ResourcesFileName"/>, <see cref="RecipesFileName"/>, <see cref="TradersFileName"/>
+        /// и <see cref="MobsFileName"/>.
         /// </param>
         /// <exception cref="ArgumentNullException">Если <paramref name="directory"/> равен <c>null</c>.</exception>
         /// <exception cref="ConfigValidationException">Если файлы отсутствуют или невалидны.</exception>
@@ -101,10 +109,11 @@ namespace Shared
                 Path.Combine(directory, SkillTreeFileName),
                 Path.Combine(directory, ResourcesFileName),
                 Path.Combine(directory, RecipesFileName),
-                Path.Combine(directory, TradersFileName));
+                Path.Combine(directory, TradersFileName),
+                Path.Combine(directory, MobsFileName));
         }
 
-        /// <summary>Загружает конфигурацию из восьми файлов.</summary>
+        /// <summary>Загружает конфигурацию из девяти файлов.</summary>
         /// <param name="actorsPath">Путь к <see cref="ActorsFileName"/>.</param>
         /// <param name="abilitiesPath">Путь к <see cref="AbilitiesFileName"/>.</param>
         /// <param name="zonesPath">Путь к <see cref="ZonesFileName"/>.</param>
@@ -113,6 +122,7 @@ namespace Shared
         /// <param name="resourcesPath">Путь к <see cref="ResourcesFileName"/>.</param>
         /// <param name="recipesPath">Путь к <see cref="RecipesFileName"/>.</param>
         /// <param name="tradersPath">Путь к <see cref="TradersFileName"/>.</param>
+        /// <param name="mobsPath">Путь к <see cref="MobsFileName"/>.</param>
         /// <exception cref="ConfigValidationException">Если файлы отсутствуют или невалидны.</exception>
         public static SimulationConfig Load(
             string actorsPath,
@@ -122,7 +132,8 @@ namespace Shared
             string skillTreePath,
             string resourcesPath,
             string recipesPath,
-            string tradersPath)
+            string tradersPath,
+            string mobsPath)
         {
             if (actorsPath == null)
             {
@@ -164,6 +175,11 @@ namespace Shared
                 throw new ArgumentNullException(nameof(tradersPath));
             }
 
+            if (mobsPath == null)
+            {
+                throw new ArgumentNullException(nameof(mobsPath));
+            }
+
             var actorsJson = ReadFile(actorsPath);
             var abilitiesJson = ReadFile(abilitiesPath);
             var zonesJson = ReadFile(zonesPath);
@@ -172,6 +188,7 @@ namespace Shared
             var resourcesJson = ReadFile(resourcesPath);
             var recipesJson = ReadFile(recipesPath);
             var tradersJson = ReadFile(tradersPath);
+            var mobsJson = ReadFile(mobsPath);
 
             return LoadFromJson(
                 actorsJson,
@@ -182,7 +199,8 @@ namespace Shared
                 skillTreeJson,
                 resourcesJson,
                 recipesJson,
-                tradersJson);
+                tradersJson,
+                mobsJson);
         }
 
         /// <summary>Загружает конфигурацию из строк JSON.</summary>
@@ -195,6 +213,7 @@ namespace Shared
         /// <param name="resourcesJson">Содержимое <see cref="ResourcesFileName"/>; пустой список по умолчанию.</param>
         /// <param name="recipesJson">Содержимое <see cref="RecipesFileName"/>; пустой список по умолчанию.</param>
         /// <param name="tradersJson">Содержимое <see cref="TradersFileName"/>; пустой список по умолчанию.</param>
+        /// <param name="mobsJson">Содержимое <see cref="MobsFileName"/>; пустой список по умолчанию.</param>
         /// <exception cref="ConfigValidationException">Если JSON невалиден.</exception>
         public static SimulationConfig LoadFromJson(
             string actorsJson,
@@ -205,7 +224,8 @@ namespace Shared
             string skillTreeJson = EmptySkillTreeJson,
             string resourcesJson = EmptyResourcesJson,
             string recipesJson = EmptyRecipesJson,
-            string tradersJson = EmptyTradersJson)
+            string tradersJson = EmptyTradersJson,
+            string mobsJson = EmptyMobsJson)
         {
             if (actorsJson == null)
             {
@@ -247,6 +267,11 @@ namespace Shared
                 throw new ArgumentNullException(nameof(tradersJson));
             }
 
+            if (mobsJson == null)
+            {
+                throw new ArgumentNullException(nameof(mobsJson));
+            }
+
             var actorDtos = ParseArray(actorsJson, "actors", source);
             var abilityDtos = ParseArray(abilitiesJson, "abilities", source);
             var zoneDtos = ParseArray(zonesJson, "zones", source);
@@ -254,6 +279,7 @@ namespace Shared
             var resourceDtos = ParseArray(resourcesJson, "resources", source);
             var recipeDtos = ParseArray(recipesJson, "recipes", source);
             var traderDtos = ParseArray(tradersJson, "npc-traders", source);
+            var mobDtos = ParseArray(mobsJson, "mobs", source);
             var skillTree = ToSkillTree(skillTreeJson, source);
 
             var items = new List<ItemDefinition>(itemDtos.Count);
@@ -298,9 +324,15 @@ namespace Shared
                 traders.Add(ToTrader(traderDtos[i], source, i));
             }
 
+            var mobs = new List<MobDefinition>(mobDtos.Count);
+            for (var i = 0; i < mobDtos.Count; i++)
+            {
+                mobs.Add(ToMob(mobDtos[i], source, i));
+            }
+
             try
             {
-                return new SimulationConfig(actors, abilities, zones, items, skillTree, nodes, recipes, traders);
+                return new SimulationConfig(actors, abilities, zones, items, skillTree, nodes, recipes, traders, mobs);
             }
             catch (ArgumentException exception)
             {
@@ -309,13 +341,14 @@ namespace Shared
         }
 
         /// <summary>
-        /// Считает SHA-256 от содержимого восьми файлов конфигурации: одинаковый хеш означает,
+        /// Считает SHA-256 от содержимого девяти файлов конфигурации: одинаковый хеш означает,
         /// что сервер и клиент читают одни и те же файлы (M9, Auto-Gate).
         /// </summary>
         /// <param name="directory">
         /// Каталог с <see cref="ActorsFileName"/>, <see cref="AbilitiesFileName"/>,
         /// <see cref="ZonesFileName"/>, <see cref="ItemsFileName"/>, <see cref="SkillTreeFileName"/>,
-        /// <see cref="ResourcesFileName"/>, <see cref="RecipesFileName"/> и <see cref="TradersFileName"/>.
+        /// <see cref="ResourcesFileName"/>, <see cref="RecipesFileName"/>, <see cref="TradersFileName"/>
+        /// и <see cref="MobsFileName"/>.
         /// </param>
         /// <returns>Хеш в нижнем hex-регистре.</returns>
         /// <exception cref="ArgumentNullException">Если <paramref name="directory"/> равен <c>null</c>.</exception>
@@ -335,10 +368,11 @@ namespace Shared
                 ReadFile(Path.Combine(directory, SkillTreeFileName)),
                 ReadFile(Path.Combine(directory, ResourcesFileName)),
                 ReadFile(Path.Combine(directory, RecipesFileName)),
-                ReadFile(Path.Combine(directory, TradersFileName)));
+                ReadFile(Path.Combine(directory, TradersFileName)),
+                ReadFile(Path.Combine(directory, MobsFileName)));
         }
 
-        /// <summary>Считает хеш от строк JSON всех восьми файлов конфигурации.</summary>
+        /// <summary>Считает хеш от строк JSON всех девяти файлов конфигурации.</summary>
         /// <param name="actorsJson">Содержимое <see cref="ActorsFileName"/>.</param>
         /// <param name="abilitiesJson">Содержимое <see cref="AbilitiesFileName"/>.</param>
         /// <param name="zonesJson">Содержимое <see cref="ZonesFileName"/>.</param>
@@ -347,6 +381,7 @@ namespace Shared
         /// <param name="resourcesJson">Содержимое <see cref="ResourcesFileName"/>.</param>
         /// <param name="recipesJson">Содержимое <see cref="RecipesFileName"/>.</param>
         /// <param name="tradersJson">Содержимое <see cref="TradersFileName"/>.</param>
+        /// <param name="mobsJson">Содержимое <see cref="MobsFileName"/>.</param>
         /// <returns>Хеш в нижнем hex-регистре.</returns>
         /// <exception cref="ArgumentNullException">Если строка равна <c>null</c>.</exception>
         public static string ComputeHashFromJson(
@@ -357,7 +392,8 @@ namespace Shared
             string skillTreeJson,
             string resourcesJson,
             string recipesJson,
-            string tradersJson)
+            string tradersJson,
+            string mobsJson)
         {
             if (actorsJson == null)
             {
@@ -399,6 +435,11 @@ namespace Shared
                 throw new ArgumentNullException(nameof(tradersJson));
             }
 
+            if (mobsJson == null)
+            {
+                throw new ArgumentNullException(nameof(mobsJson));
+            }
+
             using var sha = SHA256.Create();
             using var stream = new MemoryStream();
             AppendSection(stream, Encoding.UTF8.GetBytes(actorsJson));
@@ -409,6 +450,7 @@ namespace Shared
             AppendSection(stream, Encoding.UTF8.GetBytes(resourcesJson));
             AppendSection(stream, Encoding.UTF8.GetBytes(recipesJson));
             AppendSection(stream, Encoding.UTF8.GetBytes(tradersJson));
+            AppendSection(stream, Encoding.UTF8.GetBytes(mobsJson));
 
             var hash = sha.ComputeHash(stream.ToArray());
             var builder = new StringBuilder(hash.Length * 2);
@@ -690,6 +732,101 @@ namespace Shared
             {
                 throw new ConfigValidationException(label + " (key=" + key + "): " + exception.Message, exception);
             }
+        }
+
+        private static MobDefinition ToMob(Dictionary<string, object?> dto, string source, int index)
+        {
+            var label = source + ": mobs[" + index + "]";
+            var id = RequireUint(dto, label, "id");
+            var key = RequireString(dto, label, "key");
+            var name = RequireString(dto, label, "name");
+            var actorId = RequireUint(dto, label, "actorId");
+            var zoneKey = RequireString(dto, label, "zoneKey");
+            var abilityId = RequireUint(dto, label, "abilityId");
+            var maxHp = RequireInt(dto, label, "maxHp");
+            var damage = RequireInt(dto, label, "damage");
+            var moveSpeed = RequireFloat(dto, label, "moveSpeed");
+            var attackRange = RequireFloat(dto, label, "attackRange");
+            var attackSeconds = RequireFloat(dto, label, "attackSeconds");
+            var aggroRange = RequireFloat(dto, label, "aggroRange");
+            var leashRange = RequireFloat(dto, label, "leashRange");
+            var respawnSeconds = RequireFloat(dto, label, "respawnSeconds");
+            var fameOnKill = RequireInt(dto, label, "fameOnKill");
+            var silverMin = RequireInt(dto, label, "silverMin");
+            var silverMax = RequireInt(dto, label, "silverMax");
+            var lootRange = RequireFloat(dto, label, "lootRange");
+            var corpseSeconds = RequireFloat(dto, label, "corpseSeconds");
+            var patrolPauseSeconds = OptionalFloat(dto, label, "patrolPauseSeconds", 0f);
+
+            var spawnDtos = RequireObjectArray(dto, label, "spawns");
+            var spawns = ToPoints(spawnDtos, label + ".spawns");
+            var patrolDtos = OptionalObjectArray(dto, label, "patrol");
+            var patrol = ToPoints(patrolDtos, label + ".patrol");
+
+            var lootDtos = OptionalObjectArray(dto, label, "loot");
+            var loot = new List<MobLootEntry>(lootDtos.Count);
+            for (var i = 0; i < lootDtos.Count; i++)
+            {
+                var entryLabel = label + ".loot[" + i + "]";
+                var itemId = RequireUint(lootDtos[i], entryLabel, "itemId");
+                var minQuantity = RequireInt(lootDtos[i], entryLabel, "minQuantity");
+                var maxQuantity = RequireInt(lootDtos[i], entryLabel, "maxQuantity");
+                var chance = OptionalFloat(lootDtos[i], entryLabel, "chance", 1f);
+
+                try
+                {
+                    loot.Add(new MobLootEntry(itemId, minQuantity, maxQuantity, chance));
+                }
+                catch (ArgumentException exception)
+                {
+                    throw new ConfigValidationException(entryLabel + ": " + exception.Message, exception);
+                }
+            }
+
+            try
+            {
+                return new MobDefinition(
+                    id,
+                    key,
+                    name,
+                    actorId,
+                    zoneKey,
+                    abilityId,
+                    maxHp,
+                    damage,
+                    moveSpeed,
+                    attackRange,
+                    attackSeconds,
+                    aggroRange,
+                    leashRange,
+                    respawnSeconds,
+                    fameOnKill,
+                    silverMin,
+                    silverMax,
+                    lootRange,
+                    corpseSeconds,
+                    patrolPauseSeconds,
+                    patrol,
+                    spawns,
+                    loot);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new ConfigValidationException(label + " (key=" + key + "): " + exception.Message, exception);
+            }
+        }
+
+        /// <summary>Читает массив точек <c>{x, z}</c> в координаты плоскости X/Z.</summary>
+        private static List<Vector2> ToPoints(List<Dictionary<string, object?>> dtos, string label)
+        {
+            var points = new List<Vector2>(dtos.Count);
+            for (var i = 0; i < dtos.Count; i++)
+            {
+                var pointLabel = label + "[" + i + "]";
+                points.Add(new Vector2(RequireFloat(dtos[i], pointLabel, "x"), RequireFloat(dtos[i], pointLabel, "z")));
+            }
+
+            return points;
         }
 
         /// <summary>Читает стартовые предметы актора; отсутствующее поле — пустой набор.</summary>

@@ -31,6 +31,9 @@ namespace Shared
         /// <summary>Тег команды продажи NPC.</summary>
         public const byte SellTag = 7;
 
+        /// <summary>Тег команды сбора лута из трупа.</summary>
+        public const byte LootTag = 8;
+
         /// <summary>Кодирует команду в тело сообщения.</summary>
         /// <param name="command">Команда для кодирования.</param>
         /// <returns>Байты тела.</returns>
@@ -100,6 +103,13 @@ namespace Shared
                     writer.Write(sell.TraderId);
                     writer.Write(sell.ItemId);
                     writer.Write((uint)sell.Quantity);
+                    break;
+
+                case LootCommand loot:
+                    writer.Write(LootTag);
+                    writer.Write(loot.ClientTick);
+                    writer.Write(loot.Sequence);
+                    writer.Write(loot.CorpseId);
                     break;
 
                 default:
@@ -189,6 +199,16 @@ namespace Shared
 
                 case SellTag:
                     return TryDecodeTrade(reader, payload, clientTick, sequence, buy: false, out command);
+
+                case LootTag:
+                    if (payload.Length != 13)
+                    {
+                        return false;
+                    }
+
+                    var corpseId = reader.ReadUInt32();
+                    command = new LootCommand(corpseId, clientTick, sequence);
+                    return true;
 
                 default:
                     return false;

@@ -110,7 +110,7 @@ namespace Server
                 + ", зон: " + config.Zones.Zones.Count + ", предметов: " + config.Items.Count
                 + ", веток навыков: " + config.SkillTree.Count + ", узлов: " + config.SkillTree.NodeCount
                 + ", жил: " + config.ResourceNodes.Count + ", рецептов: " + config.Recipes.Count
-                + ", торговцев: " + config.Traders.Count + ")"
+                + ", торговцев: " + config.Traders.Count + ", мобов: " + config.Mobs.Count + ")"
                 + ", hash: " + configHash);
 
             if (validateConfigOnly)

@@ -145,6 +145,25 @@ namespace Tests
         }
 
         [Fact]
+        public void EncodeDecode_LootCommand()
+        {
+            var command = new LootCommand(corpseId: 42, clientTick: 7, sequence: 3);
+
+            var decoded = Decode(CommandCodec.Encode(command));
+
+            var loot = Assert.IsType<LootCommand>(decoded);
+            Assert.Equal(42u, loot.CorpseId);
+            Assert.Equal(7u, loot.ClientTick);
+            Assert.Equal(3u, loot.Sequence);
+        }
+
+        [Fact]
+        public void Decode_TruncatedLoot_ReturnsFalse()
+        {
+            Assert.False(CommandCodec.TryDecode(new byte[] { CommandCodec.LootTag, 0, 0 }, out _));
+        }
+
+        [Fact]
         public void Decode_TruncatedCraftTrade_ReturnsFalse()
         {
             Assert.False(CommandCodec.TryDecode(new byte[] { CommandCodec.CraftTag, 0, 0 }, out _));

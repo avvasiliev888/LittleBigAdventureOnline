@@ -11,7 +11,9 @@ namespace Albion.Client
         private Transform _target;
         private Material _sky;
         private string _zone;
-        private Color _horizon, _zenith, _sun, _ambient;
+        private Color _horizon, _zenith, _sun, _ambient, _fogColor;
+        private float _fogDensity = 0.0045f;
+        private float _sunIntensity = 1.15f;
         private Quaternion _rotation;
 
         /// <summary>Bind once configuration is available. This component never changes gameplay state.</summary>
@@ -53,12 +55,19 @@ namespace Albion.Client
             {
                 case "yellow":
                     _horizon = Hex("F5D9A0"); _zenith = Hex("719BA7"); _sun = Hex("FFE2A3"); _ambient = Hex("858763");
+                    _fogColor = _horizon;
+                    _fogDensity = 0.0045f; _sunIntensity = 1.18f;
                     _rotation = Quaternion.Euler(36f, -40f, 0f); break;
                 case "red":
-                    _horizon = Hex("C08479"); _zenith = Hex("3E3358"); _sun = Hex("FFB08A"); _ambient = Hex("9A7F8C");
+                    // Ash-grey ground against a crimson sky: the value split is what reads as danger.
+                    _horizon = Hex("D45A5A"); _zenith = Hex("8A2A34"); _sun = Hex("FFF4EA"); _ambient = Hex("7E8A90");
+                    _fogColor = Hex("9A6A6E");
+                    _fogDensity = 0.0032f; _sunIntensity = 1.35f;
                     _rotation = Quaternion.Euler(34f, -55f, 0f); break;
                 default:
                     _horizon = Hex("BDDCD6"); _zenith = Hex("477E9C"); _sun = Hex("D9F0E5"); _ambient = Hex("648F98");
+                    _fogColor = _horizon;
+                    _fogDensity = 0.0045f; _sunIntensity = 1.15f;
                     _rotation = Quaternion.Euler(43f, -35f, 0f); break;
             }
         }
@@ -71,9 +80,9 @@ namespace Albion.Client
             RenderSettings.ambientGroundColor = _ambient * 0.3f;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogDensity = 0.0045f;
-            RenderSettings.fogColor = Color.Lerp(RenderSettings.fogColor, _horizon, blend);
-            _sky.SetColor("_HorizonColor", RenderSettings.fogColor);
+            RenderSettings.fogDensity = _fogDensity;
+            RenderSettings.fogColor = Color.Lerp(RenderSettings.fogColor, _fogColor, blend);
+            _sky.SetColor("_HorizonColor", Color.Lerp(_sky.GetColor("_HorizonColor"), _horizon, blend));
             _sky.SetColor("_ZenithColor", Color.Lerp(_sky.GetColor("_ZenithColor"), _zenith, blend));
             _sky.SetColor("_GroundColor", _ambient * 0.6f);
             _sky.SetColor("_SunColor", _sun);
@@ -81,6 +90,7 @@ namespace Albion.Client
             if (sun != null)
             {
                 sun.color = Color.Lerp(sun.color, _sun, blend);
+                sun.intensity = Mathf.Lerp(sun.intensity, _sunIntensity, blend);
                 sun.transform.rotation = Quaternion.Slerp(sun.transform.rotation, _rotation, blend);
                 _sky.SetVector("_SunDirection", -sun.transform.forward);
             }

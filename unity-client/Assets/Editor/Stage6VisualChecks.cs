@@ -109,6 +109,22 @@ namespace Albion.Editor
                 camera.transform.LookAt(new Vector3(560f, 2f, -10f));
                 Capture(camera, rt, texture, Path.Combine(folder, "red-close.png"));
 
+                // Eye-level sky frame: the crimson gradient must be visible above the ash ground.
+                camera.transform.position = new Vector3(560f, 6f, -8f);
+                camera.transform.LookAt(new Vector3(560f, 34f, 70f));
+                Capture(camera, rt, texture, Path.Combine(folder, "red-sky.png"));
+
+                // Natural border close-up and a ground-level tree frame for volume checks.
+                atmosphere.PreviewAt(new Vector3(140f, 0f, 40f));
+                camera.transform.position = new Vector3(140f, 8f, 40f);
+                camera.transform.LookAt(new Vector3(170f, 9f, 40f));
+                Capture(camera, rt, texture, Path.Combine(folder, "border.png"));
+
+                atmosphere.PreviewAt(new Vector3(0f, 0f, 40f));
+                camera.transform.position = new Vector3(0f, 3.2f, 31f);
+                camera.transform.LookAt(new Vector3(0f, 4.5f, 40f));
+                Capture(camera, rt, texture, Path.Combine(folder, "flora.png"));
+
                 // Overview uses no fog so the three 320x320 regions and their walled gateways stay visible.
                 atmosphere.PreviewAt(new Vector3(320f, 0f, 0f));
                 RenderSettings.fog = false;

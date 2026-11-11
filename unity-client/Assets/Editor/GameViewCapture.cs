@@ -62,6 +62,7 @@ namespace Albion.Editor
                 image = new Texture2D(texture.width, texture.height, TextureFormat.RGB24, false);
                 image.ReadPixels(new Rect(0f, 0f, texture.width, texture.height), 0, 0, false);
                 image.Apply(false, false);
+                CaptureTexture.FlipVertical(image);
                 var bytes = image.EncodeToPNG();
                 if (bytes == null || bytes.Length < 128)
                     throw new InvalidOperationException("GameView PNG encoding returned no usable image.");

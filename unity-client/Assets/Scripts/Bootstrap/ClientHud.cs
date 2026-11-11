@@ -24,7 +24,6 @@ namespace Albion.Client
         private bool _showSkills;
         private string _message = string.Empty;
         private float _messageUntil;
-        private uint _zoneId;
         private UnityVector3 _craftScroll;
         private UnityVector3 _skillScroll;
         private UnityVector3 _tradeScroll;
@@ -59,8 +58,6 @@ namespace Albion.Client
             {
                 RequestLoot();
             }
-
-            ApplyZoneVisuals();
         }
 
         /// <summary>Открывает/закрывает панель крафта (клавиша C или мобильная кнопка).</summary>
@@ -107,8 +104,18 @@ namespace Albion.Client
 
             if (!string.IsNullOrEmpty(_message) && Time.unscaledTime < _messageUntil)
             {
+                Backdrop(new Rect(6f, Screen.height - 78f, Mathf.Min(940f, Screen.width - 12f), 30f), 0.62f);
                 GUI.Label(new Rect(12f, Screen.height - 70f, 900f, 24f), _message);
             }
+        }
+
+        /// <summary>Semi-transparent black plate behind HUD text so pale skies cannot wash it out.</summary>
+        public static void Backdrop(Rect rect, float alpha)
+        {
+            var previous = GUI.color;
+            GUI.color = new Color(0f, 0f, 0f, Mathf.Clamp01(alpha));
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = previous;
         }
 
         private EntitySnapshot? Own()
@@ -209,6 +216,8 @@ namespace Albion.Client
         private void DrawHints()
         {
             if (Application.isMobilePlatform) return;
+            var rect = new Rect(6f, Screen.height - 52f, Screen.width - 12f, 30f);
+            Backdrop(rect, 0.55f);
             GUI.Label(
                 new Rect(12f, Screen.height - 46f, Screen.width - 24f, 22f),
                 "WASD/ПКМ — движение, Space/ЛКМ — атака, E — лут, C — крафт, K — навыки. "
@@ -218,6 +227,7 @@ namespace Albion.Client
         private void DrawCraft()
         {
             var rect = new Rect(Screen.width - PanelWidth - 12f, 12f, PanelWidth, Screen.height - 96f);
+            Backdrop(rect, 0.82f);
             GUILayout.BeginArea(rect, GUI.skin.box);
             GUILayout.Label("Крафт (C — закрыть)");
             _craftScroll = GUILayout.BeginScrollView(_craftScroll);
@@ -258,6 +268,7 @@ namespace Albion.Client
         {
             var own = Own();
             var rect = new Rect((Screen.width - SmallPanelWidth) * 0.5f, 80f, SmallPanelWidth, Screen.height - 200f);
+            Backdrop(rect, 0.82f);
             GUILayout.BeginArea(rect, GUI.skin.box);
             GUILayout.Label("Дерево навыков (K — закрыть)");
 
@@ -311,6 +322,7 @@ namespace Albion.Client
             }
 
             var rect = new Rect(12f, Screen.height - 300f, PanelWidth, 240f);
+            Backdrop(rect, 0.82f);
             GUILayout.BeginArea(rect, GUI.skin.box);
             GUILayout.Label("Торговец " + trader.Key + " (" + trader.ZoneKey + ")");
             _tradeScroll = GUILayout.BeginScrollView(_tradeScroll);
@@ -405,56 +417,6 @@ namespace Albion.Client
             catch (InvalidOperationException)
             {
                 return null;
-            }
-        }
-
-        private void ApplyZoneVisuals()
-        {
-            var own = Own();
-            if (!own.HasValue || _content == null || own.Value.ZoneId == _zoneId)
-            {
-                return;
-            }
-
-            _zoneId = own.Value.ZoneId;
-            if (!_content.Config.Zones.TryGetZoneById(_zoneId, out var zone) || zone == null)
-            {
-                return;
-            }
-
-            switch (zone.Key)
-            {
-                case "blue":
-                    ApplyPalette(new Color(0.30f, 0.42f, 0.62f), new Color(0.34f, 0.46f, 0.66f), 0.028f,
-                        new Color(0.85f, 0.9f, 1f));
-                    break;
-                case "yellow":
-                    ApplyPalette(new Color(0.62f, 0.52f, 0.32f), new Color(0.68f, 0.58f, 0.38f), 0.034f,
-                        new Color(1f, 0.9f, 0.7f));
-                    break;
-                case "red":
-                    ApplyPalette(new Color(0.42f, 0.24f, 0.24f), new Color(0.48f, 0.26f, 0.24f), 0.04f,
-                        new Color(1f, 0.72f, 0.62f));
-                    break;
-            }
-        }
-
-        private static void ApplyPalette(Color ambient, Color fog, float density, Color sun)
-        {
-            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = ambient;
-            RenderSettings.ambientEquatorColor = ambient * 0.7f;
-            RenderSettings.ambientGroundColor = ambient * 0.4f;
-            RenderSettings.fog = true;
-            RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogColor = fog;
-            RenderSettings.fogDensity = density;
-
-            var light = RenderSettings.sun;
-            if (light != null)
-            {
-                light.color = sun;
-                light.intensity = 1.15f;
             }
         }
 

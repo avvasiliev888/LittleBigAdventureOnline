@@ -38,7 +38,7 @@ Material:
     - _ShadowSmoothness: 0.1
     - _ShadowThreshold: 0.42
     m_Colors:
-    - _BaseColor: {r: 0.3882353, g: 0.32941177, b: 0.2901961, a: 1}
+    - _BaseColor: {r: 0.3529412, g: 0.2901961, b: 0.2509804, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _HighlightColor: {r: 1.14, g: 1.1, b: 0.92, a: 1}
     - _OutlineColor: {r: 0.035, g: 0.064999975, b: 0.089999996, a: 1}

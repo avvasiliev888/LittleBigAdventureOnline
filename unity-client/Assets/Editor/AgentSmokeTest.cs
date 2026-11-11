@@ -177,6 +177,7 @@ namespace Albion.Editor
             }
 
             var pipeline = runtime.Pipeline;
+            Stage6PerformanceChecks.Begin();
             if (!pipeline.HasSession || pipeline.SnapshotsApplied < 5)
             {
                 if (elapsed > 40.0)
@@ -232,8 +233,13 @@ namespace Albion.Editor
             try
             {
                 HudSmokeChecks.Verify();
-                if (Environment.GetEnvironmentVariable("ALBION_REBUILD_WORLD") == "1")
+                var stage6 = Environment.GetEnvironmentVariable("ALBION_REBUILD_WORLD") == "1"
+                    || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ALBION_STAGE6_GALLERY"));
+                if (stage6)
+                {
                     Stage6VisualChecks.VerifyAndCapture(pipeline.Content);
+                    Stage6PerformanceChecks.Verify(Camera.main);
+                }
             }
             catch (Exception exception)
             {
@@ -262,6 +268,7 @@ namespace Albion.Editor
 
         private static void Finish(string result, int exitCode)
         {
+            Stage6PerformanceChecks.End();
             try
             {
                 File.WriteAllText(Path.GetFullPath(ResultFile), result + Environment.NewLine);

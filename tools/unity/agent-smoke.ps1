@@ -15,6 +15,7 @@ param(
     [int]$Port = 0,
     [int]$TimeoutSeconds = 180,
     [string]$UnityPath = "",
+    [string]$Screenshot = "",
     [switch]$SkipPlugins,
     [switch]$KeepProject
 )
@@ -88,7 +89,14 @@ Remove-Item $serverLog, $unityLog, $resultFile -ErrorAction SilentlyContinue
 
 $server = $null
 $oldPort = $env:ALBION_SERVER_PORT
+$oldScreenshot = $env:ALBION_SMOKE_SCREENSHOT
 try {
+    if ($Screenshot) {
+        $Screenshot = [System.IO.Path]::GetFullPath($Screenshot)
+        New-Item -ItemType Directory -Force (Split-Path $Screenshot) | Out-Null
+        $env:ALBION_SMOKE_SCREENSHOT = $Screenshot
+        Write-Host "Скриншот: $Screenshot"
+    }
     $server = Start-Process -FilePath "dotnet" `
         -ArgumentList @("run", "--project", (Join-Path $root "src/Server"), "-c", "Release", "--no-build", "--", "--udp", "$Port", "--seconds", "$TimeoutSeconds", "--metrics-every", "0") `
         -RedirectStandardOutput $serverLog -RedirectStandardError "$serverLog.err" -PassThru -WindowStyle Hidden
@@ -120,6 +128,10 @@ try {
         Write-Host "Результат smoke-теста не записан."
     }
 
+    if ($Screenshot -and (Test-Path $Screenshot)) {
+        Write-Host ("Скриншот записан: " + $Screenshot + " (" + (Get-Item $Screenshot).Length + " байт)")
+    }
+
     if ($unityProcess.ExitCode -ne 0) {
         if (Test-Path $unityLog) {
             Write-Host "Последние строки Unity-лога:"
@@ -132,6 +144,7 @@ try {
         Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
     }
     $env:ALBION_SERVER_PORT = $oldPort
+    $env:ALBION_SMOKE_SCREENSHOT = $oldScreenshot
     if (-not $KeepProject -and (Test-Path $work)) {
         Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
     }

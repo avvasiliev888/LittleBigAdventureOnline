@@ -119,8 +119,9 @@ PASS snapshots=5 deltas=4 visuals=8 mobs=6 corpses=0
 
 Полезные флаги: `-Port 9300`, `-UnityPath <путь к Unity.exe>`, `-KeepProject`
 (оставить `%TEMP%\albion-unity-agent` с `Library` для быстрых повторных прогонов),
-`-SkipPlugins`. Путь к Unity также можно задать переменной `UNITY_EDITOR_PATH`;
-если Editor не установлен, скрипт завершится с понятной ошибкой.
+`-Screenshot <путь>.png` (снять кадр Play-режима), `-SkipPlugins`. Путь к Unity также
+можно задать переменной `UNITY_EDITOR_PATH`; если Editor не установлен, скрипт
+завершится с понятной ошибкой.
 
 ## 4. Запуск сервера
 

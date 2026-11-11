@@ -19,6 +19,8 @@ namespace Albion.Editor
         private const string StateKey = "Albion.AgentSmoke.Running";
         private const string ResultFile = "agent-smoke-result.txt";
         private static double _started;
+        private static double _exitAt;
+        private static int _exitCode;
 
         /// <summary>Точка входа для <c>-executeMethod</c>.</summary>
         public static void Run()
@@ -44,6 +46,29 @@ namespace Albion.Editor
 
         private static void Tick()
         {
+            if (SessionState.GetInt(StateKey, 0) == 2)
+            {
+                // Скриншот пишется в конце кадра: даём рендеру кадр-другой и выходим.
+                if (EditorApplication.isPaused)
+                {
+                    EditorApplication.isPaused = false;
+                }
+
+                if (EditorApplication.timeSinceStartup >= _exitAt)
+                {
+                    SessionState.SetInt(StateKey, 0);
+                    EditorApplication.update -= Tick;
+                    if (EditorApplication.isPlaying)
+                    {
+                        EditorApplication.isPlaying = false;
+                    }
+
+                    EditorApplication.Exit(_exitCode);
+                }
+
+                return;
+            }
+
             if (SessionState.GetInt(StateKey, 0) != 1)
             {
                 EditorApplication.update -= Tick;
@@ -160,8 +185,6 @@ namespace Albion.Editor
 
         private static void Finish(string result, int exitCode)
         {
-            SessionState.SetInt(StateKey, 0);
-            EditorApplication.update -= Tick;
             try
             {
                 File.WriteAllText(Path.GetFullPath(ResultFile), result + Environment.NewLine);
@@ -171,6 +194,28 @@ namespace Albion.Editor
                 Debug.LogWarning("[agent-smoke] не удалось записать результат: " + exception.Message);
             }
 
+            var screenshot = Environment.GetEnvironmentVariable("ALBION_SMOKE_SCREENSHOT");
+            if (!string.IsNullOrEmpty(screenshot))
+            {
+                try
+                {
+                    ScreenCapture.CaptureScreenshot(screenshot);
+                    Debug.Log("[agent-smoke] скриншот: " + screenshot);
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning("[agent-smoke] скриншот не удался: " + exception.Message);
+                }
+
+                // Даём Unity записать PNG в конце кадра, затем выходим из Play и batchmode.
+                _exitCode = exitCode;
+                _exitAt = EditorApplication.timeSinceStartup + 1.5;
+                SessionState.SetInt(StateKey, 2);
+                return;
+            }
+
+            SessionState.SetInt(StateKey, 0);
+            EditorApplication.update -= Tick;
             if (EditorApplication.isPlaying)
             {
                 EditorApplication.isPlaying = false;

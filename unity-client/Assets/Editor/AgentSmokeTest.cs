@@ -23,6 +23,11 @@ namespace Albion.Editor
         private static int _exitCode;
         private static bool _contentChecksStarted;
         private static bool _contentChecksPassed;
+        private static bool _viewPrepared;
+        private static bool _captureDone;
+        private static string _screenshotPath = string.Empty;
+        private static double _captureDeadline;
+        private static string _captureError = string.Empty;
 
         /// <summary>Точка входа для <c>-executeMethod</c>.</summary>
         public static void Run()
@@ -31,6 +36,8 @@ namespace Albion.Editor
             _contentChecksPassed = false;
             SessionState.SetInt(StateKey, 1);
             _started = EditorApplication.timeSinceStartup;
+            if (Environment.GetEnvironmentVariable("ALBION_REBUILD_WORLD") == "1")
+                AlbionWorldBuilder.BuildArenaScene();
             EditorSceneManager.OpenScene("Assets/Scenes/Arena.unity");
             EditorApplication.update -= Tick;
             EditorApplication.update += Tick;
@@ -52,13 +59,39 @@ namespace Albion.Editor
         {
             if (SessionState.GetInt(StateKey, 0) == 2)
             {
-                // Скриншот пишется в конце кадра: даём рендеру кадр-другой и выходим.
+                // Композитный GameView-кадр (включая IMGUI HUD) считывается только после
+                // настоящего Repaint окна, поэтому пробуем несколько editor-тиков.
                 if (EditorApplication.isPaused)
                 {
                     EditorApplication.isPaused = false;
                 }
 
-                if (EditorApplication.timeSinceStartup >= _exitAt)
+                var now = EditorApplication.timeSinceStartup;
+                if (!_captureDone && !string.IsNullOrEmpty(_screenshotPath))
+                {
+                    if (GameViewCapture.TryCapture(_screenshotPath, out var error))
+                    {
+                        _captureDone = true;
+                        _exitAt = now + 0.5;
+                        Debug.Log("[agent-smoke] скриншот с HUD: " + _screenshotPath);
+                    }
+                    else
+                    {
+                        _captureError = error;
+                    }
+
+                    if (!_captureDone && now >= _captureDeadline)
+                    {
+                        // Явный fallback без HUD; в отчёте такой кадр не выдаётся за UI.
+                        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_screenshotPath)));
+                        ScreenCapture.CaptureScreenshot(_screenshotPath);
+                        _captureDone = true;
+                        _exitAt = now + 1.0;
+                        Debug.LogWarning("[agent-smoke] GameView недоступен, снят только мир: " + _captureError);
+                    }
+                }
+
+                if ((_captureDone || string.IsNullOrEmpty(_screenshotPath)) && now >= _exitAt)
                 {
                     SessionState.SetInt(StateKey, 0);
                     EditorApplication.update -= Tick;
@@ -92,6 +125,19 @@ namespace Albion.Editor
 
             // URI loading is asynchronous: unpause before waiting for the pipeline, not after it.
             if (EditorApplication.isPaused) EditorApplication.isPaused = false;
+
+            if (!_viewPrepared && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ALBION_SMOKE_SCREENSHOT")))
+            {
+                _viewPrepared = true;
+                try
+                {
+                    GameViewCapture.Prepare();
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning("[agent-smoke] GameView Prepare: " + exception.Message);
+                }
+            }
 
             var runtime = UnityEngine.Object.FindFirstObjectByType<ClientRuntime>();
             if (runtime == null || runtime.Pipeline == null)
@@ -183,6 +229,18 @@ namespace Albion.Editor
                 return;
             }
 
+            try
+            {
+                HudSmokeChecks.Verify();
+                if (Environment.GetEnvironmentVariable("ALBION_REBUILD_WORLD") == "1")
+                    Stage6VisualChecks.VerifyAndCapture(pipeline.Content);
+            }
+            catch (Exception exception)
+            {
+                Fail(exception.ToString());
+                return;
+            }
+
             Pass("snapshots=" + pipeline.SnapshotsApplied
                 + " deltas=" + pipeline.DeltasApplied
                 + " visuals=" + view.VisualEntityCount
@@ -216,19 +274,12 @@ namespace Albion.Editor
             var screenshot = Environment.GetEnvironmentVariable("ALBION_SMOKE_SCREENSHOT");
             if (!string.IsNullOrEmpty(screenshot))
             {
-                try
-                {
-                    ScreenCapture.CaptureScreenshot(screenshot);
-                    Debug.Log("[agent-smoke] скриншот: " + screenshot);
-                }
-                catch (Exception exception)
-                {
-                    Debug.LogWarning("[agent-smoke] скриншот не удался: " + exception.Message);
-                }
-
-                // Даём Unity записать PNG в конце кадра, затем выходим из Play и batchmode.
                 _exitCode = exitCode;
-                _exitAt = EditorApplication.timeSinceStartup + 1.5;
+                _screenshotPath = screenshot;
+                _captureDone = false;
+                _captureError = string.Empty;
+                _captureDeadline = EditorApplication.timeSinceStartup + 5.0;
+                _exitAt = _captureDeadline;
                 SessionState.SetInt(StateKey, 2);
                 return;
             }

@@ -27,6 +27,7 @@ namespace Client.Network
         private float _moveSpeed;
         private readonly ActorConfig? _actor;
         private AbilityConfig? _ability;
+        private readonly ZoneMap? _zones;
         private readonly List<ICommand> _unacknowledged = new List<ICommand>();
         private Vector3 _position;
         private bool _hasPosition;
@@ -37,8 +38,9 @@ namespace Client.Network
         /// <param name="entityId">Идентификатор сущности, выданный сервером.</param>
         /// <param name="moveSpeed">Скорость перемещения актора, единиц в секунду.</param>
         /// <param name="tolerance">Допустимое расхождение для реконсиляции.</param>
-        public ClientPrediction(uint entityId, float moveSpeed, float tolerance = DefaultTolerance)
-            : this(entityId, moveSpeed, null, null, tolerance)
+        /// <param name="zones">Карта зон для тех же границ и проходов, что у сервера; <c>null</c> — без границ.</param>
+        public ClientPrediction(uint entityId, float moveSpeed, float tolerance = DefaultTolerance, ZoneMap? zones = null)
+            : this(entityId, moveSpeed, null, null, tolerance, zones)
         {
         }
 
@@ -50,18 +52,31 @@ namespace Client.Network
         /// <param name="actor">Тип актора из конфига.</param>
         /// <param name="ability">Способность актора из конфига.</param>
         /// <param name="tolerance">Допустимое расхождение для реконсиляции.</param>
+        /// <param name="zones">Карта зон для тех же границ и проходов, что у сервера; <c>null</c> — без границ.</param>
         /// <exception cref="ArgumentNullException">Если <paramref name="actor"/> или <paramref name="ability"/> равны <c>null</c>.</exception>
-        public ClientPrediction(uint entityId, ActorConfig actor, AbilityConfig ability, float tolerance = DefaultTolerance)
+        public ClientPrediction(
+            uint entityId,
+            ActorConfig actor,
+            AbilityConfig ability,
+            float tolerance = DefaultTolerance,
+            ZoneMap? zones = null)
             : this(
                 entityId,
                 (actor ?? throw new ArgumentNullException(nameof(actor))).MoveSpeed,
                 actor,
                 ability ?? throw new ArgumentNullException(nameof(ability)),
-                tolerance)
+                tolerance,
+                zones)
         {
         }
 
-        private ClientPrediction(uint entityId, float moveSpeed, ActorConfig? actor, AbilityConfig? ability, float tolerance)
+        private ClientPrediction(
+            uint entityId,
+            float moveSpeed,
+            ActorConfig? actor,
+            AbilityConfig? ability,
+            float tolerance,
+            ZoneMap? zones)
         {
             if (float.IsNaN(moveSpeed) || float.IsInfinity(moveSpeed) || moveSpeed < 0f)
             {
@@ -72,6 +87,7 @@ namespace Client.Network
             _moveSpeed = moveSpeed;
             _actor = actor;
             _ability = ability;
+            _zones = zones;
             Tolerance = tolerance;
         }
 
@@ -301,10 +317,14 @@ namespace Client.Network
         {
             if (command is MoveCommand move)
             {
-                return new Vector3(
+                var desired = new Vector3(
                     position.X + (move.Direction.X * _moveSpeed * TickDelta),
                     position.Y,
                     position.Z + (move.Direction.Y * _moveSpeed * TickDelta));
+
+                // То же правило границ/проходов, что в симуляции: иначе стена даёт
+                // постоянную реконсиляцию и «дрожание» у перехода между зонами.
+                return _zones == null ? desired : _zones.ResolveMovement(position, desired);
             }
 
             return position;

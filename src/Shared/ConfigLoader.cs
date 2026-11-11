@@ -892,6 +892,7 @@ namespace Shared
             var hostileFlagSeconds = RequireFloat(dto, label, "hostileFlagSeconds");
             var resourceTierMin = RequireInt(dto, label, "resourceTierMin");
             var resourceTierMax = RequireInt(dto, label, "resourceTierMax");
+            var gates = ToZoneGates(dto, label);
 
             try
             {
@@ -908,12 +909,38 @@ namespace Shared
                     durabilityLossFraction,
                     hostileFlagSeconds,
                     resourceTierMin,
-                    resourceTierMax);
+                    resourceTierMax,
+                    gates);
             }
             catch (ArgumentException exception)
             {
                 throw new ConfigValidationException(label + " (key=" + key + "): " + exception.Message, exception);
             }
+        }
+
+        /// <summary>Читает необязательные проходы зоны; отсутствие поля — граница без контроля.</summary>
+        private static List<ZoneGate> ToZoneGates(Dictionary<string, object?> dto, string label)
+        {
+            var entries = OptionalObjectArray(dto, label, "gates");
+            var gates = new List<ZoneGate>(entries.Count);
+            for (var i = 0; i < entries.Count; i++)
+            {
+                var gateLabel = label + ".gates[" + i + "]";
+                var toZoneId = RequireUint(entries[i], gateLabel, "toZoneId");
+                var x = RequireFloat(entries[i], gateLabel, "x");
+                var z = RequireFloat(entries[i], gateLabel, "z");
+                var halfWidth = RequireFloat(entries[i], gateLabel, "halfWidth");
+                try
+                {
+                    gates.Add(new ZoneGate(toZoneId, x, z, halfWidth));
+                }
+                catch (ArgumentOutOfRangeException exception)
+                {
+                    throw new ConfigValidationException(gateLabel + ": " + exception.Message, exception);
+                }
+            }
+
+            return gates;
         }
 
         private static ItemDefinition ToItem(Dictionary<string, object?> dto, string source, int index)

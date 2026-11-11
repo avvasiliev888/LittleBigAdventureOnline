@@ -1,4 +1,5 @@
 using Client.Network;
+using Simulation.Core;
 using UnityEngine;
 
 namespace Albion.Client
@@ -50,11 +51,13 @@ namespace Albion.Client
 
             var progress = CooldownProgress();
             var ready = progress >= 0.999f;
+            var size = IconSize * (Application.isMobilePlatform ? Mathf.Clamp(Screen.height / 720f, 1f, 2f) : 1f);
             var rect = new Rect(
-                (Screen.width - IconSize) * 0.5f,
-                Screen.height - IconSize - BottomMargin,
-                IconSize,
-                IconSize);
+                (Screen.width - size) * 0.5f,
+                Screen.height - size - BottomMargin,
+                size,
+                size);
+            var previousColor = GUI.color;
 
             GUI.color = Color.white;
             GUI.DrawTexture(rect, _circle, ScaleMode.ScaleToFit, true);
@@ -65,16 +68,25 @@ namespace Albion.Client
             {
                 // Clip a coloured copy to the bottom fraction of the icon. The bright part grows
                 // upwards as the cooldown drains, matching Image.Type=Filled/Vertical.
-                var filledHeight = IconSize * progress;
-                GUI.BeginGroup(new Rect(rect.x, rect.y + IconSize - filledHeight, IconSize, filledHeight));
+                var filledHeight = size * progress;
+                GUI.BeginGroup(new Rect(rect.x, rect.y + size - filledHeight, size, filledHeight));
                 GUI.color = FillTint;
-                GUI.DrawTexture(new Rect(0f, filledHeight - IconSize, IconSize, IconSize),
+                GUI.DrawTexture(new Rect(0f, filledHeight - size, size, size),
                     _sword, ScaleMode.ScaleToFit, true);
                 GUI.EndGroup();
             }
 
             GUI.color = Color.white;
-            GUI.Label(new Rect(rect.x - 24f, rect.y - 20f, IconSize + 72f, 18f), "SPACE / LMB");
+            var label = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = Application.isMobilePlatform ? Mathf.Max(18, Mathf.RoundToInt(Screen.height / 45f)) : 16,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = Color.white },
+            };
+            var seconds = (_pipeline?.Prediction?.CooldownRemainingTicks ?? 0) / (float)SimulationConstants.TickRate;
+            var text = Application.isMobilePlatform ? (ready ? "ГОТОВО" : seconds.ToString("0.0") + " с") : "SPACE / LMB";
+            GUI.Label(new Rect(rect.x - 40f, rect.y - 34f, size + 80f, 30f), text, label);
+            GUI.color = previousColor;
         }
 
         private float CooldownProgress()

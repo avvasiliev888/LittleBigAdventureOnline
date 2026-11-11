@@ -345,10 +345,12 @@ namespace Simulation.Core
             }
 
             var direction = new Vector3(command.Direction.X, 0f, command.Direction.Y);
-            entity.Position += direction * (entity.MoveSpeed * deltaTime);
+            var desired = entity.Position + (direction * (entity.MoveSpeed * deltaTime));
 
-            // Граница мира — правило зон, а не вежливость: из мира нельзя выйти и «спрятаться» вне зон.
-            entity.Position = _config!.Zones.ClampToBounds(entity.Position);
+            // Граница мира и проходы между зонами — правило симуляции, а не вежливость:
+            // из мира нельзя выйти и «спрятаться» вне зон, а границу с проходами нельзя
+            // пересечь вне прохода (иначе клиент и сервер разойдутся при реконсиляции).
+            entity.Position = _config!.Zones.ResolveMovement(entity.Position, desired);
         }
 
         private void ApplyAbility(EntityState caster, AbilityCommand command)
@@ -916,13 +918,14 @@ namespace Simulation.Core
 
             if (distance <= step || distance <= 0.0001f)
             {
-                mob.Position = _config!.Zones.ClampToBounds(new Vector3(destination.X, 0f, destination.Z));
+                mob.Position = _config!.Zones.ResolveMovement(
+                    mob.Position, new Vector3(destination.X, 0f, destination.Z));
                 return true;
             }
 
             var scale = step / distance;
-            mob.Position = _config!.Zones.ClampToBounds(
-                new Vector3(mob.Position.X + (dx * scale), 0f, mob.Position.Z + (dz * scale)));
+            mob.Position = _config!.Zones.ResolveMovement(
+                mob.Position, new Vector3(mob.Position.X + (dx * scale), 0f, mob.Position.Z + (dz * scale)));
             return false;
         }
 

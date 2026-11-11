@@ -21,7 +21,7 @@
     "id": 2,
     "key": "yellow_merchant",
     "zoneKey": "yellow",
-    "x": 18.0,
+    "x": 220.0,
     "z": 0.0,
     "range": 5.0,
     "prices": [
@@ -39,7 +39,7 @@
     "id": 3,
     "key": "red_merchant",
     "zoneKey": "red",
-    "x": 33.0,
+    "x": 560.0,
     "z": 0.0,
     "range": 5.0,
     "prices": [

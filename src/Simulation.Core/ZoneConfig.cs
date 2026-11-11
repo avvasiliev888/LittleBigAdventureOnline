@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 
 namespace Simulation.Core
@@ -23,6 +24,7 @@ namespace Simulation.Core
         /// <param name="hostileFlagSeconds">Длительность флага враждебности после атаки на игрока, с.</param>
         /// <param name="resourceTierMin">Минимальный тир ресурсов зоны.</param>
         /// <param name="resourceTierMax">Максимальный тир ресурсов зоны.</param>
+        /// <param name="gates">Проходы в соседние зоны; <c>null</c> — граница без контролируемых переходов.</param>
         /// <exception cref="ArgumentOutOfRangeException">Если числовое значение вне допустимого диапазона.</exception>
         /// <exception cref="ArgumentException">Если ключ пуст, границы некорректны или правила противоречат друг другу.</exception>
         public ZoneConfig(
@@ -38,7 +40,8 @@ namespace Simulation.Core
             float durabilityLossFraction,
             float hostileFlagSeconds,
             int resourceTierMin,
-            int resourceTierMax)
+            int resourceTierMax,
+            IEnumerable<ZoneGate>? gates = null)
         {
             if (id == 0)
             {
@@ -122,6 +125,27 @@ namespace Simulation.Core
             HostileFlagSeconds = hostileFlagSeconds;
             ResourceTierMin = resourceTierMin;
             ResourceTierMax = resourceTierMax;
+            var gateList = new List<ZoneGate>();
+            if (gates != null)
+            {
+                foreach (var gate in gates)
+                {
+                    if (gate == null)
+                    {
+                        throw new ArgumentException("Список проходов содержит null.", nameof(gates));
+                    }
+
+                    if (gate.ToZoneId == id)
+                    {
+                        throw new ArgumentException(
+                            "Зона " + key + ": проход не может вести в неё саму.", nameof(gates));
+                    }
+
+                    gateList.Add(gate);
+                }
+            }
+
+            Gates = gateList;
         }
 
         /// <summary>Идентификатор зоны, уникальный в конфиге.</summary>
@@ -162,6 +186,9 @@ namespace Simulation.Core
 
         /// <summary>Максимальный тир ресурсов зоны.</summary>
         public int ResourceTierMax { get; }
+
+        /// <summary>Проходы в соседние зоны; пусто — граница без контролируемых переходов.</summary>
+        public IReadOnlyList<ZoneGate> Gates { get; }
 
         /// <summary>Ширина зоны по X в единицах мира.</summary>
         public float Width => MaxX - MinX;

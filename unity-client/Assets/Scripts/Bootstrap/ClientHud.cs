@@ -113,21 +113,34 @@ namespace Albion.Client
 
         private EntitySnapshot? Own()
         {
-            var snapshot = _pipeline?.LastSnapshot;
-            if (snapshot == null || _pipeline == null)
-            {
-                return null;
-            }
+            return _pipeline != null && TryGetOwnVitals(_pipeline.LastSnapshot, _pipeline.EntityId, out var own)
+                ? own : (EntitySnapshot?)null;
+        }
 
-            for (var i = 0; i < snapshot.Entities.Count; i++)
+        /// <summary>Finds the local entity in the newest authoritative snapshot, never a nearby mob.</summary>
+        public static bool TryGetOwnVitals(SimulationSnapshot? snapshot, uint entityId, out EntitySnapshot own)
+        {
+            if (snapshot != null && entityId != 0)
             {
-                if (snapshot.Entities[i].Id == _pipeline.EntityId)
+                for (var i = 0; i < snapshot.Entities.Count; i++)
                 {
-                    return snapshot.Entities[i];
+                    if (snapshot.Entities[i].Id == entityId)
+                    {
+                        own = snapshot.Entities[i];
+                        return true;
+                    }
                 }
             }
+            own = default;
+            return false;
+        }
 
-            return null;
+        /// <summary>Readable stats panel dimensions; mobile top-centre controls remain unobstructed.</summary>
+        public static Rect VitalsPanelRect(float screenWidth, float screenHeight, bool mobile)
+        {
+            var scale = mobile ? Mathf.Clamp(screenHeight / 720f, 1f, 1.5f) : 1f;
+            var width = mobile ? Mathf.Min(360f * scale, screenWidth * 0.3f) : PanelWidth;
+            return new Rect(12f, 12f, width, 228f * scale);
         }
 
         private UnityVector3 OwnPosition()
@@ -155,22 +168,47 @@ namespace Albion.Client
                 && own.Value.HostileUntilTick > _pipeline.LastSnapshot.Tick;
             var fame = own.HasValue ? own.Value.FameTotal : 0;
             var silver = own.HasValue ? own.Value.Silver : 0;
-            var hp = own.HasValue ? own.Value.Hp + "/" + own.Value.MaxHp : "-";
-            var resource = own.HasValue ? own.Value.Resource + "/" + own.Value.MaxResource : "-";
-            var cooldown = _pipeline?.Prediction?.CooldownRemainingTicks ?? 0;
+            var rect = VitalsPanelRect(Screen.width, Screen.height, Application.isMobilePlatform);
+            var scale = rect.height / 228f;
+            var label = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = Mathf.RoundToInt(17f * scale),
+                alignment = TextAnchor.MiddleLeft,
+                clipping = TextClipping.Clip,
+                normal = { textColor = Color.white },
+            };
+            var fillLabel = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
+            var previous = GUI.color;
+            GUI.color = new Color(0.025f, 0.035f, 0.055f, 0.94f);
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = previous;
+            var inner = new Rect(rect.x + 10f, rect.y + 8f, rect.width - 20f, 24f * scale);
+            GUI.Label(inner, "Персонаж — данные сервера", label);
+            var hp = new Rect(inner.x, rect.y + 36f * scale, inner.width, 30f * scale);
+            var mana = new Rect(inner.x, rect.y + 72f * scale, inner.width, 30f * scale);
+            DrawVital(hp, own.HasValue ? own.Value.Hp : 0, own.HasValue ? own.Value.MaxHp : 0,
+                own.HasValue, "HP", new Color(0.05f, 0.42f, 0.15f, 1f), fillLabel);
+            DrawVital(mana, own.HasValue ? own.Value.Resource : 0, own.HasValue ? own.Value.MaxResource : 0,
+                own.HasValue, "Мана", new Color(0.04f, 0.25f, 0.7f, 1f), fillLabel);
+            inner.y = rect.y + 108f * scale;
+            GUI.Label(inner, "Слава: " + fame + "    Серебро: " + silver, label);
+            inner.y += 25f * scale;
+            GUI.Label(inner, "Зона: " + zoneText, label);
+            inner.y += 25f * scale;
+            GUI.Label(inner, "Флаг: " + (hostile ? "ВРАЖДЕБЕН" : "мирный"), label);
+            inner.y += 25f * scale;
+            GUI.Label(inner, "Снапшоты: " + _pipeline!.SnapshotsApplied + " / Δ " + _pipeline.DeltasApplied, label);
+        }
 
-            GUI.Box(new Rect(12f, 12f, PanelWidth, 154f), "Персонаж");
-            GUI.Label(new Rect(24f, 38f, PanelWidth - 24f, 22f), "HP: " + hp + "    Ресурс: " + resource);
-            GUI.Label(new Rect(24f, 60f, PanelWidth - 24f, 22f), "Слава: " + fame + "    Серебро: " + silver);
-            GUI.Label(new Rect(24f, 82f, PanelWidth - 24f, 22f), "Зона: " + zoneText);
-            GUI.Label(new Rect(24f, 104f, PanelWidth - 24f, 22f),
-                "Флаг: " + (hostile ? "ВРАЖДЕБЕН" : "мирный") + "    Кулдаун: " + cooldown);
-            GUI.Label(new Rect(24f, 126f, PanelWidth - 24f, 22f),
-                "Снапшоты: " + _pipeline!.SnapshotsApplied + "    Дельта: " + _pipeline.DeltasApplied);
+        private static void DrawVital(Rect rect, int value, int maximum, bool available, string name, Color color, GUIStyle label)
+        {
+            HealthBar.DrawMeter(rect, HealthBar.Fraction(value, maximum), color);
+            GUI.Label(rect, available ? name + "  " + value + " / " + maximum : name + "  —", label);
         }
 
         private void DrawHints()
         {
+            if (Application.isMobilePlatform) return;
             GUI.Label(
                 new Rect(12f, Screen.height - 46f, Screen.width - 24f, 22f),
                 "WASD/ПКМ — движение, Space/ЛКМ — атака, E — лут, C — крафт, K — навыки. "

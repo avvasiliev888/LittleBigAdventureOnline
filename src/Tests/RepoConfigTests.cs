@@ -43,8 +43,8 @@ namespace Tests
             var config = LoadRepoConfig();
 
             var blue = config.Zones.GetZone(new System.Numerics.Vector3(0f, 0f, 0f));
-            var yellow = config.Zones.GetZone(new System.Numerics.Vector3(18f, 0f, 0f));
-            var red = config.Zones.GetZone(new System.Numerics.Vector3(33f, 0f, 0f));
+            var yellow = config.Zones.GetZone(new System.Numerics.Vector3(220f, 0f, 0f));
+            var red = config.Zones.GetZone(new System.Numerics.Vector3(560f, 0f, 0f));
 
             Assert.Equal(ZoneKind.Blue, blue.Kind);
             Assert.False(blue.PvpEnabled);
@@ -57,6 +57,33 @@ namespace Tests
             Assert.Equal(ZoneKind.Red, red.Kind);
             Assert.True(red.PvpEnabled);
             Assert.True(red.FullLootOnDeath);
+        }
+
+        [Fact]
+        public void RepoConfig_Zones_AreLargeAndMeetOnlyAtGateways()
+        {
+            var config = LoadRepoConfig();
+            var blue = config.Zones.GetZoneById(1);
+            var yellow = config.Zones.GetZoneById(2);
+            var red = config.Zones.GetZoneById(3);
+
+            Assert.True(blue.Width >= 320f && blue.Depth >= 320f);
+            Assert.True(yellow.Width >= 320f && yellow.Depth >= 320f);
+            Assert.True(red.Width >= 320f && red.Depth >= 320f);
+            Assert.Single(blue.Gates);
+            Assert.Single(yellow.Gates);
+            Assert.Empty(red.Gates);
+
+            var blocked = config.Zones.ResolveMovement(
+                new System.Numerics.Vector3(157f, 0f, 60f),
+                new System.Numerics.Vector3(163f, 0f, 60f));
+            Assert.True(blocked.X <= 160f, "Граница синей и жёлтой зон должна быть стеной вне ворот.");
+
+            var allowed = config.Zones.ResolveMovement(
+                new System.Numerics.Vector3(157f, 0f, 0f),
+                new System.Numerics.Vector3(163f, 0f, 0f));
+            Assert.True(allowed.X > 160f, "Ворота в центре границы должны пропускать игрока.");
+            Assert.Equal("yellow", config.Zones.GetZone(allowed).Key);
         }
 
         [Fact]
@@ -74,7 +101,7 @@ namespace Tests
         public void RepoConfig_DamageFromJson_IsAppliedInSimulation()
         {
             var config = LoadRepoConfig();
-            var player = TestWorld.Entity(1, config, x: 18f);
+            var player = TestWorld.Entity(1, config, x: 220f);
             var ability = config.GetAbility(player.AbilityId);
             var expectedDamage = ability.Damage + player.Equipment.DamageBonus;
             var expectedHp = player.MaxHp - expectedDamage;
@@ -83,7 +110,7 @@ namespace Tests
             var simulation = TestWorld.Simulation(
                 config,
                 player,
-                TestWorld.Entity(2, config, x: 19f));
+                TestWorld.Entity(2, config, x: 221f));
 
             TestWorld.Tick(simulation, TestWorld.Attack(1, 2));
 

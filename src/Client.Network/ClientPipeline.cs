@@ -315,7 +315,11 @@ namespace Client.Network
             if (_content != null && _content.Config.Actors.ContainsKey(actorId))
             {
                 var actor = _content.GetActor(actorId);
-                Prediction = new ClientPrediction(EntityId, actor, _content.GetAbility(actor.AbilityId));
+                Prediction = new ClientPrediction(
+                    EntityId,
+                    actor,
+                    _content.GetAbility(actor.AbilityId),
+                    zones: _content.Config.Zones);
                 if (Math.Abs(actor.MoveSpeed - moveSpeed) > 0.001f)
                 {
                     _log.Add("[config] клиент и сервер расходятся: moveSpeed клиента "

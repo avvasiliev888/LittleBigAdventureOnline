@@ -1,197 +1,122 @@
 using UnityEngine;
-using UnityEngine.Rendering;
 
 namespace Albion.Client
 {
     /// <summary>
-    /// Presentation-only world-space bars: a dark backing and a red HP fill on top, plus a thinner
-    /// blue resource (mana) fill directly underneath with the same width. Both always face the camera.
-    /// HP and resource are authoritative and come from snapshots; at 0 the dark backing remains
-    /// visible so the empty proportion is readable.
+    /// Snapshot-driven HP/mana meters projected above the character. Screen-space drawing keeps
+    /// the fill legible on a phone and independent of world lighting, shader stripping and depth.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class HealthBar : MonoBehaviour
     {
-        private const float Width = 0.9f;
-        private const float Height = 0.11f;
-        private const float ResourceHeight = 0.045f;
-        private const float ResourceGap = 0.015f;
-        private const float FillDepth = -0.01f;
-        private static readonly float ResourceY = -(Height * 0.5f + ResourceGap + ResourceHeight * 0.5f);
-        private static readonly Color BackColor = new Color(0.055f, 0.055f, 0.065f, 1f);
-        private static readonly Color FillColor = new Color(0.82f, 0.045f, 0.045f, 1f);
-        private static readonly Color ResourceColor = new Color(0.10f, 0.36f, 0.95f, 1f);
-
-        private Transform _fill;
-        private Transform _resourceFill;
+        private static readonly Color HpColor = new Color(0.15f, 0.78f, 0.3f, 1f);
+        private static readonly Color ManaColor = new Color(0.12f, 0.49f, 1f, 1f);
         private Camera _camera;
+        private bool _hasHp;
+        private bool _hasResource;
+        private float _hpLoss;
+        private float _resourceLoss;
+        private float _hpLossUntil;
+        private float _resourceLossUntil;
 
-        /// <summary>Creates HP + resource bars above the entity root at <paramref name="height"/> metres.</summary>
+        /// <summary>Actual snapshot HP fraction, not a locally simulated health value.</summary>
+        public float HpFraction { get; private set; }
+
+        /// <summary>Actual snapshot resource fraction; also changes during authoritative regeneration.</summary>
+        public float ResourceFraction { get; private set; }
+
+        /// <summary>Creates meters above the entity root at <paramref name="height"/> metres.</summary>
         public static HealthBar Attach(Transform parent, float height)
         {
             var holder = new GameObject("Health Bar");
             holder.transform.SetParent(parent, false);
             holder.transform.localPosition = new Vector3(0f, height + 0.24f, 0f);
-            var bar = holder.AddComponent<HealthBar>();
-            bar.Build();
-            return bar;
+            return holder.AddComponent<HealthBar>();
         }
 
-        /// <summary>Updates the red HP fill; the backing bar is always visible.</summary>
+        /// <summary>Updates HP only from the authoritative value supplied by the view.</summary>
         public void SetHp(int hp, int maxHp)
         {
-            if (_fill == null)
+            var fraction = Fraction(hp, maxHp);
+            if (_hasHp && fraction < HpFraction)
             {
-                return;
+                _hpLoss = HpFraction;
+                _hpLossUntil = Time.unscaledTime + 1.2f;
             }
-
-            var ratio = Ratio(hp, maxHp);
-            _fill.localScale = new Vector3(Width * ratio, Height, 1f);
-            // The quad pivot is centred, so shifting it left by half the missing width pins the
-            // red fill to the left edge while it shrinks.
-            _fill.localPosition = new Vector3(-Width * (1f - ratio) * 0.5f, 0f, FillDepth);
-            _fill.gameObject.SetActive(ratio > 0f);
+            HpFraction = fraction;
+            _hasHp = true;
         }
 
-        /// <summary>Updates the blue resource/mana fill under the HP bar.</summary>
+        /// <summary>Updates mana only from the authoritative value supplied by the view.</summary>
         public void SetResource(int resource, int maxResource)
         {
-            if (_resourceFill == null)
+            var fraction = Fraction(resource, maxResource);
+            if (_hasResource && fraction < ResourceFraction)
             {
-                return;
+                _resourceLoss = ResourceFraction;
+                _resourceLossUntil = Time.unscaledTime + 1.2f;
             }
-
-            var ratio = Ratio(resource, maxResource);
-            _resourceFill.localScale = new Vector3(Width * ratio, ResourceHeight, 1f);
-            _resourceFill.localPosition = new Vector3(
-                -Width * (1f - ratio) * 0.5f,
-                ResourceY,
-                FillDepth);
-            _resourceFill.gameObject.SetActive(ratio > 0f);
+            ResourceFraction = fraction;
+            _hasResource = true;
         }
 
-        private static float Ratio(int value, int max)
+        /// <summary>Clamped presentation ratio; an unavailable maximum is empty, never full.</summary>
+        public static float Fraction(int value, int maximum)
         {
-            return max > 0 ? Mathf.Clamp01((float)value / max) : 0f;
+            return maximum > 0 ? Mathf.Clamp01((float)value / maximum) : 0f;
         }
 
-        private void Build()
+        /// <summary>Pixel dimensions stay readable at landscape phone resolutions.</summary>
+        public static Vector2 MeterSize(float screenHeight)
         {
-            CreateQuad("Back", transform, BackColor, 0f);
-            _fill = CreateQuad("Hp Fill", transform, FillColor, FillDepth).transform;
-            CreateQuad("Mana Back", transform, BackColor, 0f, ResourceHeight, ResourceY);
-            _resourceFill = CreateQuad(
-                "Mana Fill",
-                transform,
-                ResourceColor,
-                FillDepth,
-                ResourceHeight,
-                ResourceY).transform;
-            SetHp(100, 100);
-            SetResource(100, 100);
-            FaceCamera();
+            var scale = Mathf.Clamp(screenHeight / 720f, 1f, 2f);
+            return new Vector2(88f * scale, 10f * scale);
         }
 
-        private void LateUpdate()
+        /// <summary>Geometry shared by world and screen HUD; keeps the fill's left edge pinned.</summary>
+        public static Rect FillRect(Rect meter, float fraction)
         {
-            FaceCamera();
+            return new Rect(meter.x + 2f, meter.y + 2f,
+                Mathf.Max(0f, meter.width - 4f) * Mathf.Clamp01(fraction), Mathf.Max(0f, meter.height - 4f));
         }
 
-        private void FaceCamera()
+        /// <summary>Draws an opaque, bordered meter without scene materials or GUI.skin dependencies.</summary>
+        public static void DrawMeter(Rect meter, float fraction, Color color, float recentLoss = 0f)
         {
-            if (_camera == null)
+            var previous = GUI.color;
+            GUI.color = new Color(0.015f, 0.02f, 0.03f, 1f);
+            GUI.DrawTexture(meter, Texture2D.whiteTexture);
+            GUI.color = new Color(0.12f, 0.14f, 0.19f, 1f);
+            GUI.DrawTexture(FillRect(meter, 1f), Texture2D.whiteTexture);
+            if (recentLoss > fraction)
             {
-                _camera = Camera.main;
+                GUI.color = new Color(1f, 0.8f, 0.28f, 1f);
+                GUI.DrawTexture(FillRect(meter, recentLoss), Texture2D.whiteTexture);
             }
-
-            if (_camera != null)
-            {
-                transform.rotation = _camera.transform.rotation;
-            }
+            GUI.color = color;
+            GUI.DrawTexture(FillRect(meter, fraction), Texture2D.whiteTexture);
+            GUI.color = previous;
         }
 
-        private static GameObject CreateQuad(
-            string name,
-            Transform parent,
-            Color color,
-            float z,
-            float height = Height,
-            float y = 0f)
+        private void OnGUI()
         {
-            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            quad.name = name;
-            quad.transform.SetParent(parent, false);
-            quad.transform.localPosition = new Vector3(0f, y, z);
-            quad.transform.localScale = new Vector3(Width, height, 1f);
-            var collider = quad.GetComponent<Collider>();
-            if (collider != null)
-            {
-                if (Application.isPlaying)
-                {
-                    Destroy(collider);
-                }
-                else
-                {
-                    DestroyImmediate(collider);
-                }
-            }
+            if (Event.current.type != EventType.Repaint || !_hasHp || !_hasResource) return;
+            if (_camera == null) _camera = Camera.main;
+            if (_camera == null) return;
+            var point = _camera.WorldToScreenPoint(transform.position);
+            if (point.z <= 0f || point.x < 0f || point.x > Screen.width
+                || point.y < 0f || point.y > Screen.height) return;
 
-            var renderer = quad.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = CreateMaterial(color);
-            renderer.shadowCastingMode = ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
-            return quad;
-        }
-
-        private static Material CreateMaterial(Color color)
-        {
-            // URP Lit is already referenced by every Warrior material, so it is guaranteed to be
-            // present in the player build. Unlit/Sprites can be stripped when no authored asset
-            // references them; a stripped shader would render the bar magenta or not at all.
-            var shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null)
-            {
-                shader = Shader.Find("Universal Render Pipeline/Unlit");
-            }
-
-            if (shader == null)
-            {
-                shader = Shader.Find("Unlit/Color");
-            }
-
-            var material = new Material(shader)
-            {
-                name = "Health Bar (" + color.r.ToString("0.00") + ", " + color.g.ToString("0.00") + ")",
-            };
-            if (material.HasProperty("_BaseColor"))
-            {
-                material.SetColor("_BaseColor", color);
-            }
-
-            if (material.HasProperty("_Color"))
-            {
-                material.SetColor("_Color", color);
-            }
-
-            if (material.HasProperty("_Smoothness"))
-            {
-                material.SetFloat("_Smoothness", 0f);
-            }
-
-            if (material.HasProperty("_Metallic"))
-            {
-                material.SetFloat("_Metallic", 0f);
-            }
-
-            if (material.HasProperty("_EmissionColor"))
-            {
-                // Keep the bar readable even when the character stands in shadow; the scene's
-                // directional light is not guaranteed to hit a camera-facing quad.
-                material.EnableKeyword("_EMISSION");
-                material.SetColor("_EmissionColor", new Color(color.r * 0.45f, color.g * 0.45f, color.b * 0.45f, 1f));
-            }
-
-            return material;
+            var previousDepth = GUI.depth;
+            GUI.depth = 20; // Main HUD panels remain in front of overhead meters.
+            var size = MeterSize(Screen.height);
+            var x = point.x - size.x * 0.5f;
+            var y = Screen.height - point.y;
+            DrawMeter(new Rect(x, y, size.x, size.y), HpFraction, HpColor,
+                Time.unscaledTime < _hpLossUntil ? _hpLoss : 0f);
+            DrawMeter(new Rect(x, y + size.y + 3f, size.x, size.y), ResourceFraction, ManaColor,
+                Time.unscaledTime < _resourceLossUntil ? _resourceLoss : 0f);
+            GUI.depth = previousDepth;
         }
     }
 }

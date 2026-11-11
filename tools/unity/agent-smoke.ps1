@@ -17,7 +17,8 @@ param(
     [string]$UnityPath = "",
     [string]$Screenshot = "",
     [switch]$SkipPlugins,
-    [switch]$KeepProject
+    [switch]$KeepProject,
+    [switch]$Visible
 )
 
 $ErrorActionPreference = "Stop"
@@ -97,8 +98,9 @@ try {
         $env:ALBION_SMOKE_SCREENSHOT = $Screenshot
         Write-Host "Скриншот: $Screenshot"
     }
+    # Debug: рабочий Release-сервер оператора может держать свои DLL, а smoke не вправе его трогать.
     $server = Start-Process -FilePath "dotnet" `
-        -ArgumentList @("run", "--project", (Join-Path $root "src/Server"), "-c", "Release", "--no-build", "--", "--udp", "$Port", "--seconds", "$TimeoutSeconds", "--metrics-every", "0") `
+        -ArgumentList @("run", "--project", (Join-Path $root "src/Server"), "-c", "Debug", "--no-build", "--", "--udp", "$Port", "--seconds", "$TimeoutSeconds", "--metrics-every", "0") `
         -RedirectStandardOutput $serverLog -RedirectStandardError "$serverLog.err" -PassThru -WindowStyle Hidden
 
     $ready = $false
@@ -116,9 +118,15 @@ try {
     }
 
     $env:ALBION_SERVER_PORT = "$Port"
-    $unityProcess = Start-Process -FilePath $unity `
-        -ArgumentList @("-batchmode", "-projectPath", $work, "-executeMethod", "Albion.Editor.AgentSmokeTest.Run", "-logFile", $unityLog) `
-        -PassThru -Wait -WindowStyle Hidden
+    # IMGUI HUD нельзя снять в batchmode: там GameView не компонует кадр. -Visible запускает
+    # тот же executeMethod в обычном Editor-окне и читает настоящий composited GameView.
+    $unityArguments = @("-projectPath", $work, "-executeMethod", "Albion.Editor.AgentSmokeTest.Run", "-logFile", $unityLog)
+    if (-not $Visible) { $unityArguments = @("-batchmode") + $unityArguments }
+    $unityProcess = if ($Visible) {
+        Start-Process -FilePath $unity -ArgumentList $unityArguments -PassThru -Wait
+    } else {
+        Start-Process -FilePath $unity -ArgumentList $unityArguments -PassThru -Wait -WindowStyle Hidden
+    }
 
     Write-Host "Unity exit code: $($unityProcess.ExitCode)"
     if (Test-Path $resultFile) {

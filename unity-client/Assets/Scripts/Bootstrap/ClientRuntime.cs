@@ -29,6 +29,7 @@ namespace Albion.Client
         private float _fpsLogSum;
         private int _fpsLogFrames;
         private UnityView _view;
+        private ZoneAtmosphere _atmosphere;
         private UnityInputSource _input;
         private CameraFollow _cameraFollow;
         private ClientHud _hud;
@@ -101,6 +102,8 @@ namespace Albion.Client
             }
 
             Debug.Log("ClientRuntime: конфиг " + configDirectory + " загружен, hash=" + _content.Hash);
+            _atmosphere = gameObject.AddComponent<ZoneAtmosphere>();
+            _atmosphere.Initialize(_content);
             var worldRoot = new GameObject("Entities").transform;
             _view = new UnityView(worldRoot, _content);
 
@@ -235,6 +238,7 @@ namespace Albion.Client
             if (_cameraFollow != null && _cameraFollow.Target == null && _view.Player != null)
             {
                 _cameraFollow.Target = _view.Player;
+                _atmosphere?.Follow(_view.Player);
             }
         }
 

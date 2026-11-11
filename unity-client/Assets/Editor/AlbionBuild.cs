@@ -106,8 +106,8 @@ namespace Albion.Editor
 
             PlayerSettings.productName = "Albion Prototype";
             PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.albion.prototype");
-            PlayerSettings.bundleVersion = "0.5.1";
-            PlayerSettings.Android.bundleVersionCode = 2;
+            PlayerSettings.bundleVersion = "0.6.0";
+            PlayerSettings.Android.bundleVersionCode = 3;
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
             PlayerSettings.allowedAutorotateToPortrait = false;
             PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;

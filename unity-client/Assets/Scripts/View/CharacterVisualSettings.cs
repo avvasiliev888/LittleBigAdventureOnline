@@ -103,6 +103,9 @@ namespace Albion.Client
             animator.Rebind();
             animator.Update(0f);
             root.gameObject.AddComponent<WarriorVisual>().Initialize(facing, animator);
+            // Preserve the imported warrior/rig/animations. Convert after calibration so the
+            // expanded outline hull cannot influence the measured character height.
+            FantasyVisuals.ToonWarrior(visual);
             HealthBar.Attach(root, Height + GroundOffset);
             return root;
         }

@@ -4,8 +4,9 @@
 
 Stage 8 с процедурными гуманоидами из сфер/кубов **отклонён**. Код генерации удалён:
 `ProceduralHumanoidVisual`, `ProceduralWeaponBuilder`, `ProceduralCharacterGenerator`,
-`ProceduralCharacterChecks`, `Stage8VisualChecks`. Релизные артефакты 0.7.0, собранные с
-этой графикой, **не являются финальными** и не должны использоваться для оценки визуала.
+`ProceduralCharacterChecks`, `Stage8VisualChecks`. Релиз 0.7.0 с этой графикой отозван;
+вместо него собран 0.7.1 с импортированным warrior. Визуал 0.7.1 — временный fallback,
+но процедурных гуманоидов в нём нет.
 
 ## Что оставлено как временный fallback
 
@@ -35,8 +36,11 @@ Stage 8 с процедурными гуманоидами из сфер/куб�
 - Runtime smoke: `PASS snapshots=5 deltas=4 visuals=8 mobs=6 corpses=0`.
 - Скриншот: `artifacts/art-pipeline-smoke.png` (временный fallback, не финальный арт).
 
-## Пауза
+## Релиз 0.7.1
+
+Собран APK/Desktop/Server **0.7.1** с импортированным warrior и старыми мобами как
+временным fallback. Это откат от 0.7.0, а не финальный арт.
 
 Следующий шаг — получить от заказчика реальные Synty/Mixamo/Quaternius FBX по
 `docs/art-requirements.md`, прогнать `Albion → Art → Prepare All Imported Art` и только
-после визуальной приёмки пересобирать APK/Desktop/Server.
+после визуальной приёмки выпускать следующий релиз.

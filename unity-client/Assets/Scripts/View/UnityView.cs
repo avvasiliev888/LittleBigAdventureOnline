@@ -28,6 +28,7 @@ namespace Albion.Client
             public Transform Root;
             public WarriorVisual Visual;
             public FantasyVisuals MobVisual;
+            public ProceduralHumanoidVisual Generated;
             public WeaponVisuals Weapons;
             public HealthBar HealthBar;
             public bool IsMob;
@@ -224,7 +225,8 @@ namespace Albion.Client
                     IsMob = isMob,
                     Visual = isMob ? null : root.GetComponent<WarriorVisual>(),
                     MobVisual = isMob ? root.GetComponent<FantasyVisuals>() : null,
-                    Weapons = isMob ? null : root.GetComponentInChildren<WeaponVisuals>(true),
+                    Generated = root.GetComponent<ProceduralHumanoidVisual>(),
+                    Weapons = root.GetComponentInChildren<WeaponVisuals>(true),
                     HealthBar = root.GetComponentInChildren<HealthBar>(),
                 };
                 _entities[entity.Id] = state;
@@ -274,7 +276,13 @@ namespace Albion.Client
 
             state.Visual?.SetMotion(velocity, entity.IsDead, reset);
             state.MobVisual?.SetMotion(velocity, entity.IsDead, reset, deltaTime);
-            if (hit) state.Visual?.PlayHit();
+            state.Generated?.SetMotion(velocity, entity.IsDead, reset, deltaTime);
+            if (hit)
+            {
+                state.Visual?.PlayHit();
+                state.Generated?.PlayHit();
+            }
+            ApplyWeapon(state, entity);
             if (hpDelta > 0)
             {
                 // Snapshot HP is authoritative: the same delta the server applied is the number
@@ -296,7 +304,32 @@ namespace Albion.Client
         public void TriggerAttack()
         {
             if (PlayerEntityId != 0 && _entities.TryGetValue(PlayerEntityId, out var state))
+            {
                 state.Visual?.PlayAttack();
+                state.Generated?.PlayAttack();
+            }
+        }
+
+        /// <summary>Small shrinking circle at a clicked world point.</summary>
+        public void ShowClickMarker(Vector3 position)
+        {
+            CombatVfx.ClickMarker(position);
+        }
+
+        /// <summary>Gather feedback for the local player; the server still validates the node.</summary>
+        public void TriggerGather(Vector3 position)
+        {
+            CombatVfx.GatherBurst(position, new Color(0.6f, 0.9f, 0.45f));
+        }
+
+        /// <summary>Shows a local damage flash; used by regression checks and future hit reactions.</summary>
+        public void PlayDamage(uint entityId)
+        {
+            if (entityId != 0 && _entities.TryGetValue(entityId, out var state))
+            {
+                state.Generated?.PlayHit();
+                state.Visual?.PlayHit();
+            }
         }
 
         /// <summary>
@@ -309,6 +342,20 @@ namespace Albion.Client
                 state.Weapons?.Equip(kind);
         }
 
+        private void ApplyWeapon(EntityVisual state, InterpolatedEntity entity)
+        {
+            if (state.IsMob || state.Weapons == null || !state.Weapons.IsProcedural
+                || entity.WeaponItemId == 0 || _content == null)
+            {
+                return;
+            }
+
+            if (_content.Config.Items.TryGetValue(entity.WeaponItemId, out var item))
+            {
+                state.Weapons.EquipFromArchetype(item.Archetype);
+            }
+        }
+
         /// <summary>
         /// True while the local warrior's Attack one-shot has not reached its exit phase.
         /// The input layer uses it to avoid sending a new ability command / restarting the clip.
@@ -319,8 +366,8 @@ namespace Albion.Client
             {
                 return PlayerEntityId != 0
                     && _entities.TryGetValue(PlayerEntityId, out var state)
-                    && state.Visual != null
-                    && state.Visual.IsAttackPlaying;
+                    && ((state.Visual != null && state.Visual.IsAttackPlaying)
+                        || (state.Generated != null && state.Generated.IsAttackPlaying));
             }
         }
 
@@ -332,9 +379,9 @@ namespace Albion.Client
         private Transform CreateMob(uint actorId)
         {
             var zone = _content?.FindMobByActorId(actorId)?.ZoneKey;
-            var root = FantasyVisuals.CreateMob(_root, actorId, zone);
-            HealthBar.Attach(root, zone == "red" ? 2.95f : zone == "yellow" ? 2.05f : 1.8f);
-            return root;
+            var generated = ProceduralHumanoidVisual.CreateMob(_root, actorId, zone);
+            HealthBar.Attach(generated.transform, generated.Height + 0.15f);
+            return generated.transform;
         }
 
     }

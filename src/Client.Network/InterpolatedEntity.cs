@@ -17,6 +17,7 @@ namespace Client.Network
         /// <param name="resource">Ресурс.</param>
         /// <param name="maxResource">Максимум ресурса.</param>
         /// <param name="isDead">Признак смерти.</param>
+        /// <param name="weaponItemId">Предмет в руке; 0 — пусто.</param>
         public InterpolatedEntity(
             uint id,
             uint actorId,
@@ -25,7 +26,8 @@ namespace Client.Network
             int maxHp,
             int resource,
             int maxResource,
-            bool isDead)
+            bool isDead,
+            uint weaponItemId = 0)
         {
             Id = id;
             ActorId = actorId;
@@ -35,6 +37,7 @@ namespace Client.Network
             Resource = resource;
             MaxResource = maxResource;
             IsDead = isDead;
+            WeaponItemId = weaponItemId;
         }
 
         /// <summary>Идентификатор сущности.</summary>
@@ -60,5 +63,8 @@ namespace Client.Network
 
         /// <summary>Мертва ли сущность.</summary>
         public bool IsDead { get; }
+
+        /// <summary>Предмет в руке; 0 — пусто. Дискретное поле снапшота, не интерполируется.</summary>
+        public uint WeaponItemId { get; }
     }
 }

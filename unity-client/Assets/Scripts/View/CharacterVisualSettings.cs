@@ -10,23 +10,37 @@ namespace Albion.Client
         public const string ResourcePath = "Characters/WarriorVisual";
         public GameObject Prefab;
         public RuntimeAnimatorController Controller;
-        [Min(0.1f)] public float Height = 1.85f;
+        [Min(0.1f)] public float Height = 1.95f;
         public float Yaw;
         public float GroundOffset;
+        [Tooltip("Build the Stage 8 primitive humanoid instead of the imported dReal warrior.")]
+        public bool Procedural;
+        public ProceduralCharacterProfile Profile = ProceduralCharacterProfile.Hero;
 
         public static CharacterVisualSettings Load()
         {
             var settings = Resources.Load<CharacterVisualSettings>(ResourcePath);
-            if (settings == null || settings.Prefab == null || settings.Controller == null)
-                throw new InvalidOperationException("Warrior visual missing. Run Albion/Characters/Configure Warrior Visual.");
+            if (settings == null)
+                throw new InvalidOperationException("Character visual missing. Run Albion/Characters/Generate Procedural Humanoids.");
+            if (!settings.Procedural && (settings.Prefab == null || settings.Controller == null))
+                throw new InvalidOperationException("Imported warrior visual is incomplete. Configure it or switch to procedural.");
             return settings;
         }
 
         public Transform Create(Transform parent, uint entityId)
         {
-            if (Prefab == null || Controller == null || !float.IsFinite(Height) || Height <= 0f
+            if (!float.IsFinite(Height) || Height <= 0f
                 || !float.IsFinite(Yaw) || !float.IsFinite(GroundOffset))
-                throw new InvalidOperationException("Character visual requires prefab/controller, positive finite height and finite offsets.");
+                throw new InvalidOperationException("Character visual requires positive finite height and finite offsets.");
+            if (Procedural)
+            {
+                var generated = ProceduralHumanoidVisual.CreatePlayer(
+                    parent, entityId, Height, Profile);
+                HealthBar.Attach(generated.transform, generated.Height + GroundOffset);
+                return generated.transform;
+            }
+            if (Prefab == null || Controller == null)
+                throw new InvalidOperationException("Imported character visual requires a prefab and controller.");
             var root = new GameObject("Entity " + entityId).transform;
             root.SetParent(parent, false);
             root.gameObject.SetActive(false);

@@ -153,12 +153,13 @@ namespace Albion.Client
                 () => _cameraFollow != null ? _cameraFollow.GetComponent<Camera>() : Camera.main,
                 equipWeapon: _view.EquipWeapon,
                 touchMove: () => _mobile != null ? _mobile.Move : System.Numerics.Vector2.Zero,
-                touchAttack: () => _mobile != null && _mobile.AttackHeld);
+                touchAttack: () => _mobile != null && _mobile.AttackHeld,
+                groundClick: OnGroundClick);
             _transport = new LiteNetLibTransport(host, port);
             _pipeline = new ClientPipeline(_transport, _input, _view, content: _content);
             gameObject.AddComponent<CooldownHud>().Initialize(_pipeline);
             _hud = gameObject.AddComponent<ClientHud>();
-            _hud.Initialize(_pipeline, _content);
+            _hud.Initialize(_pipeline, _content, _view);
 
             if (Application.isMobilePlatform)
             {
@@ -218,6 +219,12 @@ namespace Albion.Client
             return _view != null && _view.Player != null ? _view.Player.position : Vector3.zero;
         }
 
+        private void OnGroundClick(Vector3 point)
+        {
+            _view?.ShowClickMarker(point);
+            _hud?.OnGroundClick(point);
+        }
+
         private void Update()
         {
             if (_pipeline == null)
@@ -253,6 +260,7 @@ namespace Albion.Client
 
         private void OnGUI()
         {
+            DrawBuildVersion();
             if (Application.isMobilePlatform && !_mobileSkinConfigured)
             {
                 var fontSize = Mathf.Max(18, Mathf.RoundToInt(Screen.height / 55f));
@@ -280,6 +288,18 @@ namespace Albion.Client
                 new Rect(12f, Screen.height - 24f, Screen.width - 24f, 20f),
                 _status + "  |  cfg: " + (_content == null ? "-" : _content.Hash.Substring(0, Math.Min(8, _content.Hash.Length)))
                 + "  |  fps: " + _fpsSmoothed.ToString("0"));
+        }
+
+        private static void DrawBuildVersion()
+        {
+            var style = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.LowerRight,
+                fontSize = Application.isMobilePlatform ? 16 : 12,
+                normal = { textColor = new Color(0.88f, 0.92f, 0.84f) },
+            };
+            GUI.Label(new Rect(Screen.width - 330f, Screen.height - 48f, 318f, 22f),
+                BuildInfo.Label, style);
         }
 
         private void DrawStartupPanel()

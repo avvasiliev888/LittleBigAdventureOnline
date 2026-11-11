@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Albion.Client.CharacterVisualSettings
   Prefab: {fileID: 1863260595865262019, guid: 2412842cc3a084a47875ca148fe77039, type: 3}
   Controller: {fileID: 9100000, guid: 983d7fff018b362459ad170c256203d7, type: 2}
-  Height: 1.85
+  Height: 1.95
   Yaw: 0
   GroundOffset: 0
+  Procedural: 1
+  Profile: 0

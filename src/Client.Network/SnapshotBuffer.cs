@@ -116,7 +116,8 @@ namespace Client.Network
                     entity.MaxHp,
                     entity.Resource,
                     entity.MaxResource,
-                    entity.IsDead);
+                    entity.IsDead,
+                    entity.WeaponItemId);
             }
 
             return result;
@@ -139,7 +140,8 @@ namespace Client.Network
                     from.MaxHp,
                     from.Resource,
                     from.MaxResource,
-                    from.IsDead));
+                    from.IsDead,
+                    from.WeaponItemId));
             }
 
             // Сущности, которых не было в старом снапшоте (подключились), показываем с середины интервала.
@@ -170,7 +172,8 @@ namespace Client.Network
                         to.MaxHp,
                         to.Resource,
                         to.MaxResource,
-                        to.IsDead));
+                        to.IsDead,
+                        to.WeaponItemId));
                 }
             }
 

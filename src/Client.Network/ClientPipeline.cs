@@ -151,6 +151,19 @@ namespace Client.Network
             return SendUiCommand(new EquipCommand(itemId, _clientTick, ++_uiSequence));
         }
 
+        /// <summary>Отправляет команду сбора ресурса из жилы (ADR-015).</summary>
+        /// <param name="nodeId">Идентификатор ресурсной жилы; положительный.</param>
+        /// <returns><c>true</c>, если сессия есть и команда ушла в транспорт.</returns>
+        public bool SendGather(uint nodeId)
+        {
+            if (nodeId == 0)
+            {
+                return false;
+            }
+
+            return SendUiCommand(new GatherCommand(nodeId, _clientTick, ++_uiSequence));
+        }
+
         private bool SendUiCommand(ICommand command)
         {
             if (!HasSession)

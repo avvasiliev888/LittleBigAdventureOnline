@@ -16,6 +16,8 @@ namespace Albion.Editor
     {
         private const string DesktopDefines = "";
         private const string MobileDefines = "ALBION_MOBILE_DEFAULT";
+        private const string Version = "0.7.0";
+        private const int AndroidVersionCode = 4;
 
         /// <summary>Сборка desktop-профиля (меню).</summary>
         [MenuItem("Albion/Build/Desktop")]
@@ -62,6 +64,7 @@ namespace Albion.Editor
         private static void Build(string profile, string defines)
         {
             PlayerSettings.colorSpace = ColorSpace.Linear;
+            PlayerSettings.bundleVersion = Version;
             PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.Standalone, defines);
 
             var scenes = EditorBuildSettings.scenes
@@ -106,8 +109,8 @@ namespace Albion.Editor
 
             PlayerSettings.productName = "Albion Prototype";
             PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.albion.prototype");
-            PlayerSettings.bundleVersion = "0.6.0";
-            PlayerSettings.Android.bundleVersionCode = 3;
+            PlayerSettings.bundleVersion = Version;
+            PlayerSettings.Android.bundleVersionCode = AndroidVersionCode;
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
             PlayerSettings.allowedAutorotateToPortrait = false;
             PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;

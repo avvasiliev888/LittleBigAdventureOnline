@@ -154,9 +154,15 @@ namespace Albion.Client
             var width = 112f * scale;
             var height = 42f * scale;
             var gap = 8f * scale;
-            var totalWidth = (width * 3f) + (gap * 2f);
+            var totalWidth = (width * 5f) + (gap * 4f);
             var x = (Screen.width - totalWidth) * 0.5f;
             var y = 12f * scale;
+            if (GUI.Button(new Rect(x, y, width, height), "Сбор") && _hud != null)
+            {
+                _hud.RequestGather();
+            }
+
+            x += width + gap;
             if (GUI.Button(new Rect(x, y, width, height), "Лут") && _hud != null)
             {
                 _hud.RequestLoot();
@@ -172,6 +178,12 @@ namespace Albion.Client
             if (GUI.Button(new Rect(x, y, width, height), "Навыки") && _hud != null)
             {
                 _hud.ToggleSkills();
+            }
+
+            x += width + gap;
+            if (GUI.Button(new Rect(x, y, width, height), "Сумка") && _hud != null)
+            {
+                _hud.ToggleInventory();
             }
         }
 

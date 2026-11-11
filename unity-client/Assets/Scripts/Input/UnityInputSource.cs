@@ -26,9 +26,12 @@ namespace Albion.Client
         private readonly Action<WeaponKind>? _equipWeapon;
         private readonly Func<System.Numerics.Vector2>? _touchMove;
         private readonly Func<bool>? _touchAttack;
+        private readonly Action<UnityVector3>? _groundClick;
         private readonly float _walkScale;
         private readonly float _mouseMoveThreshold;
         private bool _abilityPressed;
+        private bool _destinationActive;
+        private UnityVector3 _destination;
         private uint _sequence;
 
         /// <summary>Создаёт источник ввода.</summary>
@@ -73,6 +76,9 @@ namespace Albion.Client
         /// <param name="touchAttack">
         /// Удержание экранной кнопки удара для мобильной сборки; <c>null</c> на desktop.
         /// </param>
+        /// <param name="groundClick">
+        /// Точка земли под кликом ЛКМ/ПКМ: HUD использует её для лута, вид — для кружка-метки.
+        /// </param>
         public UnityInputSource(
             Func<uint>? abilityTarget = null,
             float walkScale = 1f,
@@ -83,7 +89,8 @@ namespace Albion.Client
             float mouseMoveThreshold = 0.5f,
             Action<WeaponKind>? equipWeapon = null,
             Func<System.Numerics.Vector2>? touchMove = null,
-            Func<bool>? touchAttack = null)
+            Func<bool>? touchAttack = null,
+            Action<UnityVector3>? groundClick = null)
         {
             _abilityTarget = abilityTarget;
             _walkScale = float.IsFinite(walkScale) && walkScale > 0f ? Mathf.Min(walkScale, 1f) : 1f;
@@ -94,6 +101,7 @@ namespace Albion.Client
             _equipWeapon = equipWeapon;
             _touchMove = touchMove;
             _touchAttack = touchAttack;
+            _groundClick = groundClick;
             _mouseMoveThreshold = float.IsFinite(mouseMoveThreshold) && mouseMoveThreshold > 0f
                 ? mouseMoveThreshold
                 : 0.5f;
@@ -110,10 +118,15 @@ namespace Albion.Client
             var touchAttack = _touchAttack != null && _touchAttack();
             // На Android касание приходит и как mouse button 0; чтобы тапы по HUD/стику не
             // запускали удар, мышь учитываем только на desktop. Атака на телефоне — кнопка.
-            if (Input.GetKey(KeyCode.Space) || touchAttack
-                || (!Application.isMobilePlatform && Input.GetMouseButton(0)))
+            // ЛКМ больше не атакует: это движение к курсору/точке и клик по луту.
+            if (Input.GetKey(KeyCode.Space) || touchAttack)
             {
                 _abilityPressed = true;
+            }
+
+            if (!Application.isMobilePlatform)
+            {
+                PollMouseDestination();
             }
 
             // M10.11: client-side weapon visuals only. The server ability is unchanged.
@@ -191,20 +204,71 @@ namespace Albion.Client
 
             var keyboard = new System.Numerics.Vector2(x, z);
             var touch = _touchMove != null ? _touchMove() : System.Numerics.Vector2.Zero;
+            // Новая клавиатурная команда отменяет точку, к которой персонаж бежал.
+            if (keyboard.LengthSquared() > 0.0001f)
+            {
+                _destinationActive = false;
+            }
+
             if (Application.isMobilePlatform || !TryReadMouseDirection(out var mouse))
             {
                 return keyboard + touch;
             }
 
-            // Мышь и клавиатура комбинируются: W + ПКМ дают диагональ, а противоположные
+            // Мышь и клавиатура комбинируются: W + ЛКМ/ПКМ дают диагональ, а противоположные
             // направления взаимно гасятся (персонаж останавливается).
             return keyboard + mouse + touch;
+        }
+
+        private void PollMouseDestination()
+        {
+            var left = Input.GetMouseButton(0);
+            var right = Input.GetMouseButton(1);
+            if (!left && !right)
+            {
+                return;
+            }
+
+            if (!TryGroundPoint(out var point))
+            {
+                return;
+            }
+
+            var clicked = Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1);
+            _destination = point;
+            _destinationActive = true;
+            if (clicked)
+            {
+                _groundClick?.Invoke(point);
+            }
         }
 
         private bool TryReadMouseDirection(out System.Numerics.Vector2 direction)
         {
             direction = System.Numerics.Vector2.Zero;
-            if (!Input.GetMouseButton(1) || _camera == null || _playerPosition == null)
+            if (!_destinationActive || _playerPosition == null)
+            {
+                return false;
+            }
+
+            var player = _playerPosition();
+            var dx = _destination.x - player.x;
+            var dz = _destination.z - player.z;
+            var distance = MathF.Sqrt((dx * dx) + (dz * dz));
+            if (!float.IsFinite(distance) || distance <= _mouseMoveThreshold)
+            {
+                _destinationActive = false;
+                return false;
+            }
+
+            direction = new System.Numerics.Vector2(dx / distance, dz / distance);
+            return true;
+        }
+
+        private bool TryGroundPoint(out UnityVector3 point)
+        {
+            point = UnityVector3.zero;
+            if (_camera == null)
             {
                 return false;
             }
@@ -223,17 +287,7 @@ namespace Albion.Client
                 return false;
             }
 
-            var point = ray.GetPoint(enter);
-            var player = _playerPosition();
-            var dx = point.x - player.x;
-            var dz = point.z - player.z;
-            var distance = MathF.Sqrt((dx * dx) + (dz * dz));
-            if (!float.IsFinite(distance) || distance <= _mouseMoveThreshold)
-            {
-                return false;
-            }
-
-            direction = new System.Numerics.Vector2(dx / distance, dz / distance);
+            point = ray.GetPoint(enter);
             return true;
         }
 

@@ -10,6 +10,7 @@ namespace Albion.Client
         private static readonly int SpeedParameter = UnityEngine.Animator.StringToHash("Speed");
         private MotionState _state = MotionState.Idle;
         private bool _dead;
+        private bool _hitQueued;
 
         public Animator Animator { get; private set; }
         public Transform Facing { get; private set; }
@@ -41,6 +42,7 @@ namespace Albion.Client
             // parameter-consumption timing. The controller still owns the actual clip/blend graph.
             if (dead)
             {
+                _hitQueued = false;
                 if (!wasDead)
                 {
                     _state = MotionState.Dead;
@@ -52,6 +54,7 @@ namespace Albion.Client
             if (wasDead || reset)
             {
                 _state = MotionState.Idle;
+                _hitQueued = false;
                 Animator.CrossFadeInFixedTime("Idle", 0.1f, 0);
             }
 
@@ -61,6 +64,16 @@ namespace Albion.Client
                 var expected = _state == MotionState.Attack ? "Attack" : "Hit";
                 // Wait for the crossfade to enter the one-shot, then hold it through its exit phase.
                 if (!action.IsName(expected) || action.normalizedTime < 0.9f) return;
+
+                // Damage received during our own swing must not erase the hit that already
+                // dealt damage: play the stagger after the attack one-shot, not over it.
+                if (_state == MotionState.Attack && _hitQueued)
+                {
+                    _hitQueued = false;
+                    _state = MotionState.Hit;
+                    Animator.CrossFadeInFixedTime("Hit", 0.05f, 0);
+                    return;
+                }
             }
 
             var target = Speed > 0.1f ? MotionState.Locomotion : MotionState.Idle;
@@ -78,6 +91,7 @@ namespace Albion.Client
             // Spamming Space must not restart the swing from frame 0. The prediction cooldown
             // normally blocks this too, but the visual guard is authoritative for the clip.
             if (IsAttackPlaying) return;
+            _hitQueued = false;
             _state = MotionState.Attack;
             Animator.CrossFadeInFixedTime("Attack", 0.05f, 0);
         }
@@ -103,6 +117,14 @@ namespace Albion.Client
         public void PlayHit()
         {
             if (_dead || Animator == null || !Animator.isActiveAndEnabled || Animator.runtimeAnimatorController == null) return;
+            // A simultaneous hit reaction must not cancel our attack animation: the damage
+            // number already proves the swing landed, so queue the stagger for after it.
+            if (_state == MotionState.Attack || IsAttackPlaying)
+            {
+                _hitQueued = true;
+                return;
+            }
+
             _state = MotionState.Hit;
             Animator.CrossFadeInFixedTime("Hit", 0.05f, 0);
         }

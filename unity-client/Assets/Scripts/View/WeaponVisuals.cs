@@ -1,20 +1,23 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Albion.Client
 {
-    /// <summary>Which hand weapon the local player has equipped. Presentation-only (M10.11).</summary>
+    /// <summary>Which hand weapon the local player has equipped. Presentation-only.</summary>
     public enum WeaponKind
     {
         Sword = 1,
         Axe = 2,
+        Bow = 3,
+        Staff = 4,
+        Dagger = 5,
     }
 
     /// <summary>
-    /// Client-side weapon selection for the imported Warrior prefab. The vendor prefab contains
-    /// both <c>Warrior_Sword</c> and <c>Warrior_Axe</c> under the right-hand socket; both were
-    /// visible at once. This component shows exactly one, defaults to the sword, and lets the
-    /// player switch with 1/2. The server is not involved: damage/range stay unchanged in M10.11.
+    /// Client-side weapon selection. Supports the imported Warrior prefab (sword/axe sockets)
+    /// and the generated procedural humanoid (sword, axe, bow, staff and dagger). The server
+    /// owns damage/range; this component only mirrors the snapshot's main-hand item.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class WeaponVisuals : MonoBehaviour
@@ -24,20 +27,25 @@ namespace Albion.Client
 
         private Transform _sword;
         private Transform _axe;
+        private readonly Dictionary<WeaponKind, Transform> _generated = new Dictionary<WeaponKind, Transform>();
+        private Transform _generatedSocket;
 
         /// <summary>Currently visible weapon.</summary>
         public WeaponKind Equipped { get; private set; }
 
-        /// <summary>Sword object, for regression validation.</summary>
+        /// <summary>True when this instance was created for the procedural primitives.</summary>
+        public bool IsProcedural => _generatedSocket != null;
+
+        /// <summary>Sword object, for legacy regression validation.</summary>
         public GameObject SwordObject => _sword != null ? _sword.gameObject : null;
 
-        /// <summary>Axe object, for regression validation.</summary>
+        /// <summary>Axe object, for legacy regression validation.</summary>
         public GameObject AxeObject => _axe != null ? _axe.gameObject : null;
 
-        /// <summary>Transform of the visible weapon; follows the attack animation via the hand socket.</summary>
-        public Transform EquippedTransform => Equipped == WeaponKind.Axe ? _axe : _sword;
+        /// <summary>Transform of the visible weapon; follows the hand socket.</summary>
+        public Transform EquippedTransform => ActiveTransform();
 
-        /// <summary>Adds the switcher to an instantiated Warrior visual and hides the axe.</summary>
+        /// <summary>Adds the switcher to an instantiated imported Warrior visual and hides the axe.</summary>
         public static WeaponVisuals Attach(Transform root)
         {
             var sword = FindWeapon(root, SwordName);
@@ -55,29 +63,84 @@ namespace Albion.Client
             return weapons;
         }
 
-        /// <summary>Shows exactly one weapon: sword for 1, axe for 2.</summary>
+        /// <summary>Builds all generated weapons under a hand socket and shows the sword.</summary>
+        public static WeaponVisuals AttachProcedural(GameObject root, Transform rightHandSocket)
+        {
+            var weapons = root.AddComponent<WeaponVisuals>();
+            weapons._generatedSocket = rightHandSocket;
+            foreach (WeaponKind kind in Enum.GetValues(typeof(WeaponKind)))
+            {
+                weapons._generated[kind] = ProceduralWeaponBuilder.Create(kind, rightHandSocket);
+            }
+            weapons.Equip(WeaponKind.Sword);
+            return weapons;
+        }
+
+        /// <summary>Shows exactly one weapon.</summary>
         public void Equip(WeaponKind kind)
         {
-            if (_sword == null || _axe == null)
-            {
-                return;
-            }
-
-            if (kind != WeaponKind.Sword && kind != WeaponKind.Axe)
+            if (!IsKnown(kind))
             {
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown weapon.");
             }
 
             var changed = Equipped != kind;
             Equipped = kind;
-            _sword.gameObject.SetActive(kind == WeaponKind.Sword);
-            _axe.gameObject.SetActive(kind == WeaponKind.Axe);
+            if (IsProcedural)
+            {
+                foreach (var pair in _generated)
+                {
+                    if (pair.Value != null)
+                    {
+                        pair.Value.gameObject.SetActive(pair.Key == kind);
+                    }
+                }
+            }
+            else
+            {
+                if (_sword == null || _axe == null)
+                {
+                    return;
+                }
+                _sword.gameObject.SetActive(kind == WeaponKind.Sword);
+                _axe.gameObject.SetActive(kind == WeaponKind.Axe);
+            }
+
             if (changed)
             {
-                Debug.Log("WeaponVisuals: equipped " + kind
-                    + " (sword active=" + _sword.gameObject.activeSelf
-                    + ", axe active=" + _axe.gameObject.activeSelf + ")");
+                Debug.Log("WeaponVisuals: equipped " + kind);
             }
+        }
+
+        /// <summary>Chooses the visible weapon from the server item archetype.</summary>
+        public void EquipFromArchetype(string archetype)
+        {
+            if (string.Equals(archetype, "archer", StringComparison.OrdinalIgnoreCase))
+            {
+                Equip(WeaponKind.Bow);
+            }
+            else if (string.Equals(archetype, "mage", StringComparison.OrdinalIgnoreCase))
+            {
+                Equip(WeaponKind.Staff);
+            }
+            else
+            {
+                Equip(WeaponKind.Sword);
+            }
+        }
+
+        private Transform ActiveTransform()
+        {
+            if (IsProcedural)
+            {
+                return _generated.TryGetValue(Equipped, out var generated) ? generated : null;
+            }
+            return Equipped == WeaponKind.Axe ? _axe : _sword;
+        }
+
+        private static bool IsKnown(WeaponKind kind)
+        {
+            return kind >= WeaponKind.Sword && kind <= WeaponKind.Dagger;
         }
 
         private static Transform FindWeapon(Transform root, string name)

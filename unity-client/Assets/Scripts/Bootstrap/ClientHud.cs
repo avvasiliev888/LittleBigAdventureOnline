@@ -20,8 +20,12 @@ namespace Albion.Client
 
         private ClientPipeline? _pipeline;
         private ClientContent? _content;
+        private UnityView? _view;
         private bool _showCraft;
         private bool _showSkills;
+        private bool _showInventory;
+        private uint _pendingLootCorpseId;
+        private readonly Dictionary<uint, int> _inventory = new Dictionary<uint, int>();
         private string _message = string.Empty;
         private float _messageUntil;
         private UnityVector3 _craftScroll;
@@ -31,10 +35,11 @@ namespace Albion.Client
         /// <summary>Подключает HUD к конвейеру и контенту.</summary>
         /// <param name="pipeline">Клиентский конвейер.</param>
         /// <param name="content">Контент из JSON.</param>
-        public void Initialize(ClientPipeline pipeline, ClientContent content)
+        public void Initialize(ClientPipeline pipeline, ClientContent content, UnityView? view = null)
         {
             _pipeline = pipeline;
             _content = content;
+            _view = view;
         }
 
         private void Update()
@@ -58,6 +63,18 @@ namespace Albion.Client
             {
                 RequestLoot();
             }
+
+            if (Input.GetKeyDown(KeyCode.F))
+            {
+                RequestGather();
+            }
+
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                ToggleInventory();
+            }
+
+            TryPendingLoot();
         }
 
         /// <summary>Открывает/закрывает панель крафта (клавиша C или мобильная кнопка).</summary>
@@ -65,6 +82,7 @@ namespace Albion.Client
         {
             _showCraft = !_showCraft;
             _showSkills = false;
+            _showInventory = false;
         }
 
         /// <summary>Открывает/закрывает дерево навыков (клавиша K или мобильная кнопка).</summary>
@@ -72,12 +90,141 @@ namespace Albion.Client
         {
             _showSkills = !_showSkills;
             _showCraft = false;
+            _showInventory = false;
+        }
+
+        /// <summary>Открывает/закрывает инвентарь (клавиша I).</summary>
+        public void ToggleInventory()
+        {
+            _showInventory = !_showInventory;
+            _showCraft = false;
+            _showSkills = false;
         }
 
         /// <summary>Подбирает лут ближайшего трупа (клавиша E или мобильная кнопка).</summary>
         public void RequestLoot()
         {
             TryLoot();
+        }
+
+        /// <summary>Собирает ресурс из ближайшей жилы (клавиша F или мобильная кнопка).</summary>
+        public void RequestGather()
+        {
+            TryGather();
+        }
+
+        private void TryGather()
+        {
+            if (_pipeline == null || _content == null || !_pipeline.HasSession)
+            {
+                return;
+            }
+
+            var position = OwnPosition();
+            ResourceNodeConfig? nearest = null;
+            var nearestDistance = float.MaxValue;
+            foreach (var node in _content.Config.ResourceNodes)
+            {
+                var nodePosition = new UnityVector3(node.Position.X, node.Position.Y, node.Position.Z);
+                var distance = UnityVector3.Distance(position, nodePosition);
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearest = node;
+                }
+            }
+
+            if (nearest == null || nearestDistance > nearest.Range + 0.5f)
+            {
+                ShowMessage("Рядом нет ресурсной жилы — подойдите ближе.");
+                return;
+            }
+
+            if (_pipeline.SendGather(nearest.Id))
+            {
+                AddInventory(nearest.ItemId, nearest.Amount);
+                ShowMessage("Сбор: " + ItemKey(nearest.ItemId) + " ×" + nearest.Amount + ".");
+                var nodePosition = new UnityVector3(nearest.Position.X, nearest.Position.Y, nearest.Position.Z);
+                _view?.TriggerGather(nodePosition);
+            }
+        }
+
+        /// <summary>ЛКМ по земле: если под точкой труп — отправить лут, иначе просто бежать туда.</summary>
+        public void OnGroundClick(UnityVector3 point)
+        {
+            // Новый клик — новая команда: старый авто-подбор больше не актуален.
+            _pendingLootCorpseId = 0;
+            var snapshot = _pipeline?.LastSnapshot;
+            if (snapshot == null)
+            {
+                return;
+            }
+
+            CorpseSnapshot? clicked = null;
+            var clickedDistance = float.MaxValue;
+            foreach (var corpse in snapshot.Corpses)
+            {
+                var dx = corpse.Position.X - point.x;
+                var dz = corpse.Position.Z - point.z;
+                var distance = MathF.Sqrt((dx * dx) + (dz * dz));
+                if (distance <= 1.25f && distance < clickedDistance)
+                {
+                    clickedDistance = distance;
+                    clicked = corpse;
+                }
+            }
+
+            if (clicked == null)
+            {
+                return;
+            }
+
+            var player = OwnPosition();
+            var px = clicked.Position.X - player.x;
+            var pz = clicked.Position.Z - player.z;
+            var playerDistance = MathF.Sqrt((px * px) + (pz * pz));
+            if (playerDistance > clicked.LootRange + 0.35f)
+            {
+                _pendingLootCorpseId = clicked.Id;
+                ShowMessage("Бегу к трупу " + clicked.Id + " — лут подберётся автоматически.");
+                return;
+            }
+
+            LootCorpse(clicked);
+        }
+
+        private void TryPendingLoot()
+        {
+            if (_pendingLootCorpseId == 0 || _pipeline?.LastSnapshot == null)
+            {
+                return;
+            }
+
+            CorpseSnapshot? target = null;
+            foreach (var corpse in _pipeline.LastSnapshot.Corpses)
+            {
+                if (corpse.Id == _pendingLootCorpseId)
+                {
+                    target = corpse;
+                    break;
+                }
+            }
+
+            if (target == null)
+            {
+                _pendingLootCorpseId = 0;
+                return;
+            }
+
+            var player = OwnPosition();
+            var dx = target.Position.X - player.x;
+            var dz = target.Position.Z - player.z;
+            var distance = MathF.Sqrt((dx * dx) + (dz * dz));
+            if (distance <= target.LootRange + 0.2f)
+            {
+                _pendingLootCorpseId = 0;
+                LootCorpse(target);
+            }
         }
 
         private void OnGUI()
@@ -98,6 +245,11 @@ namespace Albion.Client
             if (_showSkills)
             {
                 DrawSkills();
+            }
+
+            if (_showInventory)
+            {
+                DrawInventory();
             }
 
             DrawTrade();
@@ -220,8 +372,8 @@ namespace Albion.Client
             Backdrop(rect, 0.55f);
             GUI.Label(
                 new Rect(12f, Screen.height - 46f, Screen.width - 24f, 22f),
-                "WASD/ПКМ — движение, Space/ЛКМ — атака, E — лут, C — крафт, K — навыки. "
-                + "Торговец открывается рядом.");
+                "WASD — ходьба, ЛКМ/ПКМ — бег к курсору, клик — метка и лут с трупа, Space — атака, "
+                + "I — инвентарь, F — сбор, C — крафт, K — навыки.");
         }
 
         private void DrawCraft()
@@ -262,6 +414,58 @@ namespace Albion.Client
 
             GUILayout.EndScrollView();
             GUILayout.EndArea();
+        }
+
+        private void DrawInventory()
+        {
+            var rect = new Rect((Screen.width - SmallPanelWidth) * 0.5f, 80f,
+                SmallPanelWidth, Mathf.Min(440f, Screen.height - 150f));
+            Backdrop(rect, 0.88f);
+            GUILayout.BeginArea(rect, GUI.skin.box);
+            GUILayout.Label("Инвентарь (I — закрыть)");
+            var own = Own();
+            if (own.HasValue)
+            {
+                GUILayout.Label("Серебро: " + own.Value.Silver + "   Слава: " + own.Value.FameTotal);
+                GUILayout.Space(4f);
+                GUILayout.Label("Снаряжение:");
+                DrawEquipmentLine("Оружие", own.Value.WeaponItemId);
+                DrawEquipmentLine("Нагрудник", own.Value.ChestItemId);
+                DrawEquipmentLine("Штаны", own.Value.LegsItemId);
+                DrawEquipmentLine("Сапоги", own.Value.FeetItemId);
+            }
+            else
+            {
+                GUILayout.Label("Нет данных о персонаже.");
+            }
+
+            GUILayout.Space(8f);
+            GUILayout.Label("Добыча (журнал этого сеанса):");
+            if (_inventory.Count == 0)
+            {
+                GUILayout.Label("Пусто. Подойдите к трупу и нажмите по нему ЛКМ.");
+            }
+            else
+            {
+                foreach (var pair in _inventory)
+                {
+                    GUILayout.Label("• " + ItemKey(pair.Key) + " ×" + pair.Value);
+                }
+            }
+
+            GUILayout.EndArea();
+        }
+
+        private void DrawEquipmentLine(string slot, uint itemId)
+        {
+            GUILayout.Label("  " + slot + ": " + (itemId == 0 ? "—" : ItemKey(itemId)));
+        }
+
+        private string ItemKey(uint itemId)
+        {
+            return _content != null && _content.Config.Items.TryGetValue(itemId, out var item)
+                ? item.Key
+                : "item " + itemId;
         }
 
         private void DrawSkills()
@@ -397,10 +601,55 @@ namespace Albion.Client
                 return;
             }
 
-            if (_pipeline.SendLoot(nearest.Id))
+            LootCorpse(nearest);
+        }
+
+        private void LootCorpse(CorpseSnapshot corpse)
+        {
+            if (_pipeline == null || !_pipeline.SendLoot(corpse.Id))
             {
-                ShowMessage("Лут отправлен с трупа " + nearest.Id + ".");
+                return;
             }
+
+            AddLoot(corpse);
+            var contents = DescribeLoot(corpse);
+            ShowMessage("Лут с трупа " + corpse.Id + ": " + contents + ".");
+        }
+
+        private void AddLoot(CorpseSnapshot corpse)
+        {
+            for (var i = 0; i < corpse.Loot.Count; i++)
+            {
+                var stack = corpse.Loot[i];
+                AddInventory(stack.ItemId, stack.Quantity);
+            }
+        }
+
+        private void AddInventory(uint itemId, int quantity)
+        {
+            if (itemId == 0 || quantity <= 0)
+            {
+                return;
+            }
+
+            _inventory.TryGetValue(itemId, out var current);
+            _inventory[itemId] = current + quantity;
+        }
+
+        private string DescribeLoot(CorpseSnapshot corpse)
+        {
+            var parts = new List<string>();
+            if (corpse.Silver > 0)
+            {
+                parts.Add(corpse.Silver + " серебра");
+            }
+
+            for (var i = 0; i < corpse.Loot.Count; i++)
+            {
+                parts.Add(ItemKey(corpse.Loot[i].ItemId) + " ×" + corpse.Loot[i].Quantity);
+            }
+
+            return parts.Count == 0 ? "пусто" : string.Join(", ", parts);
         }
 
         private string? WeaponArchetype(uint weaponItemId)

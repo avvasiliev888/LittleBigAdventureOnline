@@ -17,16 +17,19 @@ namespace Albion.Editor
         [MenuItem("Albion/Characters/Configure Warrior Visual")]
         public static void Configure()
         {
+            ProceduralCharacterGenerator.Configure();
+        }
+
+        /// <summary>Keeps the pre-Stage-8 imported warrior path available for comparison.</summary>
+        [MenuItem("Albion/Characters/Configure Imported Warrior")]
+        public static void ConfigureImported()
+        {
             Directory.CreateDirectory("Assets/Resources/Characters");
             AssetDatabase.Refresh();
-            var settings = AssetDatabase.LoadAssetAtPath<CharacterVisualSettings>(AssetPath);
-            if (settings == null)
-            {
-                settings = ScriptableObject.CreateInstance<CharacterVisualSettings>();
-                AssetDatabase.CreateAsset(settings, AssetPath);
-            }
+            var settings = LoadSettings();
             // Humanoid retargeting normalizes forward to +Z, unlike the old frozen rest mesh.
             settings.Yaw = 0f;
+            settings.Procedural = false;
             settings.Controller = AlbionAnimationSetup.Configure();
             settings.Prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
             Require(settings.Prefab != null, "Imported Warrior prefab missing: " + PrefabPath);
@@ -35,13 +38,30 @@ namespace Albion.Editor
             Validate();
         }
 
+        internal static CharacterVisualSettings LoadSettings()
+        {
+            var settings = AssetDatabase.LoadAssetAtPath<CharacterVisualSettings>(AssetPath);
+            if (settings == null)
+            {
+                settings = ScriptableObject.CreateInstance<CharacterVisualSettings>();
+                AssetDatabase.CreateAsset(settings, AssetPath);
+            }
+            return settings;
+        }
+
         [MenuItem("Albion/Characters/Validate Warrior Visual")]
         public static void Validate()
         {
+            var settings = CharacterVisualSettings.Load();
+            if (settings.Procedural)
+            {
+                ProceduralCharacterChecks.Validate(settings);
+                return;
+            }
+
             var root = new GameObject("Character regression (transient)");
             try
             {
-                var settings = CharacterVisualSettings.Load();
                 Require(AssetDatabase.GetAssetPath(settings.Prefab) == PrefabPath, "Wrong character prefab.");
                 var view = new UnityView(root.transform) { PlayerEntityId = 1 };
                 view.ApplySnapshot(Snapshot(1, false));

@@ -1,15 +1,27 @@
 [
   {
     "id": 1,
+    "kind": "player",
     "maxHp": 100,
     "moveSpeed": 4.0,
     "maxResource": 100,
     "resourceRegenPerSecond": 5.0,
     "respawnSeconds": 5.0,
-    "abilityId": 1
+    "abilityId": 1,
+    "starterItems": [
+      { "itemId": 1, "quantity": 5 },
+      { "itemId": 2, "quantity": 3 }
+    ],
+    "starterEquipment": [
+      { "itemId": 10 },
+      { "itemId": 11 },
+      { "itemId": 12 },
+      { "itemId": 13 }
+    ]
   },
   {
     "id": 2,
+    "kind": "mob",
     "maxHp": 100,
     "moveSpeed": 1.0,
     "maxResource": 100,

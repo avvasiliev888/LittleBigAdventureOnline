@@ -72,7 +72,50 @@ namespace Simulation.Core
         /// <summary>Тик, на котором произойдёт респавн (0 — сущность жива).</summary>
         public uint RespawnAtTick { get; set; }
 
+        /// <summary>Тик, до которого действует флаг враждебности (0 — игрок «мирный»).</summary>
+        /// <remarks>
+        /// Флаг ставится сервером при атаке на игрока в зоне с PvP (ADR-013). В снапшот пока не входит:
+        /// поле появится вместе с клиентским UI на этапе интеграции (Protocol v5).
+        /// </remarks>
+        public uint HostileUntilTick { get; set; }
+
+        /// <summary>Инвентарь сущности; у мобов пуст.</summary>
+        public Inventory Inventory { get; } = new Inventory();
+
+        /// <summary>Надетое снаряжение сущности; у мобов пусто.</summary>
+        public Equipment Equipment { get; } = new Equipment();
+
         /// <summary>Мёртвая сущность (HP ≤ 0).</summary>
         public bool IsDead => Hp <= 0;
+
+        /// <summary>Действует ли флаг враждебности на указанном тике.</summary>
+        /// <param name="currentTick">Текущий тик симуляции.</param>
+        /// <returns><c>true</c>, если игрок ещё враждебен.</returns>
+        public bool IsHostile(uint currentTick) => HostileUntilTick > currentTick;
+
+        /// <summary>
+        /// Выдаёт страховочный набор из конфига актора: предметы в инвентарь, снаряжение — с полной прочностью.
+        /// Вызывается при первом появлении игрока и при респавне, если терять было нечего.
+        /// </summary>
+        /// <param name="config">Конфигурация мира с каталогом предметов.</param>
+        /// <exception cref="ArgumentNullException">Если <paramref name="config"/> равен <c>null</c>.</exception>
+        public void GrantStarterLoadout(SimulationConfig config)
+        {
+            if (config == null)
+            {
+                throw new ArgumentNullException(nameof(config));
+            }
+
+            for (var i = 0; i < Actor.StarterItems.Count; i++)
+            {
+                var starter = Actor.StarterItems[i];
+                Inventory.Add(config.GetItem(starter.ItemId), starter.Quantity);
+            }
+
+            for (var i = 0; i < Actor.StarterEquipment.Count; i++)
+            {
+                Equipment.Equip(config.GetItem(Actor.StarterEquipment[i].ItemId));
+            }
+        }
     }
 }

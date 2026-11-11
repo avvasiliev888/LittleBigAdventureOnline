@@ -178,6 +178,9 @@ namespace Simulation.Core
             var speed = _config!.GetActor(entity.ActorId).MoveSpeed;
             var direction = new Vector3(command.Direction.X, 0f, command.Direction.Y);
             entity.Position += direction * (speed * deltaTime);
+
+            // Граница мира — правило зон, а не вежливость: из мира нельзя выйти и «спрятаться» вне зон.
+            entity.Position = _config.Zones.ClampToBounds(entity.Position);
         }
 
         private void ApplyAbility(EntityState caster, AbilityCommand command)
@@ -206,14 +209,34 @@ namespace Simulation.Core
                 return;
             }
 
+            EntityState? target = null;
+            ZoneConfig? targetZone = null;
+
+            if (command.TargetId != 0
+                && _state.TryGetEntity(command.TargetId, out var found)
+                && !found.IsDead)
+            {
+                target = found;
+
+                if (target.Actor.Kind == ActorKind.Player)
+                {
+                    targetZone = _config.Zones.GetZone(target.Position);
+
+                    // Безопасная зона: ударить игрока нельзя, и способность не активируется —
+                    // иначе клиент тратил бы ресурс и кулдаун на действие, которое сервер всё равно отменит.
+                    if (!targetZone.PvpEnabled)
+                    {
+                        return;
+                    }
+                }
+            }
+
             // Activation is charged first: a miss (no target, dead target, out of range) still
             // spends the resource and starts the cooldown, exactly like the client prediction.
             caster.Resource -= ability.ResourceCost;
             caster.CooldownUntilTick = _state.Tick + ToTicks(ability.CooldownSeconds);
 
-            if (command.TargetId == 0
-                || !_state.TryGetEntity(command.TargetId, out var target)
-                || target.IsDead)
+            if (target == null)
             {
                 return;
             }
@@ -224,12 +247,44 @@ namespace Simulation.Core
             }
 
             target.Hp -= ability.Damage;
+
+            if (targetZone != null)
+            {
+                // Флаг враждебности: напавший на игрока сам становится законной целью на время из конфига.
+                caster.HostileUntilTick = _state.Tick + ToTicks(targetZone.HostileFlagSeconds);
+            }
+
             if (target.Hp <= 0)
             {
-                target.Hp = 0;
-                target.CooldownUntilTick = 0;
-                target.RespawnAtTick = _state.Tick + ToTicks(target.Actor.RespawnSeconds);
+                Kill(target);
             }
+        }
+
+        /// <summary>
+        /// Применяет смерть по правилам зоны жертвы (ADR-013): в красной зоне игрок теряет снаряжение
+        /// и инвентарь, в остальных зонах — только прочность; мобы правилам игроков не подчиняются.
+        /// </summary>
+        private void Kill(EntityState victim)
+        {
+            victim.Hp = 0;
+            victim.CooldownUntilTick = 0;
+            victim.HostileUntilTick = 0;
+            victim.RespawnAtTick = _state.Tick + ToTicks(victim.Actor.RespawnSeconds);
+
+            if (victim.Actor.Kind != ActorKind.Player)
+            {
+                return;
+            }
+
+            var zone = _config!.Zones.GetZone(victim.Position);
+            if (zone.FullLootOnDeath)
+            {
+                victim.Inventory.Clear();
+                victim.Equipment.Clear();
+                return;
+            }
+
+            victim.Equipment.ApplyDurabilityLoss(zone.DurabilityLossFraction);
         }
 
         private void RegenerateResources(float deltaTime)
@@ -287,9 +342,20 @@ namespace Simulation.Core
                 entity.Hp = entity.MaxHp;
                 entity.Resource = entity.MaxResource;
                 entity.ResourceRegenRemainder = 0f;
-                entity.Position = entity.SpawnPosition;
+                entity.Position = _config == null ? entity.SpawnPosition : _config.Zones.ClampToBounds(entity.SpawnPosition);
                 entity.CooldownUntilTick = 0;
+                entity.HostileUntilTick = 0;
                 entity.RespawnAtTick = 0;
+
+                // Страховочный набор: игрок не возрождается голым, если терять было нечего
+                // (полный лут в красной зоне). Если предметы уцелели, набор не дублируется.
+                if (_config != null
+                    && entity.Actor.Kind == ActorKind.Player
+                    && entity.Inventory.IsEmpty
+                    && entity.Equipment.IsEmpty)
+                {
+                    entity.GrantStarterLoadout(_config);
+                }
             }
         }
 

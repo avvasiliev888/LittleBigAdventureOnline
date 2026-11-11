@@ -48,8 +48,17 @@ namespace Shared
         /// <summary>Имя файла со способностями.</summary>
         public const string AbilitiesFileName = "abilities.json";
 
+        /// <summary>Имя файла с зонами мира (ADR-013).</summary>
+        public const string ZonesFileName = "zones.json";
+
+        /// <summary>Имя файла с каталогом предметов (ADR-013).</summary>
+        public const string ItemsFileName = "items.json";
+
         /// <summary>Загружает конфигурацию из каталога.</summary>
-        /// <param name="directory">Каталог с <see cref="ActorsFileName"/> и <see cref="AbilitiesFileName"/>.</param>
+        /// <param name="directory">
+        /// Каталог с <see cref="ActorsFileName"/>, <see cref="AbilitiesFileName"/>,
+        /// <see cref="ZonesFileName"/> и <see cref="ItemsFileName"/>.
+        /// </param>
         /// <exception cref="ArgumentNullException">Если <paramref name="directory"/> равен <c>null</c>.</exception>
         /// <exception cref="ConfigValidationException">Если файлы отсутствуют или невалидны.</exception>
         public static SimulationConfig LoadFromDirectory(string directory)
@@ -59,14 +68,24 @@ namespace Shared
                 throw new ArgumentNullException(nameof(directory));
             }
 
-            return Load(Path.Combine(directory, ActorsFileName), Path.Combine(directory, AbilitiesFileName));
+            return Load(
+                Path.Combine(directory, ActorsFileName),
+                Path.Combine(directory, AbilitiesFileName),
+                Path.Combine(directory, ZonesFileName),
+                Path.Combine(directory, ItemsFileName));
         }
 
-        /// <summary>Загружает конфигурацию из двух файлов.</summary>
+        /// <summary>Загружает конфигурацию из четырёх файлов.</summary>
         /// <param name="actorsPath">Путь к <see cref="ActorsFileName"/>.</param>
         /// <param name="abilitiesPath">Путь к <see cref="AbilitiesFileName"/>.</param>
+        /// <param name="zonesPath">Путь к <see cref="ZonesFileName"/>.</param>
+        /// <param name="itemsPath">Путь к <see cref="ItemsFileName"/>.</param>
         /// <exception cref="ConfigValidationException">Если файлы отсутствуют или невалидны.</exception>
-        public static SimulationConfig Load(string actorsPath, string abilitiesPath)
+        public static SimulationConfig Load(
+            string actorsPath,
+            string abilitiesPath,
+            string zonesPath,
+            string itemsPath)
         {
             if (actorsPath == null)
             {
@@ -78,18 +97,37 @@ namespace Shared
                 throw new ArgumentNullException(nameof(abilitiesPath));
             }
 
+            if (zonesPath == null)
+            {
+                throw new ArgumentNullException(nameof(zonesPath));
+            }
+
+            if (itemsPath == null)
+            {
+                throw new ArgumentNullException(nameof(itemsPath));
+            }
+
             var actorsJson = ReadFile(actorsPath);
             var abilitiesJson = ReadFile(abilitiesPath);
+            var zonesJson = ReadFile(zonesPath);
+            var itemsJson = ReadFile(itemsPath);
 
-            return LoadFromJson(actorsJson, abilitiesJson, actorsPath);
+            return LoadFromJson(actorsJson, abilitiesJson, zonesJson, itemsJson, actorsPath);
         }
 
         /// <summary>Загружает конфигурацию из строк JSON.</summary>
         /// <param name="actorsJson">Содержимое <see cref="ActorsFileName"/>.</param>
         /// <param name="abilitiesJson">Содержимое <see cref="AbilitiesFileName"/>.</param>
+        /// <param name="zonesJson">Содержимое <see cref="ZonesFileName"/>.</param>
+        /// <param name="itemsJson">Содержимое <see cref="ItemsFileName"/>.</param>
         /// <param name="source">Метка источника для сообщений об ошибках.</param>
         /// <exception cref="ConfigValidationException">Если JSON невалиден.</exception>
-        public static SimulationConfig LoadFromJson(string actorsJson, string abilitiesJson, string source = "config")
+        public static SimulationConfig LoadFromJson(
+            string actorsJson,
+            string abilitiesJson,
+            string zonesJson,
+            string itemsJson,
+            string source = "config")
         {
             if (actorsJson == null)
             {
@@ -101,13 +139,31 @@ namespace Shared
                 throw new ArgumentNullException(nameof(abilitiesJson));
             }
 
+            if (zonesJson == null)
+            {
+                throw new ArgumentNullException(nameof(zonesJson));
+            }
+
+            if (itemsJson == null)
+            {
+                throw new ArgumentNullException(nameof(itemsJson));
+            }
+
             var actorDtos = ParseArray(actorsJson, "actors", source);
             var abilityDtos = ParseArray(abilitiesJson, "abilities", source);
+            var zoneDtos = ParseArray(zonesJson, "zones", source);
+            var itemDtos = ParseArray(itemsJson, "items", source);
 
-            var actors = new List<ActorConfig>(actorDtos.Count);
-            for (var i = 0; i < actorDtos.Count; i++)
+            var items = new List<ItemDefinition>(itemDtos.Count);
+            for (var i = 0; i < itemDtos.Count; i++)
             {
-                actors.Add(ToActor(actorDtos[i], source, i));
+                items.Add(ToItem(itemDtos[i], source, i));
+            }
+
+            var zones = new List<ZoneConfig>(zoneDtos.Count);
+            for (var i = 0; i < zoneDtos.Count; i++)
+            {
+                zones.Add(ToZone(zoneDtos[i], source, i));
             }
 
             var abilities = new List<AbilityConfig>(abilityDtos.Count);
@@ -116,9 +172,15 @@ namespace Shared
                 abilities.Add(ToAbility(abilityDtos[i], source, i));
             }
 
+            var actors = new List<ActorConfig>(actorDtos.Count);
+            for (var i = 0; i < actorDtos.Count; i++)
+            {
+                actors.Add(ToActor(actorDtos[i], source, i));
+            }
+
             try
             {
-                return new SimulationConfig(actors, abilities);
+                return new SimulationConfig(actors, abilities, zones, items);
             }
             catch (ArgumentException exception)
             {
@@ -127,10 +189,13 @@ namespace Shared
         }
 
         /// <summary>
-        /// Считает SHA-256 от содержимого двух файлов конфигурации: одинаковый хеш означает,
+        /// Считает SHA-256 от содержимого четырёх файлов конфигурации: одинаковый хеш означает,
         /// что сервер и клиент читают один и тот же файл (M9, Auto-Gate).
         /// </summary>
-        /// <param name="directory">Каталог с <see cref="ActorsFileName"/> и <see cref="AbilitiesFileName"/>.</param>
+        /// <param name="directory">
+        /// Каталог с <see cref="ActorsFileName"/>, <see cref="AbilitiesFileName"/>,
+        /// <see cref="ZonesFileName"/> и <see cref="ItemsFileName"/>.
+        /// </param>
         /// <returns>Хеш в нижнем hex-регистре.</returns>
         /// <exception cref="ArgumentNullException">Если <paramref name="directory"/> равен <c>null</c>.</exception>
         /// <exception cref="ConfigValidationException">Если файлы отсутствуют.</exception>
@@ -143,15 +208,23 @@ namespace Shared
 
             return ComputeHashFromJson(
                 ReadFile(Path.Combine(directory, ActorsFileName)),
-                ReadFile(Path.Combine(directory, AbilitiesFileName)));
+                ReadFile(Path.Combine(directory, AbilitiesFileName)),
+                ReadFile(Path.Combine(directory, ZonesFileName)),
+                ReadFile(Path.Combine(directory, ItemsFileName)));
         }
 
-        /// <summary>Считает хеш от двух строк JSON (для тестов и сравнения версий конфига).</summary>
+        /// <summary>Считает хеш от четырёх строк JSON (для тестов и сравнения версий конфига).</summary>
         /// <param name="actorsJson">Содержимое <see cref="ActorsFileName"/>.</param>
         /// <param name="abilitiesJson">Содержимое <see cref="AbilitiesFileName"/>.</param>
+        /// <param name="zonesJson">Содержимое <see cref="ZonesFileName"/>.</param>
+        /// <param name="itemsJson">Содержимое <see cref="ItemsFileName"/>.</param>
         /// <returns>Хеш в нижнем hex-регистре.</returns>
         /// <exception cref="ArgumentNullException">Если строка равна <c>null</c>.</exception>
-        public static string ComputeHashFromJson(string actorsJson, string abilitiesJson)
+        public static string ComputeHashFromJson(
+            string actorsJson,
+            string abilitiesJson,
+            string zonesJson,
+            string itemsJson)
         {
             if (actorsJson == null)
             {
@@ -163,13 +236,27 @@ namespace Shared
                 throw new ArgumentNullException(nameof(abilitiesJson));
             }
 
+            if (zonesJson == null)
+            {
+                throw new ArgumentNullException(nameof(zonesJson));
+            }
+
+            if (itemsJson == null)
+            {
+                throw new ArgumentNullException(nameof(itemsJson));
+            }
+
             using var sha = SHA256.Create();
             var actorBytes = Encoding.UTF8.GetBytes(actorsJson);
             var abilityBytes = Encoding.UTF8.GetBytes(abilitiesJson);
-            var buffer = new byte[actorBytes.Length + 1 + abilityBytes.Length];
-            actorBytes.CopyTo(buffer, 0);
-            buffer[actorBytes.Length] = 0x1F;
-            abilityBytes.CopyTo(buffer, actorBytes.Length + 1);
+            var zoneBytes = Encoding.UTF8.GetBytes(zonesJson);
+            var itemBytes = Encoding.UTF8.GetBytes(itemsJson);
+            var buffer = new byte[actorBytes.Length + abilityBytes.Length + zoneBytes.Length + itemBytes.Length + 3];
+            var offset = 0;
+            offset = AppendSection(buffer, offset, actorBytes);
+            offset = AppendSection(buffer, offset, abilityBytes);
+            offset = AppendSection(buffer, offset, zoneBytes);
+            itemBytes.CopyTo(buffer, offset);
 
             var hash = sha.ComputeHash(buffer);
             var builder = new StringBuilder(hash.Length * 2);
@@ -179,6 +266,13 @@ namespace Shared
             }
 
             return builder.ToString();
+        }
+
+        private static int AppendSection(byte[] buffer, int offset, byte[] section)
+        {
+            section.CopyTo(buffer, offset);
+            buffer[offset + section.Length] = 0x1F;
+            return offset + section.Length + 1;
         }
 
         private static string ReadFile(string path)
@@ -234,6 +328,9 @@ namespace Shared
             var respawnSeconds = RequireFloat(dto, label, "respawnSeconds");
             var abilityId = RequireUint(dto, label, "abilityId");
             var resourceRegenPerSecond = RequireFloat(dto, label, "resourceRegenPerSecond");
+            var kind = ToActorKind(RequireString(dto, label, "kind"), label);
+            var starterItems = ToStarterItems(dto, label);
+            var starterEquipment = ToStarterEquipment(dto, label);
 
             try
             {
@@ -244,11 +341,193 @@ namespace Shared
                     maxResource,
                     respawnSeconds,
                     abilityId,
-                    resourceRegenPerSecond);
+                    resourceRegenPerSecond,
+                    kind,
+                    starterItems,
+                    starterEquipment);
             }
             catch (ArgumentException exception)
             {
                 throw new ConfigValidationException(label + " (id=" + id + "): " + exception.Message, exception);
+            }
+        }
+
+        /// <summary>Читает стартовые предметы актора; отсутствующее поле — пустой набор.</summary>
+        private static IReadOnlyList<LoadoutItem> ToStarterItems(Dictionary<string, object?> dto, string label)
+        {
+            var entries = OptionalObjectArray(dto, label, "starterItems");
+            var result = new List<LoadoutItem>(entries.Count);
+            for (var i = 0; i < entries.Count; i++)
+            {
+                var entryLabel = label + ".starterItems[" + i + "]";
+                var itemId = RequireUint(entries[i], entryLabel, "itemId");
+                var quantity = RequireInt(entries[i], entryLabel, "quantity");
+
+                try
+                {
+                    result.Add(new LoadoutItem(itemId, quantity));
+                }
+                catch (ArgumentException exception)
+                {
+                    throw new ConfigValidationException(entryLabel + ": " + exception.Message, exception);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>Читает стартовое снаряжение актора; отсутствующее поле — пустой набор.</summary>
+        private static IReadOnlyList<LoadoutEquipment> ToStarterEquipment(Dictionary<string, object?> dto, string label)
+        {
+            var entries = OptionalObjectArray(dto, label, "starterEquipment");
+            var result = new List<LoadoutEquipment>(entries.Count);
+            for (var i = 0; i < entries.Count; i++)
+            {
+                var entryLabel = label + ".starterEquipment[" + i + "]";
+                var itemId = RequireUint(entries[i], entryLabel, "itemId");
+
+                try
+                {
+                    result.Add(new LoadoutEquipment(itemId));
+                }
+                catch (ArgumentException exception)
+                {
+                    throw new ConfigValidationException(entryLabel + ": " + exception.Message, exception);
+                }
+            }
+
+            return result;
+        }
+
+        private static ZoneConfig ToZone(Dictionary<string, object?> dto, string source, int index)
+        {
+            var label = source + ": zones[" + index + "]";
+            var id = RequireUint(dto, label, "id");
+            var key = RequireString(dto, label, "key");
+            var kind = ToZoneKind(RequireString(dto, label, "kind"), label);
+            var minX = RequireFloat(dto, label, "minX");
+            var minZ = RequireFloat(dto, label, "minZ");
+            var maxX = RequireFloat(dto, label, "maxX");
+            var maxZ = RequireFloat(dto, label, "maxZ");
+            var pvpEnabled = RequireBool(dto, label, "pvpEnabled");
+            var fullLootOnDeath = RequireBool(dto, label, "fullLootOnDeath");
+            var durabilityLossFraction = RequireFloat(dto, label, "durabilityLossFraction");
+            var hostileFlagSeconds = RequireFloat(dto, label, "hostileFlagSeconds");
+            var resourceTierMin = RequireInt(dto, label, "resourceTierMin");
+            var resourceTierMax = RequireInt(dto, label, "resourceTierMax");
+
+            try
+            {
+                return new ZoneConfig(
+                    id,
+                    key,
+                    kind,
+                    minX,
+                    minZ,
+                    maxX,
+                    maxZ,
+                    pvpEnabled,
+                    fullLootOnDeath,
+                    durabilityLossFraction,
+                    hostileFlagSeconds,
+                    resourceTierMin,
+                    resourceTierMax);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new ConfigValidationException(label + " (key=" + key + "): " + exception.Message, exception);
+            }
+        }
+
+        private static ItemDefinition ToItem(Dictionary<string, object?> dto, string source, int index)
+        {
+            var label = source + ": items[" + index + "]";
+            var id = RequireUint(dto, label, "id");
+            var key = RequireString(dto, label, "key");
+            var kind = ToItemKind(RequireString(dto, label, "kind"), label);
+            var tier = RequireInt(dto, label, "tier");
+            var maxDurability = RequireInt(dto, label, "maxDurability");
+            EquipmentSlot? slot = null;
+            if (dto.TryGetValue("slot", out var slotValue) && slotValue != null)
+            {
+                if (slotValue is not string slotText)
+                {
+                    throw new ConfigValidationException(label + ": поле 'slot' должно быть строкой.");
+                }
+
+                slot = ToEquipmentSlot(slotText, label);
+            }
+
+            try
+            {
+                return new ItemDefinition(id, key, kind, tier, maxDurability, slot);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new ConfigValidationException(label + " (key=" + key + "): " + exception.Message, exception);
+            }
+        }
+
+        private static ActorKind ToActorKind(string text, string label)
+        {
+            switch (text)
+            {
+                case "player":
+                    return ActorKind.Player;
+                case "mob":
+                    return ActorKind.Mob;
+                default:
+                    throw new ConfigValidationException(
+                        label + ": поле 'kind' должно быть 'player' или 'mob', получено '" + text + "'.");
+            }
+        }
+
+        private static ZoneKind ToZoneKind(string text, string label)
+        {
+            switch (text)
+            {
+                case "blue":
+                    return ZoneKind.Blue;
+                case "yellow":
+                    return ZoneKind.Yellow;
+                case "red":
+                    return ZoneKind.Red;
+                default:
+                    throw new ConfigValidationException(
+                        label + ": поле 'kind' должно быть 'blue', 'yellow' или 'red', получено '" + text + "'.");
+            }
+        }
+
+        private static ItemKind ToItemKind(string text, string label)
+        {
+            switch (text)
+            {
+                case "material":
+                    return ItemKind.Material;
+                case "equipment":
+                    return ItemKind.Equipment;
+                default:
+                    throw new ConfigValidationException(
+                        label + ": поле 'kind' должно быть 'material' или 'equipment', получено '" + text + "'.");
+            }
+        }
+
+        private static EquipmentSlot ToEquipmentSlot(string text, string label)
+        {
+            switch (text)
+            {
+                case "mainHand":
+                    return EquipmentSlot.MainHand;
+                case "chest":
+                    return EquipmentSlot.Chest;
+                case "legs":
+                    return EquipmentSlot.Legs;
+                case "feet":
+                    return EquipmentSlot.Feet;
+                default:
+                    throw new ConfigValidationException(
+                        label + ": поле 'slot' должно быть 'mainHand', 'chest', 'legs' или 'feet', получено '"
+                        + text + "'.");
             }
         }
 
@@ -324,6 +603,62 @@ namespace Shared
             }
 
             throw new ConfigValidationException(label + ": поле '" + field + "' должно быть числом.");
+        }
+
+        private static string RequireString(Dictionary<string, object?> dto, string label, string field)
+        {
+            var value = RequireValue(dto, label, field);
+            if (value is string text && !string.IsNullOrWhiteSpace(text))
+            {
+                return text;
+            }
+
+            throw new ConfigValidationException(
+                label + ": поле '" + field + "' должно быть непустой строкой.");
+        }
+
+        private static bool RequireBool(Dictionary<string, object?> dto, string label, string field)
+        {
+            var value = RequireValue(dto, label, field);
+            if (value is bool flag)
+            {
+                return flag;
+            }
+
+            throw new ConfigValidationException(
+                label + ": поле '" + field + "' должно быть true или false.");
+        }
+
+        /// <summary>Читает необязательный массив JSON-объектов; отсутствующее поле — пустой список.</summary>
+        private static List<Dictionary<string, object?>> OptionalObjectArray(
+            Dictionary<string, object?> dto,
+            string label,
+            string field)
+        {
+            if (!dto.TryGetValue(field, out var value) || value == null)
+            {
+                return new List<Dictionary<string, object?>>();
+            }
+
+            if (value is not List<object?> list)
+            {
+                throw new ConfigValidationException(
+                    label + ": поле '" + field + "' должно быть JSON-массивом объектов.");
+            }
+
+            var result = new List<Dictionary<string, object?>>(list.Count);
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (list[i] is not Dictionary<string, object?> entry)
+                {
+                    throw new ConfigValidationException(
+                        label + ": поле '" + field + "[" + i + "]' должно быть JSON-объектом.");
+                }
+
+                result.Add(entry);
+            }
+
+            return result;
         }
     }
 }

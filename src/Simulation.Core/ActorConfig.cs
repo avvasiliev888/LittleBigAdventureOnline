@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Simulation.Core
 {
@@ -18,6 +19,9 @@ namespace Simulation.Core
         /// Восстановление ресурса, единиц в секунду; неотрицательное и конечное. 0 — без регенерации
         /// (легаси-конструктор тестов).
         /// </param>
+        /// <param name="kind">Роль актора: игрок участвует в PvP и теряет предметы, моб — нет.</param>
+        /// <param name="starterItems">Стартовые предметы в инвентаре; <c>null</c> — набор пуст.</param>
+        /// <param name="starterEquipment">Стартовое снаряжение; <c>null</c> — надето ничего.</param>
         public ActorConfig(
             uint id,
             int maxHp,
@@ -25,7 +29,10 @@ namespace Simulation.Core
             int maxResource,
             float respawnSeconds,
             uint abilityId,
-            float resourceRegenPerSecond = 0f)
+            float resourceRegenPerSecond = 0f,
+            ActorKind kind = ActorKind.Player,
+            IReadOnlyList<LoadoutItem>? starterItems = null,
+            IReadOnlyList<LoadoutEquipment>? starterEquipment = null)
         {
             if (id == 0)
             {
@@ -73,6 +80,9 @@ namespace Simulation.Core
             RespawnSeconds = respawnSeconds;
             AbilityId = abilityId;
             ResourceRegenPerSecond = resourceRegenPerSecond;
+            Kind = kind;
+            StarterItems = CopyLoadout(starterItems, nameof(starterItems));
+            StarterEquipment = CopyLoadout(starterEquipment, nameof(starterEquipment));
         }
 
         /// <summary>Идентификатор типа актора.</summary>
@@ -95,5 +105,36 @@ namespace Simulation.Core
 
         /// <summary>Восстановление ресурса в секунду; 0 — без регенерации.</summary>
         public float ResourceRegenPerSecond { get; }
+
+        /// <summary>Роль актора в правилах мира (PvP, потеря предметов, флаг враждебности).</summary>
+        public ActorKind Kind { get; }
+
+        /// <summary>Стартовые предметы в инвентаре (страховочный набор).</summary>
+        public IReadOnlyList<LoadoutItem> StarterItems { get; }
+
+        /// <summary>Стартовое снаряжение (страховочный набор).</summary>
+        public IReadOnlyList<LoadoutEquipment> StarterEquipment { get; }
+
+        private static IReadOnlyList<T> CopyLoadout<T>(IReadOnlyList<T>? source, string parameterName)
+            where T : class
+        {
+            if (source == null)
+            {
+                return Array.Empty<T>();
+            }
+
+            var copy = new List<T>(source.Count);
+            for (var i = 0; i < source.Count; i++)
+            {
+                if (source[i] == null)
+                {
+                    throw new ArgumentException("Стартовый набор содержит null в позиции " + i + ".", parameterName);
+                }
+
+                copy.Add(source[i]);
+            }
+
+            return copy.AsReadOnly();
+        }
     }
 }

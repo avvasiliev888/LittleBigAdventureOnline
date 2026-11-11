@@ -1,0 +1,48 @@
+[
+  {
+    "id": 1,
+    "key": "wood",
+    "kind": "material",
+    "tier": 1,
+    "maxDurability": 0
+  },
+  {
+    "id": 2,
+    "key": "ore",
+    "kind": "material",
+    "tier": 1,
+    "maxDurability": 0
+  },
+  {
+    "id": 10,
+    "key": "rusty_sword",
+    "kind": "equipment",
+    "tier": 1,
+    "maxDurability": 100,
+    "slot": "mainHand"
+  },
+  {
+    "id": 11,
+    "key": "traveler_chest",
+    "kind": "equipment",
+    "tier": 1,
+    "maxDurability": 100,
+    "slot": "chest"
+  },
+  {
+    "id": 12,
+    "key": "traveler_legs",
+    "kind": "equipment",
+    "tier": 1,
+    "maxDurability": 80,
+    "slot": "legs"
+  },
+  {
+    "id": 13,
+    "key": "traveler_boots",
+    "kind": "equipment",
+    "tier": 1,
+    "maxDurability": 60,
+    "slot": "feet"
+  }
+]

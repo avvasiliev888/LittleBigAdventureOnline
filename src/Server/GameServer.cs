@@ -351,8 +351,11 @@ namespace Server
                 entityId = _nextEntityId++;
             }
 
-            var spawn = new Vector3((_sessions.Count + 1) * _options.SpawnSpacing, 0f, 0f);
-            Simulation.State.AddEntity(new EntityState(entityId, actor, spawn));
+            var spawn = _config.Zones.ClampToBounds(
+                new Vector3((_sessions.Count + 1) * _options.SpawnSpacing, 0f, 0f));
+            var entity = new EntityState(entityId, actor, spawn);
+            entity.GrantStarterLoadout(_config);
+            Simulation.State.AddEntity(entity);
 
             _sessions[connectionId] = new ClientSession(connectionId, entityId);
 
@@ -365,7 +368,8 @@ namespace Server
             _transport.Send(connectionId, MessageFraming.Wrap(MessageType.HelloAck, ack), DeliveryMode.ReliableOrdered);
 
             Log("[t" + Simulation.State.Tick + "] conn " + connectionId + ": Hello принят, сущность " + entityId
-                + " (актор " + actor.Id + ") в точке " + spawn);
+                + " (актор " + actor.Id + ") в точке " + spawn
+                + ", зона: " + _config.Zones.GetZone(spawn).Key);
         }
 
         private void HandleCommand(int connectionId, byte[] payload)

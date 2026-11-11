@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using Shared;
+using Simulation.Core;
 using Xunit;
 
 namespace Tests
@@ -9,7 +10,7 @@ namespace Tests
     public sealed class ConfigTests
     {
         private const string ValidActors = @"[
-  { ""id"": 1, ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1 }
+  { ""id"": 1, ""kind"": ""player"", ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1 }
 ]";
 
         private const string ValidAbilities = @"[
@@ -19,7 +20,7 @@ namespace Tests
         [Fact]
         public void LoadFromJson_ValidConfig_BuildsSimulationConfig()
         {
-            var config = ConfigLoader.LoadFromJson(ValidActors, ValidAbilities);
+            var config = LoadConfig(ValidActors, ValidAbilities);
 
             Assert.Single(config.Actors);
             Assert.Single(config.Abilities);
@@ -31,11 +32,11 @@ namespace Tests
         public void LoadFromJson_ActorWithoutResourceRegen_ThrowsWithFieldName()
         {
             const string actors = @"[
-  { ""id"": 1, ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""respawnSeconds"": 5.0, ""abilityId"": 1 }
+  { ""id"": 1, ""kind"": ""player"", ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""respawnSeconds"": 5.0, ""abilityId"": 1 }
 ]";
 
             var exception = Assert.Throws<ConfigValidationException>(
-                () => ConfigLoader.LoadFromJson(actors, ValidAbilities));
+                () => LoadConfig(actors, ValidAbilities));
 
             Assert.Contains("resourceRegenPerSecond", exception.Message);
         }
@@ -45,10 +46,10 @@ namespace Tests
         {
             const string actors = @"[
   // комментарий допустим
-  { ""id"": 1, ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1, },
+  { ""id"": 1, ""kind"": ""player"", ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1, },
 ]";
 
-            var config = ConfigLoader.LoadFromJson(actors, ValidAbilities);
+            var config = LoadConfig(actors, ValidAbilities);
 
             Assert.Single(config.Actors);
         }
@@ -59,7 +60,7 @@ namespace Tests
             const string abilities = @"[ { ""id"": 1, ""range"": 3.0, ""cooldownSeconds"": 2.0, ""resourceCost"": 10 } ]";
 
             var exception = Assert.Throws<ConfigValidationException>(
-                () => ConfigLoader.LoadFromJson(ValidActors, abilities));
+                () => LoadConfig(ValidActors, abilities));
 
             Assert.Contains("damage", exception.Message);
         }
@@ -73,7 +74,7 @@ namespace Tests
 ]";
 
             var exception = Assert.Throws<ConfigValidationException>(
-                () => ConfigLoader.LoadFromJson(ValidActors, abilities));
+                () => LoadConfig(ValidActors, abilities));
 
             Assert.Contains("Дубликат", exception.Message);
         }
@@ -82,11 +83,11 @@ namespace Tests
         public void LoadFromJson_MissingAbilityReference_Throws()
         {
             const string actors = @"[
-  { ""id"": 1, ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 99 }
+  { ""id"": 1, ""kind"": ""player"", ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 99 }
 ]";
 
             var exception = Assert.Throws<ConfigValidationException>(
-                () => ConfigLoader.LoadFromJson(actors, ValidAbilities));
+                () => LoadConfig(actors, ValidAbilities));
 
             Assert.Contains("99", exception.Message);
         }
@@ -95,7 +96,7 @@ namespace Tests
         public void LoadFromJson_InvalidJson_Throws()
         {
             var exception = Assert.Throws<ConfigValidationException>(
-                () => ConfigLoader.LoadFromJson("{ not json", ValidAbilities));
+                () => LoadConfig("{ not json", ValidAbilities));
 
             Assert.Contains("невалидный JSON", exception.Message);
         }
@@ -104,7 +105,7 @@ namespace Tests
         public void LoadFromJson_NonArray_Throws()
         {
             var exception = Assert.Throws<ConfigValidationException>(
-                () => ConfigLoader.LoadFromJson(@"{ ""actors"": [] }", ValidAbilities));
+                () => LoadConfig(@"{ ""actors"": [] }", ValidAbilities));
 
             Assert.Contains("JSON-массив", exception.Message);
         }
@@ -114,7 +115,7 @@ namespace Tests
         {
             var missing = Path.Combine(Path.GetTempPath(), "albion-missing-" + Guid.NewGuid().ToString("N"), "actors.json");
 
-            var exception = Assert.Throws<ConfigValidationException>(() => ConfigLoader.Load(missing, missing));
+            var exception = Assert.Throws<ConfigValidationException>(() => ConfigLoader.Load(missing, missing, missing, missing));
 
             Assert.Contains("не найден", exception.Message);
         }
@@ -136,6 +137,138 @@ namespace Tests
 
             Assert.NotEmpty(config.Actors);
             Assert.NotEmpty(config.Abilities);
+            Assert.Equal(3, config.Zones.Zones.Count);
+            Assert.NotEmpty(config.Items);
+        }
+
+        [Fact]
+        public void ZonesAndItems_AreParsedFromJson()
+        {
+            var config = ConfigLoader.LoadFromJson(
+                ValidActors,
+                ValidAbilities,
+                @"[
+  { ""id"": 7, ""key"": ""crimson"", ""kind"": ""red"", ""minX"": -5.0, ""minZ"": -5.0, ""maxX"": 5.0, ""maxZ"": 5.0, ""pvpEnabled"": true, ""fullLootOnDeath"": true, ""durabilityLossFraction"": 0.0, ""hostileFlagSeconds"": 30.0, ""resourceTierMin"": 3, ""resourceTierMax"": 4 }
+]",
+                @"[
+  { ""id"": 10, ""key"": ""sword"", ""kind"": ""equipment"", ""tier"": 2, ""maxDurability"": 90, ""slot"": ""mainHand"" }
+]");
+
+            var zone = config.Zones.GetZone(new System.Numerics.Vector3(0f, 0f, 0f));
+            var item = config.GetItem(10);
+
+            Assert.Equal(ZoneKind.Red, zone.Kind);
+            Assert.True(zone.FullLootOnDeath);
+            Assert.Equal(30f, zone.HostileFlagSeconds);
+            Assert.Equal(ItemKind.Equipment, item.ItemKind);
+            Assert.Equal(EquipmentSlot.MainHand, item.Slot);
+            Assert.Equal(90, item.MaxDurability);
+        }
+
+        [Fact]
+        public void LoadFromJson_MissingZoneField_ThrowsWithFieldName()
+        {
+            const string zones = @"[
+  { ""id"": 1, ""key"": ""a"", ""kind"": ""blue"", ""minX"": 0.0, ""minZ"": 0.0, ""maxX"": 10.0, ""maxZ"": 10.0, ""fullLootOnDeath"": false, ""durabilityLossFraction"": 0.1, ""hostileFlagSeconds"": 0.0, ""resourceTierMin"": 1, ""resourceTierMax"": 2 }
+]";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(ValidActors, ValidAbilities, zones, TestWorld.ItemsJson));
+
+            Assert.Contains("pvpEnabled", exception.Message);
+        }
+
+        [Fact]
+        public void LoadFromJson_UnknownZoneKind_Throws()
+        {
+            const string zones = @"[
+  { ""id"": 1, ""key"": ""a"", ""kind"": ""purple"", ""minX"": 0.0, ""minZ"": 0.0, ""maxX"": 10.0, ""maxZ"": 10.0, ""pvpEnabled"": true, ""fullLootOnDeath"": false, ""durabilityLossFraction"": 0.1, ""hostileFlagSeconds"": 30.0, ""resourceTierMin"": 1, ""resourceTierMax"": 2 }
+]";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(ValidActors, ValidAbilities, zones, TestWorld.ItemsJson));
+
+            Assert.Contains("purple", exception.Message);
+        }
+
+        [Fact]
+        public void LoadFromJson_OverlappingZones_Throw()
+        {
+            const string zones = @"[
+  { ""id"": 1, ""key"": ""a"", ""kind"": ""yellow"", ""minX"": 0.0, ""minZ"": 0.0, ""maxX"": 10.0, ""maxZ"": 10.0, ""pvpEnabled"": true, ""fullLootOnDeath"": false, ""durabilityLossFraction"": 0.1, ""hostileFlagSeconds"": 30.0, ""resourceTierMin"": 1, ""resourceTierMax"": 2 },
+  { ""id"": 2, ""key"": ""b"", ""kind"": ""red"", ""minX"": 5.0, ""minZ"": 5.0, ""maxX"": 15.0, ""maxZ"": 15.0, ""pvpEnabled"": true, ""fullLootOnDeath"": true, ""durabilityLossFraction"": 0.0, ""hostileFlagSeconds"": 30.0, ""resourceTierMin"": 3, ""resourceTierMax"": 4 }
+]";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(ValidActors, ValidAbilities, zones, TestWorld.ItemsJson));
+
+            Assert.Contains("пересекаются", exception.Message);
+        }
+
+        [Fact]
+        public void LoadFromJson_ZonesWithGap_Throw()
+        {
+            const string zones = @"[
+  { ""id"": 1, ""key"": ""a"", ""kind"": ""blue"", ""minX"": -10.0, ""minZ"": 0.0, ""maxX"": 0.0, ""maxZ"": 10.0, ""pvpEnabled"": false, ""fullLootOnDeath"": false, ""durabilityLossFraction"": 0.1, ""hostileFlagSeconds"": 0.0, ""resourceTierMin"": 1, ""resourceTierMax"": 2 },
+  { ""id"": 2, ""key"": ""b"", ""kind"": ""yellow"", ""minX"": 1.0, ""minZ"": 0.0, ""maxX"": 10.0, ""maxZ"": 10.0, ""pvpEnabled"": true, ""fullLootOnDeath"": false, ""durabilityLossFraction"": 0.1, ""hostileFlagSeconds"": 30.0, ""resourceTierMin"": 1, ""resourceTierMax"": 2 }
+]";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(ValidActors, ValidAbilities, zones, TestWorld.ItemsJson));
+
+            Assert.Contains("не покрывают мир", exception.Message);
+        }
+
+        [Fact]
+        public void LoadFromJson_UnknownStarterItem_Throws()
+        {
+            const string actors = @"[
+  { ""id"": 1, ""kind"": ""player"", ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1, ""starterItems"": [ { ""itemId"": 404, ""quantity"": 1 } ] }
+]";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(actors, ValidAbilities, TestWorld.ZonesJson, TestWorld.ItemsJson));
+
+            Assert.Contains("404", exception.Message);
+        }
+
+        [Fact]
+        public void LoadFromJson_EquipmentAsStarterItem_Throws()
+        {
+            const string actors = @"[
+  { ""id"": 1, ""kind"": ""player"", ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1, ""starterEquipment"": [ { ""itemId"": 1 } ] }
+]";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(actors, ValidAbilities, TestWorld.ZonesJson, TestWorld.ItemsJson));
+
+            Assert.Contains("не является снаряжением", exception.Message);
+        }
+
+        [Fact]
+        public void LoadFromJson_MaterialWithSlot_Throws()
+        {
+            const string items = @"[
+  { ""id"": 1, ""key"": ""wood"", ""kind"": ""material"", ""tier"": 1, ""maxDurability"": 0, ""slot"": ""chest"" }
+]";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(ValidActors, ValidAbilities, TestWorld.ZonesJson, items));
+
+            Assert.Contains("не может занимать слот", exception.Message);
+        }
+
+        [Fact]
+        public void LoadFromJson_UnknownActorKind_Throws()
+        {
+            const string actors = @"[
+  { ""id"": 1, ""kind"": ""npc"", ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1 }
+]";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(actors, ValidAbilities, TestWorld.ZonesJson, TestWorld.ItemsJson));
+
+            Assert.Contains("npc", exception.Message);
         }
 
         [Fact]
@@ -178,9 +311,18 @@ namespace Tests
             var ability = new Simulation.Core.AbilityConfig(1, 25, 3f, 2f, 10);
 
             var exception = Assert.Throws<ArgumentException>(
-                () => new Simulation.Core.SimulationConfig(new[] { actor }, new[] { ability }));
+                () => new Simulation.Core.SimulationConfig(
+                    new[] { actor },
+                    new[] { ability },
+                    TestWorld.DefaultZones,
+                    TestWorld.DefaultItems));
 
             Assert.Contains("7", exception.Message);
+        }
+
+        private static Simulation.Core.SimulationConfig LoadConfig(string actorsJson, string abilitiesJson)
+        {
+            return ConfigLoader.LoadFromJson(actorsJson, abilitiesJson, TestWorld.ZonesJson, TestWorld.ItemsJson);
         }
 
         private static string RepoConfigDirectory()

@@ -21,6 +21,7 @@ namespace Server
         /// `--udp [порт]` для реального UDP; `--delay &lt;мс&gt;` и `--loss &lt;процент&gt;` — имитация плохой сети (M7);
         /// `--metrics-every &lt;тиков&gt;` — период лога метрик (по умолчанию 200, 0 — выкл.);
         /// `--seconds &lt;сек&gt;` — остановиться через N секунд (для нагрузочного теста);
+        /// `--validate-config-only` — проверить конфиги и выйти (AGENT.md §3);
         /// иначе путь к каталогу конфигов (необязательно).
         /// </param>
         /// <returns>Код возврата процесса.</returns>
@@ -32,9 +33,16 @@ namespace Server
             var lossPercent = 0;
             var metricsEvery = 200;
             int? runSeconds = null;
+            var validateConfigOnly = false;
 
             for (var i = 0; i < args.Length; i++)
             {
+                if (args[i] == "--validate-config-only")
+                {
+                    validateConfigOnly = true;
+                    continue;
+                }
+
                 if (args[i] == "--udp")
                 {
                     if (i + 1 < args.Length && int.TryParse(args[i + 1], out var port))
@@ -96,9 +104,18 @@ namespace Server
                 return 1;
             }
 
+            var configHash = ConfigLoader.ComputeHash(configDirectory);
             Console.WriteLine(
-                "config: " + configDirectory + " (акторов: " + config.Actors.Count + ", способностей: " + config.Abilities.Count + ")"
-                + ", hash: " + ConfigLoader.ComputeHash(configDirectory));
+                "config: " + configDirectory + " (акторов: " + config.Actors.Count + ", способностей: " + config.Abilities.Count
+                + ", зон: " + config.Zones.Zones.Count + ", предметов: " + config.Items.Count + ")"
+                + ", hash: " + configHash);
+
+            if (validateConfigOnly)
+            {
+                // AGENT.md §3: третья обязательная проверка — конфиги валидны, фейл-фаст до старта мира.
+                Console.WriteLine("config valid: зоны " + ZoneList(config) + "; hash: " + configHash);
+                return 0;
+            }
 
             if (udpPort.HasValue)
             {
@@ -264,6 +281,22 @@ namespace Server
             }
 
             return count;
+        }
+
+        private static string ZoneList(SimulationConfig config)
+        {
+            var builder = new System.Text.StringBuilder();
+            for (var i = 0; i < config.Zones.Zones.Count; i++)
+            {
+                if (i > 0)
+                {
+                    builder.Append(", ");
+                }
+
+                builder.Append(config.Zones.Zones[i].Key);
+            }
+
+            return builder.ToString();
         }
 
         private static string ResolveConfigDirectory(string[] args)

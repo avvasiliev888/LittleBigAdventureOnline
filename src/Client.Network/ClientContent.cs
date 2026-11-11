@@ -24,7 +24,7 @@ namespace Client.Network
         public string Hash { get; }
 
         /// <summary>Загружает конфиг из каталога (в Unity — <c>StreamingAssets/Config</c>).</summary>
-        /// <param name="directory">Каталог с <c>actors.json</c> и <c>abilities.json</c>.</param>
+        /// <param name="directory">Каталог с <c>actors.json</c>, <c>abilities.json</c>, <c>zones.json</c> и <c>items.json</c>.</param>
         /// <exception cref="ArgumentNullException">Если <paramref name="directory"/> равен <c>null</c>.</exception>
         /// <exception cref="ConfigValidationException">Если файлы отсутствуют или невалидны.</exception>
         public static ClientContent LoadFromDirectory(string directory)
@@ -40,13 +40,20 @@ namespace Client.Network
         /// <summary>Загружает конфиг из строк JSON (тесты, встроенные сценарии).</summary>
         /// <param name="actorsJson">Содержимое <c>actors.json</c>.</param>
         /// <param name="abilitiesJson">Содержимое <c>abilities.json</c>.</param>
+        /// <param name="zonesJson">Содержимое <c>zones.json</c>.</param>
+        /// <param name="itemsJson">Содержимое <c>items.json</c>.</param>
         /// <param name="source">Метка источника для сообщений об ошибках.</param>
         /// <exception cref="ConfigValidationException">Если JSON невалиден.</exception>
-        public static ClientContent LoadFromJson(string actorsJson, string abilitiesJson, string source = "client-config")
+        public static ClientContent LoadFromJson(
+            string actorsJson,
+            string abilitiesJson,
+            string zonesJson,
+            string itemsJson,
+            string source = "client-config")
         {
             return new ClientContent(
-                ConfigLoader.LoadFromJson(actorsJson, abilitiesJson, source),
-                ConfigLoader.ComputeHashFromJson(actorsJson, abilitiesJson));
+                ConfigLoader.LoadFromJson(actorsJson, abilitiesJson, zonesJson, itemsJson, source),
+                ConfigLoader.ComputeHashFromJson(actorsJson, abilitiesJson, zonesJson, itemsJson));
         }
 
         /// <summary>Тип актора по идентификатору.</summary>

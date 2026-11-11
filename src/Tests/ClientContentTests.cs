@@ -16,11 +16,19 @@ namespace Tests
     public sealed class ClientContentTests
     {
         private const string ActorsTemplate = @"[
-  {{ ""id"": 1, ""maxHp"": {0}, ""moveSpeed"": {1}, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1 }}
+  {{ ""id"": 1, ""kind"": ""player"", ""maxHp"": {0}, ""moveSpeed"": {1}, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1 }}
 ]";
 
         private const string AbilitiesTemplate = @"[
   {{ ""id"": 1, ""damage"": 25, ""range"": {0}, ""cooldownSeconds"": {1}, ""resourceCost"": 10 }}
+]";
+
+        private const string ZonesJson = @"[
+  { ""id"": 1, ""key"": ""test"", ""kind"": ""yellow"", ""minX"": -1000.0, ""minZ"": -1000.0, ""maxX"": 1000.0, ""maxZ"": 1000.0, ""pvpEnabled"": true, ""fullLootOnDeath"": false, ""durabilityLossFraction"": 0.1, ""hostileFlagSeconds"": 60.0, ""resourceTierMin"": 1, ""resourceTierMax"": 4 }
+]";
+
+        private const string ItemsJson = @"[
+  { ""id"": 1, ""key"": ""wood"", ""kind"": ""material"", ""tier"": 1, ""maxDurability"": 0 }
 ]";
 
         [Fact]
@@ -53,7 +61,17 @@ namespace Tests
             Directory.CreateDirectory(temp);
             try
             {
-                File.Copy(Path.Combine(RepoConfigDirectory(), ConfigLoader.ActorsFileName), Path.Combine(temp, ConfigLoader.ActorsFileName));
+                foreach (var fileName in new[]
+                {
+                    ConfigLoader.ActorsFileName,
+                    ConfigLoader.AbilitiesFileName,
+                    ConfigLoader.ZonesFileName,
+                    ConfigLoader.ItemsFileName,
+                })
+                {
+                    File.Copy(Path.Combine(RepoConfigDirectory(), fileName), Path.Combine(temp, fileName));
+                }
+
                 File.WriteAllText(Path.Combine(temp, ConfigLoader.AbilitiesFileName), Abilities(range: 3f, cooldown: 2f));
 
                 var modified = ConfigLoader.ComputeHash(temp);
@@ -70,11 +88,11 @@ namespace Tests
         public void ChangedMoveSpeedJson_ChangesPredictionStep_WithoutRecompile()
         {
             var defaultContent = ClientContent.LoadFromDirectory(RepoConfigDirectory());
-            var defaultPrediction = Predict(ClientContent.LoadFromJson(
+            var defaultPrediction = Predict(Content(
                 Actors(maxHp: 100, moveSpeed: 4f),
                 Abilities(range: 3f, cooldown: 2f)));
 
-            var changedPrediction = Predict(ClientContent.LoadFromJson(
+            var changedPrediction = Predict(Content(
                 Actors(maxHp: 100, moveSpeed: 8f),
                 Abilities(range: 3f, cooldown: 2f)));
 
@@ -86,8 +104,8 @@ namespace Tests
         [Fact]
         public void ChangedCooldownJson_ChangesPredictedCooldown_WithoutRecompile()
         {
-            var fast = new ClientPrediction(1, ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f)).GetActor(1), ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f)).GetAbility(1));
-            var slowContent = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 5f));
+            var fast = new ClientPrediction(1, Content(Actors(100, 4f), Abilities(3f, 2f)).GetActor(1), Content(Actors(100, 4f), Abilities(3f, 2f)).GetAbility(1));
+            var slowContent = Content(Actors(100, 4f), Abilities(3f, 5f));
             var slow = new ClientPrediction(1, slowContent.GetActor(1), slowContent.GetAbility(1));
 
             Assert.Equal(40, fast.AbilityCooldownTicks);
@@ -103,7 +121,7 @@ namespace Tests
         [Fact]
         public void Configuration_UsesRangeAndMaxHpFromJson()
         {
-            var content = ClientContent.LoadFromJson(Actors(maxHp: 250, moveSpeed: 4f), Abilities(range: 7.5f, cooldown: 2f));
+            var content = Content(Actors(maxHp: 250, moveSpeed: 4f), Abilities(range: 7.5f, cooldown: 2f));
             var prediction = new ClientPrediction(1, content.GetActor(1), content.GetAbility(1));
 
             Assert.Equal(250, content.GetActor(1).MaxHp);
@@ -113,7 +131,7 @@ namespace Tests
         [Fact]
         public void TryStartAbility_IsRejectedWhileCooldownActive()
         {
-            var content = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f));
+            var content = Content(Actors(100, 4f), Abilities(3f, 2f));
             var prediction = new ClientPrediction(7, content.GetActor(1), content.GetAbility(1));
             prediction.Reset(Vector3.Zero);
 
@@ -126,7 +144,7 @@ namespace Tests
         [Fact]
         public void AdvanceCooldown_CountsDownAndStopsAtZero()
         {
-            var content = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f));
+            var content = Content(Actors(100, 4f), Abilities(3f, 2f));
             var prediction = new ClientPrediction(7, content.GetActor(1), content.GetAbility(1));
             prediction.Reset(Vector3.Zero);
             prediction.TryStartAbility(1);
@@ -147,7 +165,7 @@ namespace Tests
         [Fact]
         public void Reconcile_MapsServerCooldownToClientTicks_NotAbsoluteTick()
         {
-            var content = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f));
+            var content = Content(Actors(100, 4f), Abilities(3f, 2f));
             var prediction = new ClientPrediction(7, content.GetActor(1), content.GetAbility(1));
             prediction.Reset(Vector3.Zero);
 
@@ -162,7 +180,7 @@ namespace Tests
         [Fact]
         public void Reconcile_KeepsPredictedCooldownUntilAbilityAcked()
         {
-            var content = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f));
+            var content = Content(Actors(100, 4f), Abilities(3f, 2f));
             var prediction = new ClientPrediction(7, content.GetActor(1), content.GetAbility(1));
             prediction.Reset(Vector3.Zero);
 
@@ -185,7 +203,7 @@ namespace Tests
         [Fact]
         public void Reconcile_ServerRejectionAfterLocalCooldownExpired_AppliesFullPenalty()
         {
-            var content = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f));
+            var content = Content(Actors(100, 4f), Abilities(3f, 2f));
             var prediction = new ClientPrediction(7, content.GetActor(1), content.GetAbility(1));
             prediction.Reset(Vector3.Zero);
 
@@ -209,7 +227,7 @@ namespace Tests
         [Fact]
         public void Reconcile_RejectionAtCooldownBoundary_WaitsOneTick()
         {
-            var content = ClientContent.LoadFromJson(Actors(100, 4f), Abilities(3f, 2f));
+            var content = Content(Actors(100, 4f), Abilities(3f, 2f));
             var prediction = new ClientPrediction(7, content.GetActor(1), content.GetAbility(1));
             prediction.Reset(Vector3.Zero);
 
@@ -233,9 +251,14 @@ namespace Tests
         public void LoadFromJson_InvalidJson_Throws()
         {
             var exception = Assert.Throws<ConfigValidationException>(
-                () => ClientContent.LoadFromJson("{ not json", Abilities(3f, 2f)));
+                () => Content("{ not json", Abilities(3f, 2f)));
 
             Assert.Contains("невалидный JSON", exception.Message);
+        }
+
+        private static ClientContent Content(string actors, string abilities)
+        {
+            return ClientContent.LoadFromJson(actors, abilities, ZonesJson, ItemsJson);
         }
 
         private static ClientPrediction Predict(ClientContent content)

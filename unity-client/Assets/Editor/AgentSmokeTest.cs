@@ -247,7 +247,6 @@ namespace Albion.Editor
             try
             {
                 HudSmokeChecks.Verify();
-                Stage8VisualChecks.Verify(view, pipeline.Content);
                 var stage6 = Environment.GetEnvironmentVariable("ALBION_REBUILD_WORLD") == "1"
                     || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ALBION_STAGE6_GALLERY"));
                 if (stage6)

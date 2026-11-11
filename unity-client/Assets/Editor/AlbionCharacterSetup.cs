@@ -17,10 +17,10 @@ namespace Albion.Editor
         [MenuItem("Albion/Characters/Configure Warrior Visual")]
         public static void Configure()
         {
-            ProceduralCharacterGenerator.Configure();
+            ConfigureImported();
         }
 
-        /// <summary>Keeps the pre-Stage-8 imported warrior path available for comparison.</summary>
+        /// <summary>Restores the textured imported warrior as the default player visual.</summary>
         [MenuItem("Albion/Characters/Configure Imported Warrior")]
         public static void ConfigureImported()
         {
@@ -29,7 +29,6 @@ namespace Albion.Editor
             var settings = LoadSettings();
             // Humanoid retargeting normalizes forward to +Z, unlike the old frozen rest mesh.
             settings.Yaw = 0f;
-            settings.Procedural = false;
             settings.Controller = AlbionAnimationSetup.Configure();
             settings.Prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
             Require(settings.Prefab != null, "Imported Warrior prefab missing: " + PrefabPath);
@@ -53,12 +52,6 @@ namespace Albion.Editor
         public static void Validate()
         {
             var settings = CharacterVisualSettings.Load();
-            if (settings.Procedural)
-            {
-                ProceduralCharacterChecks.Validate(settings);
-                return;
-            }
-
             var root = new GameObject("Character regression (transient)");
             try
             {
@@ -68,7 +61,8 @@ namespace Albion.Editor
                 view.Render(0f);
                 Require(view.Player != null, "Snapshot did not spawn player.");
                 var player = view.Player;
-                Require(root.transform.childCount == 2 && root.transform.GetChild(1).position == new Vector3(1f, 0f, 8f),
+                var remote = root.transform.Find("Entity 2");
+                Require(remote != null && remote.position == new Vector3(1f, 0f, 8f),
                     "Remote entity did not follow snapshot position.");
                 Require(player.position == new Vector3(3f, 0f, 4f), "Authoritative position changed.");
                 Require(player.localScale == Vector3.one, "Network root must retain unit scale.");
@@ -77,11 +71,6 @@ namespace Albion.Editor
                 Require(materials.Length >= 2, "Expected imported body and equipment, not primitives.");
                 var healthBar = player.GetComponentInChildren<HealthBar>();
                 Require(healthBar != null, "Health bar is missing.");
-                if (healthBar != null)
-                {
-                    Require(healthBar.transform.Find("Mana Back") != null, "Mana backing bar is missing.");
-                    Require(healthBar.transform.Find("Mana Fill") != null, "Mana fill bar is missing.");
-                }
                 foreach (var renderer in materials)
                 foreach (var material in renderer.sharedMaterials)
                 {

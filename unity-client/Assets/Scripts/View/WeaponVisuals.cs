@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Albion.Client
@@ -15,9 +14,9 @@ namespace Albion.Client
     }
 
     /// <summary>
-    /// Client-side weapon selection. Supports the imported Warrior prefab (sword/axe sockets)
-    /// and the generated procedural humanoid (sword, axe, bow, staff and dagger). The server
-    /// owns damage/range; this component only mirrors the snapshot's main-hand item.
+    /// Legacy weapon switcher for the imported dReal warrior prefab. Professional character
+    /// prefabs use <see cref="CharacterVisuals"/> instead, which mounts authored weapon prefabs.
+    /// The server owns damage/range; this component only mirrors the snapshot's main-hand item.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class WeaponVisuals : MonoBehaviour
@@ -27,14 +26,9 @@ namespace Albion.Client
 
         private Transform _sword;
         private Transform _axe;
-        private readonly Dictionary<WeaponKind, Transform> _generated = new Dictionary<WeaponKind, Transform>();
-        private Transform _generatedSocket;
 
         /// <summary>Currently visible weapon.</summary>
         public WeaponKind Equipped { get; private set; }
-
-        /// <summary>True when this instance was created for the procedural primitives.</summary>
-        public bool IsProcedural => _generatedSocket != null;
 
         /// <summary>Sword object, for legacy regression validation.</summary>
         public GameObject SwordObject => _sword != null ? _sword.gameObject : null;
@@ -63,20 +57,7 @@ namespace Albion.Client
             return weapons;
         }
 
-        /// <summary>Builds all generated weapons under a hand socket and shows the sword.</summary>
-        public static WeaponVisuals AttachProcedural(GameObject root, Transform rightHandSocket)
-        {
-            var weapons = root.AddComponent<WeaponVisuals>();
-            weapons._generatedSocket = rightHandSocket;
-            foreach (WeaponKind kind in Enum.GetValues(typeof(WeaponKind)))
-            {
-                weapons._generated[kind] = ProceduralWeaponBuilder.Create(kind, rightHandSocket);
-            }
-            weapons.Equip(WeaponKind.Sword);
-            return weapons;
-        }
-
-        /// <summary>Shows exactly one weapon.</summary>
+        /// <summary>Shows exactly one of the vendor sword/axe models.</summary>
         public void Equip(WeaponKind kind)
         {
             if (!IsKnown(kind))
@@ -84,57 +65,28 @@ namespace Albion.Client
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown weapon.");
             }
 
-            var changed = Equipped != kind;
             Equipped = kind;
-            if (IsProcedural)
-            {
-                foreach (var pair in _generated)
-                {
-                    if (pair.Value != null)
-                    {
-                        pair.Value.gameObject.SetActive(pair.Key == kind);
-                    }
-                }
-            }
-            else
-            {
-                if (_sword == null || _axe == null)
-                {
-                    return;
-                }
-                _sword.gameObject.SetActive(kind == WeaponKind.Sword);
-                _axe.gameObject.SetActive(kind == WeaponKind.Axe);
-            }
-
-            if (changed)
-            {
-                Debug.Log("WeaponVisuals: equipped " + kind);
-            }
+            if (_sword == null || _axe == null) return;
+            // The vendor prefab only has sword/axe. Keep a visible weapon for bow/staff/dagger
+            // until CharacterVisuals supplies the authored model; never leave the hand empty.
+            var showAxe = kind == WeaponKind.Axe;
+            _sword.gameObject.SetActive(!showAxe);
+            _axe.gameObject.SetActive(showAxe);
         }
 
-        /// <summary>Chooses the visible weapon from the server item archetype.</summary>
+        /// <summary>
+        /// Legacy fallback. The warrior prefab only includes sword/axe; bows and staves are
+        /// served by <see cref="CharacterVisuals"/> on professional prefabs.
+        /// </summary>
         public void EquipFromArchetype(string archetype)
         {
-            if (string.Equals(archetype, "archer", StringComparison.OrdinalIgnoreCase))
-            {
-                Equip(WeaponKind.Bow);
-            }
-            else if (string.Equals(archetype, "mage", StringComparison.OrdinalIgnoreCase))
-            {
-                Equip(WeaponKind.Staff);
-            }
-            else
-            {
-                Equip(WeaponKind.Sword);
-            }
+            Equip(string.Equals(archetype, "axe", StringComparison.OrdinalIgnoreCase)
+                ? WeaponKind.Axe
+                : WeaponKind.Sword);
         }
 
         private Transform ActiveTransform()
         {
-            if (IsProcedural)
-            {
-                return _generated.TryGetValue(Equipped, out var generated) ? generated : null;
-            }
             return Equipped == WeaponKind.Axe ? _axe : _sword;
         }
 

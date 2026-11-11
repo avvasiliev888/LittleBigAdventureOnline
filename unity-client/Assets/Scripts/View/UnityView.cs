@@ -28,7 +28,7 @@ namespace Albion.Client
             public Transform Root;
             public WarriorVisual Visual;
             public FantasyVisuals MobVisual;
-            public ProceduralHumanoidVisual Generated;
+            public CharacterVisuals Character;
             public WeaponVisuals Weapons;
             public HealthBar HealthBar;
             public bool IsMob;
@@ -225,7 +225,7 @@ namespace Albion.Client
                     IsMob = isMob,
                     Visual = isMob ? null : root.GetComponent<WarriorVisual>(),
                     MobVisual = isMob ? root.GetComponent<FantasyVisuals>() : null,
-                    Generated = root.GetComponent<ProceduralHumanoidVisual>(),
+                    Character = root.GetComponentInChildren<CharacterVisuals>(true),
                     Weapons = root.GetComponentInChildren<WeaponVisuals>(true),
                     HealthBar = root.GetComponentInChildren<HealthBar>(),
                 };
@@ -276,11 +276,11 @@ namespace Albion.Client
 
             state.Visual?.SetMotion(velocity, entity.IsDead, reset);
             state.MobVisual?.SetMotion(velocity, entity.IsDead, reset, deltaTime);
-            state.Generated?.SetMotion(velocity, entity.IsDead, reset, deltaTime);
+            state.Character?.SetMotion(velocity, entity.IsDead, reset, deltaTime);
             if (hit)
             {
                 state.Visual?.PlayHit();
-                state.Generated?.PlayHit();
+                state.Character?.PlayHit();
             }
             ApplyWeapon(state, entity);
             if (hpDelta > 0)
@@ -306,7 +306,7 @@ namespace Albion.Client
             if (PlayerEntityId != 0 && _entities.TryGetValue(PlayerEntityId, out var state))
             {
                 state.Visual?.PlayAttack();
-                state.Generated?.PlayAttack();
+                state.Character?.PlayAttack();
             }
         }
 
@@ -327,7 +327,7 @@ namespace Albion.Client
         {
             if (entityId != 0 && _entities.TryGetValue(entityId, out var state))
             {
-                state.Generated?.PlayHit();
+                state.Character?.PlayHit();
                 state.Visual?.PlayHit();
             }
         }
@@ -339,20 +339,23 @@ namespace Albion.Client
         public void EquipWeapon(WeaponKind kind)
         {
             if (PlayerEntityId != 0 && _entities.TryGetValue(PlayerEntityId, out var state))
+            {
                 state.Weapons?.Equip(kind);
+                state.Character?.Equip(kind);
+            }
         }
 
         private void ApplyWeapon(EntityVisual state, InterpolatedEntity entity)
         {
-            if (state.IsMob || state.Weapons == null || !state.Weapons.IsProcedural
-                || entity.WeaponItemId == 0 || _content == null)
+            if (state.IsMob || entity.WeaponItemId == 0 || _content == null)
             {
                 return;
             }
 
             if (_content.Config.Items.TryGetValue(entity.WeaponItemId, out var item))
             {
-                state.Weapons.EquipFromArchetype(item.Archetype);
+                state.Character?.EquipFromArchetype(item.Archetype);
+                state.Weapons?.EquipFromArchetype(item.Archetype);
             }
         }
 
@@ -367,7 +370,7 @@ namespace Albion.Client
                 return PlayerEntityId != 0
                     && _entities.TryGetValue(PlayerEntityId, out var state)
                     && ((state.Visual != null && state.Visual.IsAttackPlaying)
-                        || (state.Generated != null && state.Generated.IsAttackPlaying));
+                        || (state.Character != null && state.Character.IsAttackPlaying));
             }
         }
 
@@ -379,9 +382,9 @@ namespace Albion.Client
         private Transform CreateMob(uint actorId)
         {
             var zone = _content?.FindMobByActorId(actorId)?.ZoneKey;
-            var generated = ProceduralHumanoidVisual.CreateMob(_root, actorId, zone);
-            HealthBar.Attach(generated.transform, generated.Height + 0.15f);
-            return generated.transform;
+            var root = FantasyVisuals.CreateMob(_root, actorId, zone);
+            HealthBar.Attach(root, zone == "red" ? 2.95f : zone == "yellow" ? 2.05f : 1.8f);
+            return root;
         }
 
     }

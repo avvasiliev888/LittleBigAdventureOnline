@@ -27,6 +27,8 @@ namespace Albion.Editor
         /// <summary>Точка входа для <c>-executeMethod</c>.</summary>
         public static void Run()
         {
+            _contentChecksStarted = false;
+            _contentChecksPassed = false;
             SessionState.SetInt(StateKey, 1);
             _started = EditorApplication.timeSinceStartup;
             EditorSceneManager.OpenScene("Assets/Scenes/Arena.unity");

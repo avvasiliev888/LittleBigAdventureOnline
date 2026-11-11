@@ -21,6 +21,8 @@ namespace Albion.Editor
         private static double _started;
         private static double _exitAt;
         private static int _exitCode;
+        private static bool _contentChecksStarted;
+        private static bool _contentChecksPassed;
 
         /// <summary>Точка входа для <c>-executeMethod</c>.</summary>
         public static void Run()
@@ -86,6 +88,9 @@ namespace Albion.Editor
                 return;
             }
 
+            // URI loading is asynchronous: unpause before waiting for the pipeline, not after it.
+            if (EditorApplication.isPaused) EditorApplication.isPaused = false;
+
             var runtime = UnityEngine.Object.FindFirstObjectByType<ClientRuntime>();
             if (runtime == null || runtime.Pipeline == null)
             {
@@ -109,6 +114,18 @@ namespace Albion.Editor
             if (EditorApplication.isPaused)
             {
                 EditorApplication.isPaused = false;
+            }
+
+            if (!_contentChecksStarted)
+            {
+                _contentChecksStarted = true;
+                runtime.StartCoroutine(StreamingContentSmokeChecks.Run(Fail, () => _contentChecksPassed = true));
+            }
+
+            if (!_contentChecksPassed)
+            {
+                if (elapsed > 40.0) Fail("content URI regression checks timed out");
+                return;
             }
 
             var pipeline = runtime.Pipeline;

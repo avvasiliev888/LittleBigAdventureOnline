@@ -1,5 +1,5 @@
 using System;
-using System.IO;
+using System.Collections;
 using Client.Network;
 using Shared;
 using Simulation.Core;
@@ -33,7 +33,8 @@ namespace Albion.Client
         private CameraFollow _cameraFollow;
         private ClientHud _hud;
         private MobileControls? _mobile;
-        private string _status = "connecting...";
+        private string _status = "Загрузка конфигурации…";
+        private string _startupError = string.Empty;
         private bool _awaitingConnect;
         private string _hostInput = "192.168.1.2";
         private string _portInput = "9050";
@@ -80,20 +81,26 @@ namespace Albion.Client
             _quality = gameObject.AddComponent<QualityProfile>();
             _quality.ApplyFromEnvironment(EnsureVolume());
 
-            var configDirectory = Path.Combine(Application.streamingAssetsPath, "Config");
-            try
+            StartCoroutine(LoadContentAndStart(host, port));
+        }
+
+        private IEnumerator LoadContentAndStart(string host, int port)
+        {
+            var configDirectory = Application.streamingAssetsPath.TrimEnd('/') + "/Config";
+            yield return StreamingContentLoader.Load(configDirectory,
+                content => _content = content,
+                error =>
+                {
+                    _startupError = error;
+                    _status = "Ошибка загрузки конфигурации";
+                    Debug.LogError("ClientRuntime: " + error);
+                });
+            if (_content == null)
             {
-                _content = ClientContent.LoadFromDirectory(configDirectory);
-                Debug.Log("ClientRuntime: конфиг " + configDirectory + " загружен, hash=" + _content.Hash);
-            }
-            catch (Exception exception)
-            {
-                _status = "config error: " + exception.Message;
-                Debug.LogError("ClientRuntime: конфиг не загружен (" + configDirectory + "): " + exception.Message
-                    + ". Запустите tools/unity/build-plugins.ps1.");
-                return;
+                yield break;
             }
 
+            Debug.Log("ClientRuntime: конфиг " + configDirectory + " загружен, hash=" + _content.Hash);
             var worldRoot = new GameObject("Entities").transform;
             _view = new UnityView(worldRoot, _content);
 
@@ -107,7 +114,7 @@ namespace Albion.Client
                 _hostInput = PlayerPrefs.GetString("albion.serverHost", ReadMobileDefaultHost());
                 _portInput = PlayerPrefs.GetString("albion.serverPort", "9050");
                 _status = "укажите адрес сервера";
-                return;
+                yield break;
             }
 
             StartSession(host, port);
@@ -253,6 +260,12 @@ namespace Albion.Client
                 _mobileSkinConfigured = true;
             }
 
+            if (_content == null)
+            {
+                DrawStartupPanel();
+                return;
+            }
+
             if (_awaitingConnect)
             {
                 DrawConnectPanel();
@@ -263,6 +276,21 @@ namespace Albion.Client
                 new Rect(12f, Screen.height - 24f, Screen.width - 24f, 20f),
                 _status + "  |  cfg: " + (_content == null ? "-" : _content.Hash.Substring(0, Math.Min(8, _content.Hash.Length)))
                 + "  |  fps: " + _fpsSmoothed.ToString("0"));
+        }
+
+        private void DrawStartupPanel()
+        {
+            var width = Mathf.Min(Screen.width - 48f, 760f);
+            var height = Mathf.Min(Screen.height - 48f, 340f);
+            GUILayout.BeginArea(new Rect((Screen.width - width) / 2f, (Screen.height - height) / 2f,
+                width, height), GUI.skin.box);
+            GUILayout.Label(_status);
+            if (!string.IsNullOrEmpty(_startupError))
+            {
+                GUILayout.Label("Не удалось запустить клиент. Это ошибка загрузки данных приложения, а не сервера.");
+                GUILayout.Label(_startupError, new GUIStyle(GUI.skin.label) { wordWrap = true });
+            }
+            GUILayout.EndArea();
         }
 
         private void DrawConnectPanel()

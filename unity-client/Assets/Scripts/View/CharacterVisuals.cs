@@ -87,6 +87,12 @@ namespace Albion.Client
             ResolveSockets();
         }
 
+        /// <summary>Replaces the authored weapon loadout, typically from CharacterVisualSettings.</summary>
+        public void SetWeapons(WeaponBinding[] bindings)
+        {
+            weapons = bindings ?? Array.Empty<WeaponBinding>();
+        }
+
         /// <summary>Binds runtime-created prefabs and starts the idle pose.</summary>
         public void Initialize(Transform facingRoot, Animator targetAnimator,
             RuntimeAnimatorController controller = null)

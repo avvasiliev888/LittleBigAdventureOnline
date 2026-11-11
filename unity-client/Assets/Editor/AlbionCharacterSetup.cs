@@ -52,6 +52,17 @@ namespace Albion.Editor
         public static void Validate()
         {
             var settings = CharacterVisualSettings.Load();
+            var activePrefab = settings.Prefab == null ? string.Empty : AssetDatabase.GetAssetPath(settings.Prefab);
+            if (activePrefab != PrefabPath)
+            {
+                // The legacy regression below asserts dRealWarrior clip names and WeaponVisuals.
+                // KayKit uses a different rig/controller, so validate its own contract instead.
+                Debug.Log("[character] Active visual is " + activePrefab
+                    + "; legacy dRealWarrior regression is not applicable. Running KayKit checks.");
+                KayKitSetup.ValidateSetup();
+                return;
+            }
+
             var root = new GameObject("Character regression (transient)");
             try
             {

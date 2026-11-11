@@ -16,6 +16,8 @@ namespace Albion.Client
         [Min(0.1f)] public float Height = 1.95f;
         public float Yaw;
         public float GroundOffset;
+        [Tooltip("Authored weapon prefabs, one entry per WeaponKind. Pivots must be at the grip.")]
+        public CharacterVisuals.WeaponBinding[] Weapons = Array.Empty<CharacterVisuals.WeaponBinding>();
 
         public static CharacterVisualSettings Load()
         {
@@ -100,6 +102,7 @@ namespace Albion.Client
                 ?? visual.GetComponentInChildren<CharacterVisuals>(true)
                 ?? visual.AddComponent<CharacterVisuals>();
             character.Initialize(facing, animator, animator.runtimeAnimatorController);
+            character.SetWeapons(Weapons);
             HealthBar.Attach(root, Height + GroundOffset);
             return root;
         }

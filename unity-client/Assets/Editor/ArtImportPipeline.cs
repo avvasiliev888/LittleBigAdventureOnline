@@ -107,11 +107,17 @@ namespace Albion.Editor
                             Debug.LogError("[art] " + prefabPath + ": material is not URP Lit.", prefab);
                             problems++;
                         }
+                        else if (material.name.IndexOf("Glow", StringComparison.OrdinalIgnoreCase) < 0
+                                 && material.GetTexture("_BaseMap") == null)
+                        {
+                            Debug.LogError("[art] " + prefabPath + ": albedo texture is missing.", prefab);
+                            problems++;
+                        }
                     }
                 }
             }
             Debug.Log(problems == 0
-                ? "[art] Validation passed: character prefabs have avatars, CharacterVisuals and URP Lit materials."
+                ? "[art] Validation passed: avatars/CharacterVisuals, URP Lit and albedo textures are present."
                 : "[art] Validation found " + problems + " problem(s).");
         }
 
@@ -211,6 +217,7 @@ namespace Albion.Editor
             {
                 instance.name = Path.GetFileNameWithoutExtension(path);
                 TryExtractEmbeddedTextures(path, textureFolder);
+                ArtMaterialUtility.AssignFallbackAlbedo(instance, ArtRoot);
                 ArtMaterialUtility.ConvertRenderers(instance, materialFolder);
 
                 var animator = instance.GetComponentInChildren<Animator>(true);
@@ -228,6 +235,15 @@ namespace Albion.Editor
                         ?? instance.GetComponentInChildren<CharacterVisuals>(true)
                         ?? instance.AddComponent<CharacterVisuals>();
                     visuals.BindSockets(animator);
+                }
+
+                // InstantiatePrefab keeps a nested FBX prefab root. Unity 6 then stores the
+                // generated asset as a Prefab object, which cannot be assigned to a GameObject
+                // field (CharacterVisualSettings.Prefab). Unpack to a real GameObject root.
+                if (PrefabUtility.IsPartOfPrefabInstance(instance))
+                {
+                    PrefabUtility.UnpackPrefabInstance(instance,
+                        PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
                 }
 
                 var prefabPath = generatedFolder + "/" + Sanitize(instance.name) + ".prefab";
@@ -268,20 +284,14 @@ namespace Albion.Editor
 
         private static AnimatorController CreateController(string characterPath)
         {
-            var folder = Path.GetDirectoryName(characterPath)?.Replace('\\', '/');
-            if (string.IsNullOrEmpty(folder)) return null;
+            // Only this model's own clips belong to its controller. Several KayKit characters
+            // share one folder; scanning the folder would put skeleton clips on the knight and
+            // produce an Animator/avatar mismatch.
             var clips = new List<AnimationClip>();
-            foreach (var path in FindModels())
+            foreach (var asset in AssetDatabase.LoadAllAssetsAtPath(characterPath))
             {
-                if (!path.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(Path.GetDirectoryName(path)?.Replace('\\', '/'), folder,
-                        StringComparison.OrdinalIgnoreCase))
-                    continue;
-                foreach (var asset in AssetDatabase.LoadAllAssetsAtPath(path))
-                {
-                    if (asset is AnimationClip clip && !clip.name.StartsWith("__preview__", StringComparison.Ordinal))
-                        clips.Add(clip);
-                }
+                if (asset is AnimationClip clip && !clip.name.StartsWith("__preview__", StringComparison.Ordinal))
+                    clips.Add(clip);
             }
             if (clips.Count == 0) return null;
 
@@ -297,13 +307,30 @@ namespace Albion.Editor
             controller.AddParameter("Attack", AnimatorControllerParameterType.Trigger);
             controller.AddParameter("Hit", AnimatorControllerParameterType.Trigger);
             var machine = controller.layers[0].stateMachine;
-            AnimatorState idle = null;
+
+            // One state per canonical slot. CharacterVisuals drives states directly with
+            // CrossFadeInFixedTime, so no transition graph is needed; a state with a good
+            // representative clip is enough for Idle/Walk/Run/Attack/Hit/Dead.
+            var order = new[] { "Idle", "Walk", "Run", "Attack", "Hit", "Dead" };
+            var chosen = new Dictionary<string, AnimationClip>();
             foreach (var clip in clips)
             {
                 var stateName = CanonicalState(clip.name);
+                if (Array.IndexOf(order, stateName) < 0) continue;
+                if (!chosen.TryGetValue(stateName, out var current)
+                    || IsBetterClip(stateName, clip.name, current.name))
+                {
+                    chosen[stateName] = clip;
+                }
+            }
+
+            AnimatorState idle = null;
+            foreach (var stateName in order)
+            {
+                if (!chosen.TryGetValue(stateName, out var clip)) continue;
                 var state = machine.AddState(stateName);
                 state.motion = clip;
-                if (stateName == "Idle" && idle == null) idle = state;
+                if (stateName == "Idle") idle = state;
             }
             if (idle != null) machine.defaultState = idle;
             AssetDatabase.SaveAssets();
@@ -319,7 +346,54 @@ namespace Albion.Editor
             if (name.Contains("attack") || name.Contains("slash") || name.Contains("swing")) return "Attack";
             if (name.Contains("pain") || name.Contains("hit") || name.Contains("damage")) return "Hit";
             if (name.Contains("death") || name.Contains("die")) return "Dead";
-            return string.IsNullOrEmpty(clipName) ? "Idle" : clipName;
+            return string.Empty;
+        }
+
+        /// <summary>Prefer the canonical simple clip over sit/lie/strafe/2H variants.</summary>
+        private static bool IsBetterClip(string stateName, string candidate, string current)
+        {
+            return ScoreClip(stateName, candidate) > ScoreClip(stateName, current);
+        }
+
+        private static int ScoreClip(string stateName, string clipName)
+        {
+            var name = (clipName ?? string.Empty).ToLowerInvariant();
+            switch (stateName)
+            {
+                case "Idle":
+                    if (name == "idle") return 100;
+                    if (name == "unarmed_idle") return 90;
+                    if (name.EndsWith("_idle") && name.Contains("melee")) return 70;
+                    if (name.Contains("idle")) return 50;
+                    return 0;
+                case "Walk":
+                    if (name == "walking_a" || name == "walk") return 100;
+                    if (name.StartsWith("walking") && !name.Contains("back")) return 70;
+                    if (name.Contains("walk")) return 40;
+                    return 0;
+                case "Run":
+                    if (name == "running_a" || name == "run") return 100;
+                    if (name.StartsWith("running") && !name.Contains("strafe")) return 70;
+                    if (name.Contains("run") && !name.Contains("strafe")) return 40;
+                    return 0;
+                case "Attack":
+                    if (name == "1h_melee_attack_chop") return 100;
+                    if (name.StartsWith("1h_melee_attack")) return 80;
+                    if (name.Contains("attack")) return 40;
+                    return 0;
+                case "Hit":
+                    if (name == "hit_a") return 100;
+                    if (name.StartsWith("hit_")) return 70;
+                    if (name.Contains("hit")) return 30;
+                    return 0;
+                case "Dead":
+                    if (name == "death_a") return 100;
+                    if (name.StartsWith("death_") && !name.Contains("pose")) return 70;
+                    if (name.Contains("death")) return 30;
+                    return 0;
+                default:
+                    return 0;
+            }
         }
 
         private static IEnumerable<string> FindModels()

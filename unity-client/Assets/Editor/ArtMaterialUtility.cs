@@ -99,6 +99,39 @@ namespace Albion.Editor
             importer.textureCompression = TextureImporterCompression.CompressedHQ;
         }
 
+        /// <summary>
+        /// Some authored FBX packs reference textures by filename but ship them in a
+        /// sibling folder. If the model importer produced a material without an albedo,
+        /// resolve the authored texture by its filename from the Art tree (never generate
+        /// or recolor one). This keeps weapon/staff materials textured instead of white.
+        /// </summary>
+        public static void AssignFallbackAlbedo(GameObject root, string artRoot)
+        {
+            if (root == null) return;
+            var textures = new Dictionary<string, Texture2D>();
+            foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { artRoot }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                var key = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
+                if (texture != null && !textures.ContainsKey(key)) textures[key] = texture;
+            }
+
+            foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
+            foreach (var material in renderer.sharedMaterials)
+            {
+                if (material == null) continue;
+                if (material.GetTexture("_MainTex") != null || material.GetTexture("_BaseMap") != null) continue;
+                var name = material.name.ToLowerInvariant();
+                if (name.StartsWith("m_")) name = name.Substring(2);
+                if (!textures.TryGetValue(name, out var texture)
+                    && !textures.TryGetValue(name + "_texture", out texture))
+                    continue;
+                material.SetTexture("_MainTex", texture);
+                if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", Color.white);
+            }
+        }
+
         public static void EnsureFolder(string path)
         {
             if (AssetDatabase.IsValidFolder(path)) return;

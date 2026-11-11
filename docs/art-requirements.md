@@ -4,6 +4,33 @@
 генерирует тела, одежду и текстуры. Пайплайн сам настраивает импорт, аватары, URP-материалы
 и prefab-обёртки; от вас нужны только авторские ассеты.
 
+## 0. Базовый CC0-набор уже подключён
+
+В проект автоматически скачаны и импортированы **KayKit** (лицензия CC0 1.0, авторы —
+Kay Lousberg):
+
+```text
+Assets/Art/Characters/KayKit/Knight.fbx              герой, Humanoid, 75 анимаций
+Assets/Art/Characters/KayKit/Skeleton_Minion.fbx     синий моб
+Assets/Art/Characters/KayKit/Skeleton_Rogue.fbx      жёлтый моб
+Assets/Art/Characters/KayKit/Skeleton_Warrior.fbx    красный моб
+Assets/Art/Weapons/KayKit/*.fbx                      меч, топор, посох, арбалет, кинжал
+Assets/Art/Environment/KayKit/*.obj                  бочка, ящики, сундук, факел, стол, стул, колонна, флаг
+Assets/Art/KayKit/LICENSE-*.txt                      тексты CC0
+```
+
+Готовые prefab'ы лежат в `Assets/Art/{Characters,Weapons,Environment}/Generated/`.
+Герой и мобы уже прописаны в `Assets/Resources/Characters/WarriorVisual.asset` и
+`MobVisuals.asset`. После изменения исходников выполните:
+
+1. **Albion → Art → Prepare All Imported Art** — импорт FBX/OBJ, Avatar, URP Lit, prefab.
+2. **Albion → Art → Configure KayKit All** — привязка Knight, пяти видов оружия и трёх
+   скелетов к зонам.
+3. **Albion → Art → Validate Imported Art** — проверка Avatar/URP Lit/CharacterVisuals.
+
+Исходные URL и лицензии — в `docs/MANUAL_DOWNLOAD.md`. Это временный stylized low-poly
+набор: для финального «Albion-level» визуала нужны Synty/Mixamo или собственные ассеты.
+
 ## 1. Куда класть
 
 Строго в эти папки (одна папка = один пак):
@@ -30,15 +57,16 @@ Assets/Art/
     ForestPack/
 ```
 
-`Assets/Art/Characters/Generated/` и `Weapons/Generated/` — **генерируемые** prefab-обёртки,
-их не редактируйте вручную. После копирования файлов:
+`Assets/Art/Characters/Generated/`, `Weapons/Generated/` и `Environment/Generated/` —
+**генерируемые** prefab-обёртки, их не редактируйте вручную. После копирования файлов:
 
 1. Дайте Unity импортировать FBX (postprocessor сработает сам).
 2. Или выполните **Albion → Art → Prepare All Imported Art**.
 3. Готовый prefab появится в `Assets/Art/Characters/Generated/<Имя>.prefab`.
-4. Перетащите его в `Assets/Resources/Characters/WarriorVisual.asset` в поле **Prefab**.
-   Поле **Controller** можно оставить пустым: контроллер, назначенный на prefab, имеет
-   приоритет. Поле используется только как fallback, если у prefab контроллера нет.
+4. Для готового героя выполните **Albion → Art → Configure KayKit Hero** (он сам
+   назначит prefab, контроллер и оружие в `WarriorVisual.asset`). Для произвольного
+   prefab'а можно вручную перетащить его в `WarriorVisual.asset`; контроллер с prefab'а
+   имеет приоритет.
 
 ## 2. Минимальный набор для теста
 
@@ -109,9 +137,11 @@ Assets/Art/
 - Отдельный FBX, **пивот ровно в точке хвата** (grip), +Y — вдоль клинка/древка.
 - Масштаб в метрах; меч ~1.0–1.2 м, кинжал ~0.35 м, лук ~1.4 м, посох ~1.8 м.
 - Без скелета и анимаций. Материалы — URP Lit/PBR.
-- В `CharacterVisuals` на prefab героя назначьте prefab оружия в массив **Weapons**
-  (`Kind` = Sword/Axe/Bow/Staff/Dagger). Если пивот/ориентация отличаются, задайте
-  `Local Position/Euler/Scale` у соответствующего элемента.
+- В `WarriorVisual.asset` назначьте prefab'ы оружия в массив **Weapons**
+  (`Kind` = Sword/Axe/Bow/Staff/Dagger); для KayKit это делает
+  **Albion → Art → Configure KayKit Hero**. Если пивот/ориентация отличаются, задайте
+  `Local Position/Euler/Scale` у соответствующего элемента. В рантайме
+  `CharacterVisualSettings` передаёт этот массив в `CharacterVisuals`.
 
 ### Анимации
 
@@ -155,9 +185,11 @@ Unity: он корректно принимает Albedo (`_BaseMap`), Normal (`
 
 ### Автоконтроллер анимаций
 
-Если у prefab нет контроллера, пайплайн собирает его из всех клипов в папке персонажа:
-`Assets/Art/Characters/Generated/<Name>Controller.controller` со состояниями
-`Idle/Walk/Run/Attack/Hit/Dead` и параметрами `Speed/Dead/Attack/Hit`. Если клипов ещё
+Пайплайн собирает контроллер **только из клипов самого FBX** (не из соседних персонажей
+в той же папке): `Assets/Art/Characters/Generated/<Name>Controller.controller` со
+состояниями `Idle/Walk/Run/Attack/Hit/Dead` и параметрами `Speed/Dead/Attack/Hit`.
+Для каждого слота выбирается представительный клип (`Idle`, `Walking_A`, `Running_A`,
+`1H_Melee_Attack_Chop`, `Hit_A`, `Death_A`), а не случайный вариант. Если клипов ещё
 нет, импортируйте анимации и выполните **Albion → Art → Create Locomotion Controller
 From Selected Model** (выделите FBX персонажа).
 

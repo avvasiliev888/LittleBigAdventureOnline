@@ -42,6 +42,7 @@ namespace Albion.Client
         private readonly Dictionary<uint, EntityVisual> _entities = new Dictionary<uint, EntityVisual>();
         private readonly Dictionary<uint, GameObject> _corpses = new Dictionary<uint, GameObject>();
         private readonly CharacterVisualSettings _visualSettings;
+        private readonly MobVisualSettings _mobVisualSettings;
         private readonly ClientContent? _content;
         private readonly DamageNumbers _damageNumbers;
         private SimulationSnapshot? _latestSnapshot;
@@ -64,6 +65,7 @@ namespace Albion.Client
             _root = root;
             _content = content;
             _visualSettings = CharacterVisualSettings.Load();
+            _mobVisualSettings = MobVisualSettings.Load();
             _damageNumbers = DamageNumbers.Attach(root);
         }
 
@@ -382,6 +384,8 @@ namespace Albion.Client
         private Transform CreateMob(uint actorId)
         {
             var zone = _content?.FindMobByActorId(actorId)?.ZoneKey;
+            var imported = _mobVisualSettings?.Create(_root, actorId, zone);
+            if (imported != null) return imported;
             var root = FantasyVisuals.CreateMob(_root, actorId, zone);
             HealthBar.Attach(root, zone == "red" ? 2.95f : zone == "yellow" ? 2.05f : 1.8f);
             return root;

@@ -32,11 +32,14 @@
 | Сервер по умолчанию | `192.168.1.174:9050` |
 | Конфиг | hash `9dfd2b1e49b03cf2ec43c6053d2b8c0d680f8459c2b195757f9fe4a835370616` |
 | В APK | `assets/Config/zones.json` содержит `"gates"` у blue и yellow |
+| Релизные файлы | `artifacts/release/` (server + config, APK, zip, SHA256SUMS) |
 
 `dotnet test Prototype.sln -c Debug`: **436 пройдено, 0 не пройдено** (включая 10 новых тестов
-`ZoneGateTests` и тест реального конфига на большие зоны/ворота). Release-сборка сервера в этой
-сессии была недоступна, потому что запущенный сервер оператора держал `bin/Release/*.dll`; тесты и
-smoke шли в Debug. Это ограничение проверки, а не заявление, что Release-код не компилируется.
+`ZoneGateTests` и тест реального конфига на большие зоны/ворота). После остановки сервера оператора
+Release-сборка также прошла: `dotnet build -c Release` — 0 ошибок,
+`dotnet test -c Release --no-build` — **436 пройдено**, опубликованный `Server.dll` валидирует конфиг
+с тем же hash. Runtime-смоук Release-сервера: тест-клиент подключился по protocol v8, получил
+156 снапшотов (155 дельтами) и 156 acks; тик p99 ≤ 10.2 ms на одном клиенте.
 
 Unity smoke (`tools/unity/agent-smoke.ps1`) прошёл на **исходной** сцене `Assets/Scenes/Arena.unity`
 без пересборки мира: `PASS snapshots=5 deltas=4 visuals=8 mobs=6 corpses=0`, плюс проверки HUD,

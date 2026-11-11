@@ -3,29 +3,29 @@
     "id": 1,
     "damage": 25,
     "range": 3.0,
-    "cooldownSeconds": 2.0,
-    "resourceCost": 10
+    "cooldownSeconds": 1.8,
+    "resourceCost": 8
   },
   {
     "id": 2,
     "damage": 30,
     "range": 2.5,
-    "cooldownSeconds": 3.0,
-    "resourceCost": 15
+    "cooldownSeconds": 2.0,
+    "resourceCost": 12
   },
   {
     "id": 3,
     "damage": 20,
     "range": 8.0,
     "cooldownSeconds": 1.5,
-    "resourceCost": 5
+    "resourceCost": 8
   },
   {
     "id": 4,
-    "damage": 35,
+    "damage": 30,
     "range": 7.0,
-    "cooldownSeconds": 2.5,
-    "resourceCost": 20
+    "cooldownSeconds": 2.2,
+    "resourceCost": 14
   },
   {
     "id": 5,

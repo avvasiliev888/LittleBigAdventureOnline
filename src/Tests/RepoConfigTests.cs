@@ -20,8 +20,46 @@ namespace Tests
 
             Assert.Equal(25, ability.Damage);
             Assert.Equal(3f, ability.Range);
-            Assert.Equal(2f, ability.CooldownSeconds);
-            Assert.Equal(10, ability.ResourceCost);
+            Assert.Equal(1.8f, ability.CooldownSeconds);
+            Assert.Equal(8, ability.ResourceCost);
+
+            // Базовые способности трёх веток должны давать сопоставимый DPS: воин — 30/2.0,
+            // лучник — 20/1.5, маг — 30/2.2. Иначе одна ветка доминирует в PvE с первого уровня.
+            Assert.Equal(30, config.GetAbility(2).Damage);
+            Assert.Equal(2f, config.GetAbility(2).CooldownSeconds);
+            Assert.Equal(20, config.GetAbility(3).Damage);
+            Assert.Equal(1.5f, config.GetAbility(3).CooldownSeconds);
+            Assert.Equal(30, config.GetAbility(4).Damage);
+            Assert.Equal(2.2f, config.GetAbility(4).CooldownSeconds);
+        }
+
+        [Fact]
+        public void RepoConfig_Mobs_HaveReadableDifficultyCurve()
+        {
+            var config = LoadRepoConfig();
+            var blue = config.GetMob(1);
+            var yellow = config.GetMob(2);
+            var red = config.GetMob(3);
+
+            // Время убийства моба воином с стартовым мечом (30 + 4 урона раз в 2 секунды)
+            // держится в диапазоне 3–15 секунд: синий — быстрый, красный — осознанный бой.
+            Assert.True(blue.MaxHp < yellow.MaxHp && yellow.MaxHp < red.MaxHp);
+            Assert.True(blue.Damage < yellow.Damage && yellow.Damage < red.Damage);
+            Assert.InRange(Ttk(blue.MaxHp, 34, 2f), 2f, 4f);
+            Assert.InRange(Ttk(yellow.MaxHp, 34, 2f), 8f, 11f);
+            Assert.InRange(Ttk(red.MaxHp, 34, 2f), 13f, 16f);
+
+            // Красный моб опаснее: его DPS должен убивать стартового игрока (130 HP)
+            // не мгновенно, но и не позволять стоять в нём без лечения.
+            var playerHp = config.GetActor(1).MaxHp
+                + config.GetItem(11).MaxHpBonus
+                + config.GetItem(12).MaxHpBonus;
+            Assert.InRange(playerHp / ((float)red.Damage / red.AttackSeconds), 15f, 22f);
+        }
+
+        private static float Ttk(int mobHp, int playerDamage, float cooldown)
+        {
+            return mobHp / (playerDamage / cooldown);
         }
 
         [Fact]

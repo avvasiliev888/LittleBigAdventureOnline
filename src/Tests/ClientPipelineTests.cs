@@ -222,7 +222,7 @@ namespace Tests
 
             Assert.NotNull(pipeline.Prediction);
             Assert.True(pipeline.HasSession);
-            Assert.Equal(40, pipeline.Prediction!.AbilityCooldownTicks);
+            Assert.Equal(36, pipeline.Prediction!.AbilityCooldownTicks); // 1.8 с из config/abilities.json
             Assert.Equal(3f, pipeline.Prediction.AbilityRange, 3);
 
             // Space → AbilityCommand по манекену: клиент сразу рисует кулдаун из конфига.
@@ -360,7 +360,7 @@ namespace Tests
 
                 Assert.Single(transport.SentAbilities);
                 Assert.Equal(0u, transport.SentAbilities[0].TargetId);
-                Assert.Equal(40, pipeline.Prediction!.CooldownRemainingTicks);
+                Assert.Equal(36, pipeline.Prediction!.CooldownRemainingTicks);
                 Assert.Equal(100, OwnHp(pipeline));
                 Assert.True(server.Simulation.State.TryGetEntity(pipeline.EntityId, out var own));
                 Assert.Equal(90, own!.Resource);
@@ -420,10 +420,10 @@ namespace Tests
             server.Simulation.State.AddEntity(TestWorld.Entity(2, config, x: 1f));
             input.TargetId = 2;
 
-            // Первая способность: команда уходит, кулдаун из конфига (2 с = 40 тиков) ставится сразу.
+            // Первая способность: команда уходит, кулдаун из конфига (1.8 с = 36 тиков) ставится сразу.
             Step(pipeline, server, 1);
             Assert.Single(transport.SentAbilities);
-            Assert.Equal(40, pipeline.Prediction!.CooldownRemainingTicks);
+            Assert.Equal(36, pipeline.Prediction!.CooldownRemainingTicks);
             Assert.Equal(100, OwnHp(pipeline));
 
             Step(pipeline, server, 3);

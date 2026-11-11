@@ -211,6 +211,20 @@ namespace Albion.Editor
                 return;
             }
 
+            if (UnityEngine.Object.FindFirstObjectByType<DamageNumbers>() == null)
+            {
+                Fail("DamageNumbers не создан: урон не будет виден");
+                return;
+            }
+
+            var healthBars = UnityEngine.Object.FindObjectsByType<HealthBar>(
+                UnityEngine.FindObjectsSortMode.None);
+            if (healthBars.Length < 7)
+            {
+                Fail("полосок здоровья меньше 7: " + healthBars.Length);
+                return;
+            }
+
             var snapshot = pipeline.LastSnapshot;
             var mobs = 0;
             if (snapshot != null)

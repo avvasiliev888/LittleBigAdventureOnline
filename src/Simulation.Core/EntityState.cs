@@ -84,6 +84,13 @@ namespace Simulation.Core
         /// <summary>Тик, до которого моб стоит в ожидании (Idle).</summary>
         public uint AiWaitUntilTick { get; set; }
 
+        /// <summary>
+        /// Сторона обхода препятствия: +1 — влево, -1 — вправо, 0 — обход не нужен.
+        /// Удерживается, пока препятствие впереди, чтобы моб не дёргался между сторонами.
+        /// В снапшот не входит: это локальная деталь серверного steering.
+        /// </summary>
+        public int AiAvoidSide { get; set; }
+
         /// <summary>Точка появления и респавна.</summary>
         public Vector3 SpawnPosition { get; }
 

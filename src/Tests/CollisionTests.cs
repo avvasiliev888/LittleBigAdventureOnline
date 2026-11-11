@@ -30,6 +30,82 @@ namespace Tests
         }
 
         [Fact]
+        public void SpatialHash_QueryMatchesBruteForce()
+        {
+            var items = new List<WorldCollider>();
+            for (var i = 0; i < 100; i++)
+            {
+                items.Add(new WorldCollider(
+                    "hash-" + i,
+                    ((i % 10) * 7f) - 30f,
+                    ((i / 10) * 5f) - 20f,
+                    0.5f + ((i % 3) * 0.2f),
+                    "rock"));
+            }
+
+            var world = new WorldColliders(items);
+            var random = new Random(12345);
+            for (var query = 0; query < 500; query++)
+            {
+                var x = ((float)random.NextDouble() * 100f) - 50f;
+                var z = ((float)random.NextDouble() * 100f) - 50f;
+                var radius = (float)random.NextDouble() * 20f;
+                var actual = new List<WorldCollider>();
+                world.Query(x, z, radius, actual);
+
+                var expected = new List<WorldCollider>();
+                for (var i = 0; i < items.Count; i++)
+                {
+                    var dx = items[i].X - x;
+                    var dz = items[i].Z - z;
+                    if ((dx * dx) + (dz * dz) <= (radius * radius) + 0.0001f)
+                    {
+                        expected.Add(items[i]);
+                    }
+                }
+
+                Assert.Equal(expected.Count, actual.Count);
+                for (var i = 0; i < expected.Count; i++)
+                {
+                    Assert.Contains(expected[i], actual);
+                }
+            }
+        }
+
+        [Fact]
+        public void SpatialHash_AreaQueryReturnsEachObstacleOnce()
+        {
+            var items = new[]
+            {
+                new WorldCollider("a", -100f, -100f, 1f, "tree"),
+                new WorldCollider("b", 0f, 0f, 1f, "rock"),
+                new WorldCollider("c", 100f, 100f, 1f, "tree"),
+            };
+            var world = new WorldColliders(items);
+            var results = new List<WorldCollider>();
+
+            world.QueryArea(-1000f, -1000f, 1000f, 1000f, results);
+
+            Assert.Equal(items.Length, results.Count);
+            foreach (var item in items)
+            {
+                Assert.Contains(item, results);
+            }
+        }
+
+        [Fact]
+        public void SpatialHash_EmptyWorld_ReturnsNoCandidates()
+        {
+            var world = new WorldColliders(null);
+            var results = new List<WorldCollider>();
+
+            world.Query(0f, 0f, 100f, results);
+
+            Assert.Empty(results);
+            Assert.Equal(0f, world.MaxRadius);
+        }
+
+        [Fact]
         public void TwoPlayers_CannotOccupySamePoint()
         {
             var config = TestWorld.Config();

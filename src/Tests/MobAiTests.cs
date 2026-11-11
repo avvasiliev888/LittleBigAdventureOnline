@@ -38,6 +38,31 @@ namespace Tests
         }
 
         [Fact]
+        public void Mob_SteersAroundRock_InsteadOfStickingToIt()
+        {
+            var rock = new WorldCollider("rock_steering", 1.5f, 0f, 0.7f, "rock");
+            var config = TestWorld.Config(
+                mobs: new[] { TestWorld.Mob(aggroRange: 20f, leashRange: 30f, attackRange: 1.6f, moveSpeed: 3f) },
+                worldColliders: new[] { rock });
+            var player = Player(config, 4f, 0f);
+            var simulation = TestWorld.Simulation(config, player);
+            var mob = SpawnSingleMob(simulation);
+
+            var attacked = false;
+            var maxZ = 0f;
+            for (var i = 0; i < 200 && !attacked; i++)
+            {
+                TestWorld.Tick(simulation);
+                maxZ = MathF.Max(maxZ, MathF.Abs(mob.Position.Z));
+                attacked = player.Hp < 100;
+            }
+
+            Assert.True(attacked, "Моб должен обойти камень и добраться до игрока.");
+            Assert.True(maxZ > 0.4f, "Обход камня должен уводить моба в сторону, а не толкать в него.");
+            Assert.True(Vector3.Distance(mob.Position, mob.SpawnPosition) < 5f);
+        }
+
+        [Fact]
         public void Attack_RespectsAttackIntervalFromConfig()
         {
             var config = TestWorld.Config(mobs: new[] { TestWorld.Mob(attackSeconds: 1f, damage: 5) });

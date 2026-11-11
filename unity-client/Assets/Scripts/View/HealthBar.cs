@@ -50,6 +50,14 @@ namespace Albion.Client
         /// <summary>Updates mana only from the authoritative value supplied by the view.</summary>
         public void SetResource(int resource, int maxResource)
         {
+            if (maxResource <= 0)
+            {
+                // У мобов нет маны: не рисуем под HP пустую синюю полоску.
+                ResourceFraction = 0f;
+                _hasResource = false;
+                return;
+            }
+
             var fraction = Fraction(resource, maxResource);
             if (_hasResource && fraction < ResourceFraction)
             {
@@ -100,7 +108,7 @@ namespace Albion.Client
 
         private void OnGUI()
         {
-            if (Event.current.type != EventType.Repaint || !_hasHp || !_hasResource) return;
+            if (Event.current.type != EventType.Repaint || !_hasHp) return;
             if (_camera == null) _camera = Camera.main;
             if (_camera == null) return;
             var point = _camera.WorldToScreenPoint(transform.position);
@@ -114,8 +122,12 @@ namespace Albion.Client
             var y = Screen.height - point.y;
             DrawMeter(new Rect(x, y, size.x, size.y), HpFraction, HpColor,
                 Time.unscaledTime < _hpLossUntil ? _hpLoss : 0f);
-            DrawMeter(new Rect(x, y + size.y + 3f, size.x, size.y), ResourceFraction, ManaColor,
-                Time.unscaledTime < _resourceLossUntil ? _resourceLoss : 0f);
+            if (_hasResource)
+            {
+                DrawMeter(new Rect(x, y + size.y + 3f, size.x, size.y), ResourceFraction, ManaColor,
+                    Time.unscaledTime < _resourceLossUntil ? _resourceLoss : 0f);
+            }
+
             GUI.depth = previousDepth;
         }
     }

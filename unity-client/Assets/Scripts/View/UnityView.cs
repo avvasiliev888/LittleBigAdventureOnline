@@ -42,6 +42,7 @@ namespace Albion.Client
         private readonly Dictionary<uint, GameObject> _corpses = new Dictionary<uint, GameObject>();
         private readonly CharacterVisualSettings _visualSettings;
         private readonly ClientContent? _content;
+        private readonly DamageNumbers _damageNumbers;
         private SimulationSnapshot? _latestSnapshot;
         // Локальный игрок рисуется без задержки буфера (нулевая задержка управления): позиция
         // берётся из последнего предсказания, между тиками экстраполируется, а коррекции
@@ -62,6 +63,7 @@ namespace Albion.Client
             _root = root;
             _content = content;
             _visualSettings = CharacterVisualSettings.Load();
+            _damageNumbers = DamageNumbers.Attach(root);
         }
 
         /// <summary>Идентификатор сущности игрока (для камеры и цвета).</summary>
@@ -236,7 +238,8 @@ namespace Albion.Client
 
             // Death is presentation only: keep the body visible so the one-shot Death state can
             // play and hold its final pose until respawn resets the Animator.
-            var hit = state.HasPosition && entity.Hp < state.LastHp && !entity.IsDead;
+            var hpDelta = state.HasPosition && entity.Hp < state.LastHp ? state.LastHp - entity.Hp : 0;
+            var hit = hpDelta > 0 && !entity.IsDead;
 
             var usePrediction = _hasPrediction && entity.Id == PlayerEntityId;
             // A dead local player must not keep sliding on held movement input while the
@@ -272,6 +275,13 @@ namespace Albion.Client
             state.Visual?.SetMotion(velocity, entity.IsDead, reset);
             state.MobVisual?.SetMotion(velocity, entity.IsDead, reset, deltaTime);
             if (hit) state.Visual?.PlayHit();
+            if (hpDelta > 0)
+            {
+                // Snapshot HP is authoritative: the same delta the server applied is the number
+                // the player sees, including lethal damage and damage taken from mobs.
+                _damageNumbers.Show(position + (Vector3.up * (state.IsMob ? 2.25f : 2.0f)), hpDelta);
+            }
+
             state.HealthBar?.SetHp(entity.Hp, entity.MaxHp);
             state.HealthBar?.SetResource(entity.Resource, entity.MaxResource);
             // Preserve authored skin/metal/leather/cloth accents; equipment is already in HUD.

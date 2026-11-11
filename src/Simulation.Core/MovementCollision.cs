@@ -49,6 +49,14 @@ namespace Simulation.Core
             var target = zones == null ? end : zones.ResolveMovement(start, end);
             var position = Depenetrate(start, radius, world, actors, selfId);
 
+            // Spatial hash: на весь шаг достаточно один раз выбрать ячейки вокруг отрезка.
+            List<WorldCollider>? candidates = null;
+            if (world != null)
+            {
+                candidates = new List<WorldCollider>();
+                QuerySegment(world, position, target, radius, candidates);
+            }
+
             var remaining = new Vector3(target.X - position.X, 0f, target.Z - position.Z);
             for (var pass = 0; pass < SlidePasses; pass++)
             {
@@ -62,13 +70,13 @@ namespace Simulation.Core
                 var normalZ = 0f;
                 var found = false;
 
-                if (world != null)
+                if (candidates != null)
                 {
-                    var items = world.Items;
-                    for (var i = 0; i < items.Count; i++)
+                    for (var i = 0; i < candidates.Count; i++)
                     {
-                        if (TryFirstHit(position, position + remaining, items[i].X, items[i].Z,
-                                radius + items[i].Radius, out var t, out var nx, out var nz)
+                        var item = candidates[i];
+                        if (TryFirstHit(position, position + remaining, item.X, item.Z,
+                                radius + item.Radius, out var t, out var nx, out var nz)
                             && t < bestT)
                         {
                             bestT = t;
@@ -235,15 +243,18 @@ namespace Simulation.Core
             IReadOnlyList<CollisionCircle>? actors,
             uint selfId)
         {
+            var nearby = world == null ? null : new List<WorldCollider>();
             for (var pass = 0; pass < 4; pass++)
             {
                 var changed = false;
-                if (world != null)
+                if (world != null && nearby != null)
                 {
-                    var items = world.Items;
-                    for (var i = 0; i < items.Count; i++)
+                    nearby.Clear();
+                    world.Query(position.X, position.Z, radius + world.MaxRadius, nearby);
+                    for (var i = 0; i < nearby.Count; i++)
                     {
-                        if (PushOut(position, items[i].X, items[i].Z, radius + items[i].Radius, position, out var pushed))
+                        var item = nearby[i];
+                        if (PushOut(position, item.X, item.Z, radius + item.Radius, position, out var pushed))
                         {
                             position = pushed;
                             changed = true;
@@ -276,6 +287,78 @@ namespace Simulation.Core
             }
 
             return position;
+        }
+
+        /// <summary>
+        /// Находит первое статическое препятствие на отрезке. Нужен steering-поведению мобов,
+        /// чтобы отклоняться до столкновения, а не упираться в камень каждый тик.
+        /// </summary>
+        /// <param name="from">Начало луча.</param>
+        /// <param name="to">Конец луча.</param>
+        /// <param name="radius">Радиус актора; положительный.</param>
+        /// <param name="world">Статические препятствия; не <c>null</c>.</param>
+        /// <param name="t">Доля отрезка до касания, 0..1.</param>
+        /// <param name="normalX">Нормаль препятствия в точке касания по X.</param>
+        /// <param name="normalZ">Нормаль препятствия в точке касания по Z.</param>
+        /// <returns><c>true</c>, если препятствие есть на отрезке.</returns>
+        /// <exception cref="ArgumentNullException">Если <paramref name="world"/> равен <c>null</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Если радиус не положителен или не конечен.</exception>
+        public static bool TryGetFirstObstacleHit(
+            Vector3 from,
+            Vector3 to,
+            float radius,
+            WorldColliders world,
+            out float t,
+            out float normalX,
+            out float normalZ)
+        {
+            if (world == null)
+            {
+                throw new ArgumentNullException(nameof(world));
+            }
+
+            if (!(radius > 0f) || float.IsInfinity(radius))
+            {
+                throw new ArgumentOutOfRangeException(nameof(radius), radius, "Радиус актора должен быть конечным положительным числом.");
+            }
+
+            var candidates = new List<WorldCollider>();
+            QuerySegment(world, from, to, radius, candidates);
+            var best = float.PositiveInfinity;
+            normalX = 0f;
+            normalZ = 0f;
+            var found = false;
+            for (var i = 0; i < candidates.Count; i++)
+            {
+                var item = candidates[i];
+                if (TryFirstHit(from, to, item.X, item.Z, radius + item.Radius,
+                        out var hit, out var nx, out var nz)
+                    && hit < best)
+                {
+                    best = hit;
+                    normalX = nx;
+                    normalZ = nz;
+                    found = true;
+                }
+            }
+
+            t = found ? best : 0f;
+            return found;
+        }
+
+        private static void QuerySegment(
+            WorldColliders world,
+            Vector3 from,
+            Vector3 to,
+            float radius,
+            List<WorldCollider> results)
+        {
+            var padding = radius + world.MaxRadius;
+            var minX = MathF.Min(from.X, to.X) - padding;
+            var minZ = MathF.Min(from.Z, to.Z) - padding;
+            var maxX = MathF.Max(from.X, to.X) + padding;
+            var maxZ = MathF.Max(from.Z, to.Z) + padding;
+            world.QueryArea(minX, minZ, maxX, maxZ, results);
         }
 
         private static bool PushOut(Vector3 position, float centerX, float centerZ, float minDistance, Vector3 fallback, out Vector3 pushed)

@@ -927,29 +927,43 @@ namespace Simulation.Core
             var distance = MathF.Sqrt((dx * dx) + (dz * dz));
             var step = mob.MoveSpeed * deltaTime;
 
-            if (distance <= step || distance <= 0.0001f)
+            var side = mob.AiAvoidSide;
+            var direction = MobSteering.Resolve(
+                mob.Position,
+                destination,
+                mob.Actor.CollisionRadius,
+                _config!.WorldColliders,
+                mob.Id,
+                ref side);
+            mob.AiAvoidSide = side;
+
+            if (direction.LengthSquared() <= 0.000001f)
             {
-                mob.Position = MovementCollision.Resolve(
-                    mob.Position,
-                    new Vector3(destination.X, 0f, destination.Z),
-                    mob.Actor.CollisionRadius,
-                    _config!.Zones,
-                    _config.WorldColliders,
-                    BuildActorCircles(mob.Id),
-                    mob.Id);
-                return true;
+                return HorizontalDistance(mob.Position, destination) <= 0.05f;
             }
 
-            var scale = step / distance;
+            // На последнем шаге не перелетаем цель, но всё равно применяем steering:
+            // камень может стоять между мобом и точкой патруля ближе одного шага.
+            var travel = MathF.Min(step, distance);
             mob.Position = MovementCollision.Resolve(
                 mob.Position,
-                new Vector3(mob.Position.X + (dx * scale), 0f, mob.Position.Z + (dz * scale)),
+                new Vector3(
+                    mob.Position.X + (direction.X * travel),
+                    0f,
+                    mob.Position.Z + (direction.Z * travel)),
                 mob.Actor.CollisionRadius,
                 _config!.Zones,
                 _config.WorldColliders,
                 BuildActorCircles(mob.Id),
                 mob.Id);
-            return false;
+
+            var arrived = HorizontalDistance(mob.Position, destination) <= 0.05f;
+            if (arrived)
+            {
+                mob.AiAvoidSide = 0;
+            }
+
+            return arrived;
         }
 
         /// <summary>
@@ -977,6 +991,7 @@ namespace Simulation.Core
             mob.NextAttackTick = 0;
             mob.AiWaitUntilTick = 0;
             mob.PatrolIndex = 0;
+            mob.AiAvoidSide = 0;
         }
 
         /// <summary>

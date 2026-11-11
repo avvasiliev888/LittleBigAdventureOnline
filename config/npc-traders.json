@@ -1,0 +1,64 @@
+[
+  {
+    "id": 1,
+    "key": "blue_merchant",
+    "zoneKey": "blue",
+    "x": -25.0,
+    "z": 0.0,
+    "range": 5.0,
+    "prices": [
+      { "itemId": 1, "buyPrice": 10, "sellPrice": 6 },
+      { "itemId": 2, "buyPrice": 10, "sellPrice": 6 },
+      { "itemId": 10, "buyPrice": 120, "sellPrice": 30 },
+      { "itemId": 11, "buyPrice": 120, "sellPrice": 30 },
+      { "itemId": 12, "buyPrice": 120, "sellPrice": 30 },
+      { "itemId": 13, "buyPrice": 120, "sellPrice": 30 },
+      { "itemId": 14, "buyPrice": 120, "sellPrice": 30 },
+      { "itemId": 15, "buyPrice": 120, "sellPrice": 30 }
+    ]
+  },
+  {
+    "id": 2,
+    "key": "yellow_merchant",
+    "zoneKey": "yellow",
+    "x": 18.0,
+    "z": 0.0,
+    "range": 5.0,
+    "prices": [
+      { "itemId": 20, "buyPrice": 28, "sellPrice": 17 },
+      { "itemId": 21, "buyPrice": 28, "sellPrice": 17 },
+      { "itemId": 16, "buyPrice": 340, "sellPrice": 150 },
+      { "itemId": 17, "buyPrice": 340, "sellPrice": 150 },
+      { "itemId": 32, "buyPrice": 340, "sellPrice": 150 },
+      { "itemId": 18, "buyPrice": 340, "sellPrice": 150 },
+      { "itemId": 30, "buyPrice": 340, "sellPrice": 150 },
+      { "itemId": 31, "buyPrice": 340, "sellPrice": 150 }
+    ]
+  },
+  {
+    "id": 3,
+    "key": "red_merchant",
+    "zoneKey": "red",
+    "x": 33.0,
+    "z": 0.0,
+    "range": 5.0,
+    "prices": [
+      { "itemId": 22, "buyPrice": 80, "sellPrice": 48 },
+      { "itemId": 23, "buyPrice": 80, "sellPrice": 48 },
+      { "itemId": 24, "buyPrice": 180, "sellPrice": 110 },
+      { "itemId": 25, "buyPrice": 180, "sellPrice": 110 },
+      { "itemId": 33, "buyPrice": 900, "sellPrice": 540 },
+      { "itemId": 34, "buyPrice": 900, "sellPrice": 540 },
+      { "itemId": 35, "buyPrice": 900, "sellPrice": 540 },
+      { "itemId": 36, "buyPrice": 900, "sellPrice": 540 },
+      { "itemId": 37, "buyPrice": 900, "sellPrice": 540 },
+      { "itemId": 38, "buyPrice": 900, "sellPrice": 540 },
+      { "itemId": 39, "buyPrice": 2400, "sellPrice": 1450 },
+      { "itemId": 40, "buyPrice": 2400, "sellPrice": 1450 },
+      { "itemId": 41, "buyPrice": 2400, "sellPrice": 1450 },
+      { "itemId": 42, "buyPrice": 2400, "sellPrice": 1450 },
+      { "itemId": 43, "buyPrice": 2400, "sellPrice": 1450 },
+      { "itemId": 44, "buyPrice": 2400, "sellPrice": 1450 }
+    ]
+  }
+]

@@ -125,6 +125,25 @@ namespace Simulation.Core
             throw new InvalidOperationException("В конфигурации нет зоны с id " + zoneId + ".");
         }
 
+        /// <summary>Пытается найти зону по ключу.</summary>
+        /// <param name="key">Ключ зоны (например, <c>blue</c>); сравнение без учёта регистра.</param>
+        /// <param name="zone">Найденная зона или <c>null</c>.</param>
+        /// <returns><c>true</c>, если зона с таким ключом объявлена.</returns>
+        public bool TryGetZoneByKey(string key, out ZoneConfig? zone)
+        {
+            for (var i = 0; i < _zones.Length; i++)
+            {
+                if (string.Equals(_zones[i].Key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    zone = _zones[i];
+                    return true;
+                }
+            }
+
+            zone = null;
+            return false;
+        }
+
         /// <summary>Удерживает точку внутри прямоугольника мира, не меняя высоту.</summary>
         /// <param name="position">Позиция, возможно вышедшая за границы мира.</param>
         /// <returns>Точка, прижатая к ближайшей границе мира.</returns>

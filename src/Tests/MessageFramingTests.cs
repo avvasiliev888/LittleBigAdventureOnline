@@ -81,7 +81,7 @@ namespace Tests
         public void ProtocolConstants_AreStable()
         {
             Assert.Equal(0xA1B0, Protocol.Magic);
-            Assert.Equal(5, Protocol.Version);
+            Assert.Equal(6, Protocol.Version);
         }
     }
 }

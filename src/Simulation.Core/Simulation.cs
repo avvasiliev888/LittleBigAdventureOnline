@@ -188,6 +188,30 @@ namespace Simulation.Core
 
                     return;
 
+                case CraftCommand craft:
+                    if (_state.TryGetEntity(envelope.EntityId, out var crafter))
+                    {
+                        ApplyCraft(crafter, craft);
+                    }
+
+                    return;
+
+                case BuyCommand buy:
+                    if (_state.TryGetEntity(envelope.EntityId, out var buyer))
+                    {
+                        ApplyBuy(buyer, buy);
+                    }
+
+                    return;
+
+                case SellCommand sell:
+                    if (_state.TryGetEntity(envelope.EntityId, out var seller))
+                    {
+                        ApplySell(seller, sell);
+                    }
+
+                    return;
+
                 default:
                     throw new NotSupportedException(
                         "Тип команды " + envelope.Command.GetType().FullName + " не поддерживается симуляцией.");
@@ -308,12 +332,19 @@ namespace Simulation.Core
                 return;
             }
 
+            var slot = item.Slot.Value;
+            var previous = entity.Equipment.Get(slot);
+            if (previous != null && !entity.Inventory.CanAddAfterRemoving(item.Id, 1, previous.Definition.Id, 1))
+            {
+                // Вытесненную вещь некуда положить — отменяем смену до списания предмета.
+                return;
+            }
+
             if (!entity.Inventory.Remove(item.Id, 1))
             {
                 return;
             }
 
-            var previous = entity.Equipment.Get(item.Slot.Value);
             entity.Equip(_config, item);
 
             if (previous != null)
@@ -324,7 +355,7 @@ namespace Simulation.Core
 
         /// <summary>
         /// Сбор ресурсов из жилы: сырьё в инвентарь, Слава в ветку оружия в руке, кулдаун сбора.
-        /// Жила статична: истощение и респавн появятся вместе с экономикой (этап 3).
+        /// Жила статична: истощения и респавна нет, ограничение — персональный кулдаун сбора.
         /// </summary>
         /// <param name="entity">Сущность, собирающая ресурс.</param>
         /// <param name="command">Команда с идентификатором жилы.</param>
@@ -346,9 +377,181 @@ namespace Simulation.Core
                 return;
             }
 
+            if (!entity.Inventory.CanAdd(node.ItemId, node.Amount))
+            {
+                return;
+            }
+
             entity.Inventory.Add(_config!.GetItem(node.ItemId), node.Amount);
             entity.GatherCooldownUntilTick = _state.Tick + ToTicks(node.GatherSeconds);
             entity.AwardFame(_config, node.FamePerGather);
+        }
+
+        /// <summary>
+        /// Крафт по рецепту (ADR-017): сырьё списывается из инвентаря, предмет создаётся,
+        /// Слава начисляется в ветку оружия в руке. Транзакция атомарна: при нехватке места
+        /// сырьё возвращается, предмет не создаётся.
+        /// </summary>
+        /// <param name="entity">Сущность, крафтящая предмет.</param>
+        /// <param name="command">Команда с идентификатором рецепта.</param>
+        private void ApplyCraft(EntityState entity, CraftCommand command)
+        {
+            if (entity.IsDead)
+            {
+                return;
+            }
+
+            var recipe = FindRecipe(command.RecipeId);
+            if (recipe == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < recipe.Materials.Count; i++)
+            {
+                var material = recipe.Materials[i];
+                if (entity.Inventory.CountOf(material.ItemId) < material.Quantity)
+                {
+                    return;
+                }
+            }
+
+            if (!CanCraftOutput(entity.Inventory, recipe))
+            {
+                return;
+            }
+
+            for (var i = 0; i < recipe.Materials.Count; i++)
+            {
+                var material = recipe.Materials[i];
+                entity.Inventory.Remove(material.ItemId, material.Quantity);
+            }
+
+            var output = _config!.GetItem(recipe.OutputItemId);
+
+            // CanCraftOutput гарантирует: после списания сырья место под результат есть,
+            // поэтому Add здесь не может не поместиться и откат не нужен.
+            entity.Inventory.Add(output, recipe.OutputQuantity);
+            entity.AwardFame(_config, recipe.FamePerCraft);
+        }
+
+        /// <summary>
+        /// Покупка у NPC (ADR-017): проверка радиуса, цены, серебра и места в инвентаре.
+        /// Отказ не списывает серебро и не создаёт предмет.
+        /// </summary>
+        /// <param name="entity">Покупатель.</param>
+        /// <param name="command">Команда покупки.</param>
+        private void ApplyBuy(EntityState entity, BuyCommand command)
+        {
+            if (entity.IsDead)
+            {
+                return;
+            }
+
+            var trader = FindTrader(command.TraderId);
+            if (trader == null || !IsNear(entity.Position, trader.Position, trader.Range))
+            {
+                return;
+            }
+
+            var price = trader.FindPrice(command.ItemId);
+            if (price == null)
+            {
+                return;
+            }
+
+            var cost = (long)price.BuyPrice * command.Quantity;
+            if (cost > int.MaxValue || entity.Silver < cost)
+            {
+                return;
+            }
+
+            var item = _config!.GetItem(command.ItemId);
+            if (!entity.Inventory.Add(item, command.Quantity))
+            {
+                return;
+            }
+
+            entity.Silver -= (int)cost;
+        }
+
+        /// <summary>
+        /// Продажа NPC (ADR-017): предмет списывается, серебро начисляется по цене продажи.
+        /// Проверка радиуса и наличия предмета — до изменения состояния.
+        /// </summary>
+        /// <param name="entity">Продавец.</param>
+        /// <param name="command">Команда продажи.</param>
+        private void ApplySell(EntityState entity, SellCommand command)
+        {
+            if (entity.IsDead)
+            {
+                return;
+            }
+
+            var trader = FindTrader(command.TraderId);
+            if (trader == null || !IsNear(entity.Position, trader.Position, trader.Range))
+            {
+                return;
+            }
+
+            var price = trader.FindPrice(command.ItemId);
+            if (price == null)
+            {
+                return;
+            }
+
+            var revenue = (long)price.SellPrice * command.Quantity;
+            if (revenue > int.MaxValue || entity.Silver > int.MaxValue - revenue)
+            {
+                return;
+            }
+
+            if (entity.Inventory.CountOf(command.ItemId) < command.Quantity)
+            {
+                return;
+            }
+
+            entity.Inventory.Remove(command.ItemId, command.Quantity);
+            entity.Silver += (int)revenue;
+        }
+
+        private Recipe? FindRecipe(uint recipeId)
+        {
+            return _config!.Recipes.TryGetValue(recipeId, out var recipe) ? recipe : null;
+        }
+
+        private NpcTrader? FindTrader(uint traderId)
+        {
+            for (var i = 0; i < _config!.Traders.Count; i++)
+            {
+                if (_config.Traders[i].Id == traderId)
+                {
+                    return _config.Traders[i];
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>Поместится ли результат крафта после списания сырья (учитывает освобождение стопок).</summary>
+        private static bool CanCraftOutput(Inventory inventory, Recipe recipe)
+        {
+            if (inventory.CountOf(recipe.OutputItemId) > 0)
+            {
+                return true;
+            }
+
+            var freeingStacks = 0;
+            for (var i = 0; i < recipe.Materials.Count; i++)
+            {
+                var material = recipe.Materials[i];
+                if (inventory.CountOf(material.ItemId) == material.Quantity)
+                {
+                    freeingStacks++;
+                }
+            }
+
+            return inventory.FreeSlots + freeingStacks > 0;
         }
 
         private ResourceNodeConfig? FindNode(uint nodeId)
@@ -488,6 +691,11 @@ namespace Simulation.Core
             var dx = left.X - right.X;
             var dz = left.Z - right.Z;
             return MathF.Sqrt((dx * dx) + (dz * dz));
+        }
+
+        private static bool IsNear(Vector3 left, Vector3 right, float range)
+        {
+            return HorizontalDistance(left, right) <= range;
         }
     }
 }

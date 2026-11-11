@@ -1,0 +1,266 @@
+[
+  {
+    "id": 1,
+    "key": "rusty_sword_t1",
+    "outputItemId": 10,
+    "outputQuantity": 1,
+    "famePerCraft": 4,
+    "materials": [
+      { "itemId": 2, "quantity": 3 },
+      { "itemId": 1, "quantity": 1 }
+    ]
+  },
+  {
+    "id": 2,
+    "key": "traveler_chest_t1",
+    "outputItemId": 11,
+    "outputQuantity": 1,
+    "famePerCraft": 4,
+    "materials": [
+      { "itemId": 1, "quantity": 2 },
+      { "itemId": 2, "quantity": 2 }
+    ]
+  },
+  {
+    "id": 3,
+    "key": "traveler_legs_t1",
+    "outputItemId": 12,
+    "outputQuantity": 1,
+    "famePerCraft": 4,
+    "materials": [
+      { "itemId": 1, "quantity": 2 },
+      { "itemId": 2, "quantity": 2 }
+    ]
+  },
+  {
+    "id": 4,
+    "key": "traveler_boots_t1",
+    "outputItemId": 13,
+    "outputQuantity": 1,
+    "famePerCraft": 4,
+    "materials": [
+      { "itemId": 1, "quantity": 1 },
+      { "itemId": 2, "quantity": 3 }
+    ]
+  },
+  {
+    "id": 5,
+    "key": "hunter_bow_t1",
+    "outputItemId": 14,
+    "outputQuantity": 1,
+    "famePerCraft": 4,
+    "materials": [
+      { "itemId": 1, "quantity": 3 },
+      { "itemId": 2, "quantity": 1 }
+    ]
+  },
+  {
+    "id": 6,
+    "key": "apprentice_staff_t1",
+    "outputItemId": 15,
+    "outputQuantity": 1,
+    "famePerCraft": 4,
+    "materials": [
+      { "itemId": 1, "quantity": 2 },
+      { "itemId": 2, "quantity": 2 }
+    ]
+  },
+  {
+    "id": 11,
+    "key": "iron_sword_t2",
+    "outputItemId": 16,
+    "outputQuantity": 1,
+    "famePerCraft": 8,
+    "materials": [
+      { "itemId": 21, "quantity": 4 },
+      { "itemId": 20, "quantity": 2 }
+    ]
+  },
+  {
+    "id": 12,
+    "key": "reinforced_chest_t2",
+    "outputItemId": 17,
+    "outputQuantity": 1,
+    "famePerCraft": 8,
+    "materials": [
+      { "itemId": 20, "quantity": 3 },
+      { "itemId": 21, "quantity": 3 }
+    ]
+  },
+  {
+    "id": 13,
+    "key": "reinforced_legs_t2",
+    "outputItemId": 32,
+    "outputQuantity": 1,
+    "famePerCraft": 8,
+    "materials": [
+      { "itemId": 20, "quantity": 3 },
+      { "itemId": 21, "quantity": 3 }
+    ]
+  },
+  {
+    "id": 14,
+    "key": "swift_boots_t2",
+    "outputItemId": 18,
+    "outputQuantity": 1,
+    "famePerCraft": 8,
+    "materials": [
+      { "itemId": 20, "quantity": 2 },
+      { "itemId": 21, "quantity": 4 }
+    ]
+  },
+  {
+    "id": 15,
+    "key": "iron_bow_t2",
+    "outputItemId": 30,
+    "outputQuantity": 1,
+    "famePerCraft": 8,
+    "materials": [
+      { "itemId": 20, "quantity": 4 },
+      { "itemId": 21, "quantity": 2 }
+    ]
+  },
+  {
+    "id": 16,
+    "key": "iron_staff_t2",
+    "outputItemId": 31,
+    "outputQuantity": 1,
+    "famePerCraft": 8,
+    "materials": [
+      { "itemId": 20, "quantity": 3 },
+      { "itemId": 21, "quantity": 3 }
+    ]
+  },
+  {
+    "id": 21,
+    "key": "steel_sword_t3",
+    "outputItemId": 33,
+    "outputQuantity": 1,
+    "famePerCraft": 14,
+    "materials": [
+      { "itemId": 23, "quantity": 6 },
+      { "itemId": 22, "quantity": 2 }
+    ]
+  },
+  {
+    "id": 22,
+    "key": "steel_chest_t3",
+    "outputItemId": 34,
+    "outputQuantity": 1,
+    "famePerCraft": 14,
+    "materials": [
+      { "itemId": 22, "quantity": 4 },
+      { "itemId": 23, "quantity": 4 }
+    ]
+  },
+  {
+    "id": 23,
+    "key": "steel_legs_t3",
+    "outputItemId": 35,
+    "outputQuantity": 1,
+    "famePerCraft": 14,
+    "materials": [
+      { "itemId": 22, "quantity": 4 },
+      { "itemId": 23, "quantity": 4 }
+    ]
+  },
+  {
+    "id": 24,
+    "key": "steel_boots_t3",
+    "outputItemId": 36,
+    "outputQuantity": 1,
+    "famePerCraft": 14,
+    "materials": [
+      { "itemId": 22, "quantity": 2 },
+      { "itemId": 23, "quantity": 6 }
+    ]
+  },
+  {
+    "id": 25,
+    "key": "steel_bow_t3",
+    "outputItemId": 37,
+    "outputQuantity": 1,
+    "famePerCraft": 14,
+    "materials": [
+      { "itemId": 22, "quantity": 6 },
+      { "itemId": 23, "quantity": 2 }
+    ]
+  },
+  {
+    "id": 26,
+    "key": "steel_staff_t3",
+    "outputItemId": 38,
+    "outputQuantity": 1,
+    "famePerCraft": 14,
+    "materials": [
+      { "itemId": 22, "quantity": 4 },
+      { "itemId": 23, "quantity": 4 }
+    ]
+  },
+  {
+    "id": 31,
+    "key": "mithril_sword_t4",
+    "outputItemId": 39,
+    "outputQuantity": 1,
+    "famePerCraft": 20,
+    "materials": [
+      { "itemId": 25, "quantity": 7 },
+      { "itemId": 24, "quantity": 3 }
+    ]
+  },
+  {
+    "id": 32,
+    "key": "mithril_chest_t4",
+    "outputItemId": 40,
+    "outputQuantity": 1,
+    "famePerCraft": 20,
+    "materials": [
+      { "itemId": 24, "quantity": 5 },
+      { "itemId": 25, "quantity": 5 }
+    ]
+  },
+  {
+    "id": 33,
+    "key": "mithril_legs_t4",
+    "outputItemId": 41,
+    "outputQuantity": 1,
+    "famePerCraft": 20,
+    "materials": [
+      { "itemId": 24, "quantity": 5 },
+      { "itemId": 25, "quantity": 5 }
+    ]
+  },
+  {
+    "id": 34,
+    "key": "mithril_boots_t4",
+    "outputItemId": 42,
+    "outputQuantity": 1,
+    "famePerCraft": 20,
+    "materials": [
+      { "itemId": 24, "quantity": 3 },
+      { "itemId": 25, "quantity": 7 }
+    ]
+  },
+  {
+    "id": 35,
+    "key": "mithril_bow_t4",
+    "outputItemId": 43,
+    "outputQuantity": 1,
+    "famePerCraft": 20,
+    "materials": [
+      { "itemId": 24, "quantity": 7 },
+      { "itemId": 25, "quantity": 3 }
+    ]
+  },
+  {
+    "id": 36,
+    "key": "mithril_staff_t4",
+    "outputItemId": 44,
+    "outputQuantity": 1,
+    "famePerCraft": 20,
+    "materials": [
+      { "itemId": 24, "quantity": 5 },
+      { "itemId": 25, "quantity": 5 }
+    ]
+  }
+]

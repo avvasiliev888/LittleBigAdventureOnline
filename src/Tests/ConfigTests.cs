@@ -116,7 +116,7 @@ namespace Tests
             var missing = Path.Combine(Path.GetTempPath(), "albion-missing-" + Guid.NewGuid().ToString("N"), "actors.json");
 
             var exception = Assert.Throws<ConfigValidationException>(
-                () => ConfigLoader.Load(missing, missing, missing, missing, missing, missing));
+                () => ConfigLoader.Load(missing, missing, missing, missing, missing, missing, missing, missing));
 
             Assert.Contains("не найден", exception.Message);
         }

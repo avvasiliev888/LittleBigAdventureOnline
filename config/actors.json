@@ -9,6 +9,8 @@
     "respawnSeconds": 5.0,
     "abilityId": 1,
     "fameOnKill": 25,
+    "inventorySlots": 24,
+    "startingSilver": 500,
     "starterItems": [
       { "itemId": 1, "quantity": 5 },
       { "itemId": 2, "quantity": 3 }
@@ -29,6 +31,7 @@
     "resourceRegenPerSecond": 0.0,
     "respawnSeconds": 5.0,
     "abilityId": 1,
-    "fameOnKill": 5
+    "fameOnKill": 5,
+    "inventorySlots": 4
   }
 ]

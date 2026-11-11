@@ -268,6 +268,48 @@ namespace Tests
             Assert.Equal(0, player.Fame.Total);
         }
 
+        [Fact]
+        public void Gather_WhenInventoryFull_DoesNotConsumeCooldownOrAwardFame()
+        {
+            var config = TestWorld.Config(
+                resourceNodes: new[]
+                {
+                    new ResourceNodeConfig(7, "ore_vein", 2, 2f, 0f, 1, 1.5f, 3, 3f),
+                },
+                starterItems: new[] { new LoadoutItem(1, 5) },
+                starterEquipment: new[] { new LoadoutEquipment(TestWorld.SwordItemId) },
+                inventorySlots: 1);
+            var player = TestWorld.Entity(1, config);
+            var simulation = TestWorld.Simulation(config, player);
+
+            TestWorld.Tick(simulation, TestWorld.Gather(1, 7));
+
+            Assert.Equal(0, player.Inventory.CountOf(2));
+            Assert.Equal(0u, player.GatherCooldownUntilTick);
+            Assert.Equal(0, player.Fame.Total);
+        }
+
+        [Fact]
+        public void Equip_WhenDisplacedItemHasNoRoom_IsRejected()
+        {
+            // Инвентарь заполнен двумя стопками; у меча в стопке 2 штуки, поэтому слот не освободится.
+            var config = TestWorld.Config(
+                starterItems: new[]
+                {
+                    new LoadoutItem(TestWorld.SwordItemId, 2),
+                    new LoadoutItem(1, 1),
+                },
+                starterEquipment: new[] { new LoadoutEquipment(TestWorld.BowItemId) },
+                inventorySlots: 2);
+            var player = TestWorld.Entity(1, config);
+            var simulation = TestWorld.Simulation(config, player);
+
+            TestWorld.Tick(simulation, TestWorld.Equip(1, TestWorld.SwordItemId));
+
+            Assert.Equal(TestWorld.BowItemId, player.Equipment.Weapon?.Definition.Id);
+            Assert.Equal(2, player.Inventory.CountOf(TestWorld.SwordItemId));
+        }
+
         private static void Kill(CoreSimulation simulation, EntityState victim)
         {
             victim.Hp = 1;

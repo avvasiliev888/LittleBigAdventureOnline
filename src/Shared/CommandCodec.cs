@@ -22,6 +22,15 @@ namespace Shared
         /// <summary>Тег команды сбора ресурса.</summary>
         public const byte GatherTag = 4;
 
+        /// <summary>Тег команды крафта.</summary>
+        public const byte CraftTag = 5;
+
+        /// <summary>Тег команды покупки у NPC.</summary>
+        public const byte BuyTag = 6;
+
+        /// <summary>Тег команды продажи NPC.</summary>
+        public const byte SellTag = 7;
+
         /// <summary>Кодирует команду в тело сообщения.</summary>
         /// <param name="command">Команда для кодирования.</param>
         /// <returns>Байты тела.</returns>
@@ -66,6 +75,31 @@ namespace Shared
                     writer.Write(gather.ClientTick);
                     writer.Write(gather.Sequence);
                     writer.Write(gather.NodeId);
+                    break;
+
+                case CraftCommand craft:
+                    writer.Write(CraftTag);
+                    writer.Write(craft.ClientTick);
+                    writer.Write(craft.Sequence);
+                    writer.Write(craft.RecipeId);
+                    break;
+
+                case BuyCommand buy:
+                    writer.Write(BuyTag);
+                    writer.Write(buy.ClientTick);
+                    writer.Write(buy.Sequence);
+                    writer.Write(buy.TraderId);
+                    writer.Write(buy.ItemId);
+                    writer.Write((uint)buy.Quantity);
+                    break;
+
+                case SellCommand sell:
+                    writer.Write(SellTag);
+                    writer.Write(sell.ClientTick);
+                    writer.Write(sell.Sequence);
+                    writer.Write(sell.TraderId);
+                    writer.Write(sell.ItemId);
+                    writer.Write((uint)sell.Quantity);
                     break;
 
                 default:
@@ -140,9 +174,54 @@ namespace Shared
                     command = new GatherCommand(nodeId, clientTick, sequence);
                     return true;
 
+                case CraftTag:
+                    if (payload.Length != 13)
+                    {
+                        return false;
+                    }
+
+                    var recipeId = reader.ReadUInt32();
+                    command = new CraftCommand(recipeId, clientTick, sequence);
+                    return true;
+
+                case BuyTag:
+                    return TryDecodeTrade(reader, payload, clientTick, sequence, buy: true, out command);
+
+                case SellTag:
+                    return TryDecodeTrade(reader, payload, clientTick, sequence, buy: false, out command);
+
                 default:
                     return false;
             }
+        }
+
+        private static bool TryDecodeTrade(
+            BinaryReader reader,
+            ReadOnlySpan<byte> payload,
+            uint clientTick,
+            uint sequence,
+            bool buy,
+            out ICommand? command)
+        {
+            command = null;
+            if (payload.Length != 21)
+            {
+                return false;
+            }
+
+            var traderId = reader.ReadUInt32();
+            var itemId = reader.ReadUInt32();
+            var rawQuantity = reader.ReadUInt32();
+            if (rawQuantity == 0 || rawQuantity > int.MaxValue)
+            {
+                return false;
+            }
+
+            var quantity = (int)rawQuantity;
+            command = buy
+                ? new BuyCommand(traderId, itemId, quantity, clientTick, sequence)
+                : (ICommand)new SellCommand(traderId, itemId, quantity, clientTick, sequence);
+            return true;
         }
     }
 }

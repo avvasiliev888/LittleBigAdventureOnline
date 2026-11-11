@@ -60,6 +60,30 @@ namespace Server
 
         /// <summary>Жила вне радиуса сбора.</summary>
         GatherOutOfRange = 17,
+
+        /// <summary>Рецепта крафта нет в конфиге.</summary>
+        UnknownRecipe = 18,
+
+        /// <summary>Не хватает сырья для крафта.</summary>
+        MissingMaterials = 19,
+
+        /// <summary>В инвентаре нет места под результат.</summary>
+        InventoryFull = 20,
+
+        /// <summary>NPC-торговца нет в конфиге.</summary>
+        UnknownTrader = 21,
+
+        /// <summary>Торговец вне радиуса взаимодействия.</summary>
+        TraderOutOfRange = 22,
+
+        /// <summary>Не хватает серебра на покупку.</summary>
+        NotEnoughSilver = 23,
+
+        /// <summary>Торговец не продаёт этот предмет.</summary>
+        TraderDoesNotSell = 24,
+
+        /// <summary>Торговец не покупает этот предмет.</summary>
+        TraderDoesNotBuy = 25,
     }
 
     /// <summary>Результат валидации команды.</summary>
@@ -171,6 +195,15 @@ namespace Server
                 case GatherCommand gather:
                     return ValidateGather(tick, caster, gather);
 
+                case CraftCommand craft:
+                    return ValidateCraft(caster, craft);
+
+                case BuyCommand buy:
+                    return ValidateBuy(caster, buy);
+
+                case SellCommand sell:
+                    return ValidateSell(caster, sell);
+
                 default:
                     return ValidationResult.Reject(
                         CommandRejectReason.UnsupportedCommand,
@@ -229,7 +262,160 @@ namespace Server
                     "в инвентаре нет '" + item.Key + "'");
             }
 
+            var previous = caster.Equipment.Get(item.Slot.Value);
+            if (previous != null && !caster.Inventory.CanAddAfterRemoving(item.Id, 1, previous.Definition.Id, 1))
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.InventoryFull,
+                    "вытесненную вещь '" + previous.Definition.Key + "' некуда положить");
+            }
+
             return ValidationResult.Accept();
+        }
+
+        private ValidationResult ValidateCraft(EntityState caster, CraftCommand command)
+        {
+            if (!_config.Recipes.TryGetValue(command.RecipeId, out var recipe))
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.UnknownRecipe,
+                    "рецепта " + command.RecipeId + " нет в конфиге");
+            }
+
+            for (var i = 0; i < recipe.Materials.Count; i++)
+            {
+                var material = recipe.Materials[i];
+                if (caster.Inventory.CountOf(material.ItemId) < material.Quantity)
+                {
+                    return ValidationResult.Reject(
+                        CommandRejectReason.MissingMaterials,
+                        "нужно " + material.Quantity + " предмета " + material.ItemId + ", есть "
+                        + caster.Inventory.CountOf(material.ItemId));
+                }
+            }
+
+            if (!CanCraftOutput(caster.Inventory, recipe))
+            {
+                return ValidationResult.Reject(CommandRejectReason.InventoryFull, "нет места под результат крафта");
+            }
+
+            return ValidationResult.Accept();
+        }
+
+        private ValidationResult ValidateBuy(EntityState caster, BuyCommand command)
+        {
+            var trader = FindTrader(command.TraderId);
+            if (trader == null)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.UnknownTrader,
+                    "торговца " + command.TraderId + " нет в конфиге");
+            }
+
+            if (!IsNear(caster.Position, trader.Position, trader.Range))
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.TraderOutOfRange,
+                    "торговец '" + trader.Key + "' вне радиуса " + trader.Range.ToString("0.###"));
+            }
+
+            var price = trader.FindPrice(command.ItemId);
+            if (price == null)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.TraderDoesNotSell,
+                    "торговец '" + trader.Key + "' не продаёт предмет " + command.ItemId);
+            }
+
+            var cost = (long)price.BuyPrice * command.Quantity;
+            if (cost > int.MaxValue || caster.Silver < cost)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.NotEnoughSilver,
+                    "нужно " + cost + " серебра, есть " + caster.Silver);
+            }
+
+            if (!caster.Inventory.CanAdd(command.ItemId, command.Quantity))
+            {
+                return ValidationResult.Reject(CommandRejectReason.InventoryFull, "нет места под покупку");
+            }
+
+            return ValidationResult.Accept();
+        }
+
+        private ValidationResult ValidateSell(EntityState caster, SellCommand command)
+        {
+            var trader = FindTrader(command.TraderId);
+            if (trader == null)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.UnknownTrader,
+                    "торговца " + command.TraderId + " нет в конфиге");
+            }
+
+            if (!IsNear(caster.Position, trader.Position, trader.Range))
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.TraderOutOfRange,
+                    "торговец '" + trader.Key + "' вне радиуса " + trader.Range.ToString("0.###"));
+            }
+
+            var price = trader.FindPrice(command.ItemId);
+            if (price == null)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.TraderDoesNotBuy,
+                    "торговец '" + trader.Key + "' не покупает предмет " + command.ItemId);
+            }
+
+            if (caster.Inventory.CountOf(command.ItemId) < command.Quantity)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.ItemNotInInventory,
+                    "в инвентаре " + caster.Inventory.CountOf(command.ItemId) + " < " + command.Quantity);
+            }
+
+            return ValidationResult.Accept();
+        }
+
+        private NpcTrader? FindTrader(uint traderId)
+        {
+            for (var i = 0; i < _config.Traders.Count; i++)
+            {
+                if (_config.Traders[i].Id == traderId)
+                {
+                    return _config.Traders[i];
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsNear(Vector3 left, Vector3 right, float range)
+        {
+            var dx = left.X - right.X;
+            var dz = left.Z - right.Z;
+            return MathF.Sqrt((dx * dx) + (dz * dz)) <= range;
+        }
+
+        private static bool CanCraftOutput(Inventory inventory, Recipe recipe)
+        {
+            if (inventory.CountOf(recipe.OutputItemId) > 0)
+            {
+                return true;
+            }
+
+            var freeingStacks = 0;
+            for (var i = 0; i < recipe.Materials.Count; i++)
+            {
+                var material = recipe.Materials[i];
+                if (inventory.CountOf(material.ItemId) == material.Quantity)
+                {
+                    freeingStacks++;
+                }
+            }
+
+            return inventory.FreeSlots + freeingStacks > 0;
         }
 
         private ValidationResult ValidateGather(uint tick, EntityState caster, GatherCommand command)

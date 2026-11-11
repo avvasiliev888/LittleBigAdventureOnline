@@ -109,7 +109,8 @@ namespace Server
                 "config: " + configDirectory + " (акторов: " + config.Actors.Count + ", способностей: " + config.Abilities.Count
                 + ", зон: " + config.Zones.Zones.Count + ", предметов: " + config.Items.Count
                 + ", веток навыков: " + config.SkillTree.Count + ", узлов: " + config.SkillTree.NodeCount
-                + ", жил: " + config.ResourceNodes.Count + ")"
+                + ", жил: " + config.ResourceNodes.Count + ", рецептов: " + config.Recipes.Count
+                + ", торговцев: " + config.Traders.Count + ")"
                 + ", hash: " + configHash);
 
             if (validateConfigOnly)

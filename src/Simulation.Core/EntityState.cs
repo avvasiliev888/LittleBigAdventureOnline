@@ -34,6 +34,8 @@ namespace Simulation.Core
             MoveSpeed = actor.MoveSpeed;
             AbilityId = actor.AbilityId;
             DamageMultiplier = 1f;
+            Silver = actor.StartingSilver;
+            Inventory = new Inventory(actor.InventorySlots);
         }
 
         /// <summary>Идентификатор сущности в мире.</summary>
@@ -97,8 +99,14 @@ namespace Simulation.Core
         /// <summary>Слава по архетипам оружия (ADR-015); смена оружия прогресс не сбрасывает.</summary>
         public FameProgress Fame { get; } = new FameProgress();
 
+        /// <summary>
+        /// Серебро персонажа (ADR-017): плата за крафт и покупки у NPC, выручка с продаж.
+        /// В снапшот пока не входит — поле появится с клиентским UI на этапе интеграции.
+        /// </summary>
+        public int Silver { get; set; }
+
         /// <summary>Инвентарь сущности; у мобов пуст.</summary>
-        public Inventory Inventory { get; } = new Inventory();
+        public Inventory Inventory { get; }
 
         /// <summary>Надетое снаряжение сущности; у мобов пусто.</summary>
         public Equipment Equipment { get; } = new Equipment();

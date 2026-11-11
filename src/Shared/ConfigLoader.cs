@@ -60,17 +60,29 @@ namespace Shared
         /// <summary>Имя файла с ресурсными жилами (ADR-015).</summary>
         public const string ResourcesFileName = "resources.json";
 
+        /// <summary>Имя файла с рецептами крафта (ADR-017).</summary>
+        public const string RecipesFileName = "recipes.json";
+
+        /// <summary>Имя файла с NPC-торговцами (ADR-017).</summary>
+        public const string TradersFileName = "npc-traders.json";
+
         /// <summary>Пустое дерево навыков: используется тестами и мирами без прогрессии.</summary>
         public const string EmptySkillTreeJson = "{\"archetypes\": []}";
 
         /// <summary>Пустой список жил: используется тестами и мирами без добычи.</summary>
         public const string EmptyResourcesJson = "[]";
 
+        /// <summary>Пустой список рецептов: используется тестами и мирами без крафта.</summary>
+        public const string EmptyRecipesJson = "[]";
+
+        /// <summary>Пустой список торговцев: используется тестами и мирами без торговли.</summary>
+        public const string EmptyTradersJson = "[]";
+
         /// <summary>Загружает конфигурацию из каталога.</summary>
         /// <param name="directory">
         /// Каталог с <see cref="ActorsFileName"/>, <see cref="AbilitiesFileName"/>,
-        /// <see cref="ZonesFileName"/>, <see cref="ItemsFileName"/>, <see cref="SkillTreeFileName"/>
-        /// и <see cref="ResourcesFileName"/>.
+        /// <see cref="ZonesFileName"/>, <see cref="ItemsFileName"/>, <see cref="SkillTreeFileName"/>,
+        /// <see cref="ResourcesFileName"/>, <see cref="RecipesFileName"/> и <see cref="TradersFileName"/>.
         /// </param>
         /// <exception cref="ArgumentNullException">Если <paramref name="directory"/> равен <c>null</c>.</exception>
         /// <exception cref="ConfigValidationException">Если файлы отсутствуют или невалидны.</exception>
@@ -87,16 +99,20 @@ namespace Shared
                 Path.Combine(directory, ZonesFileName),
                 Path.Combine(directory, ItemsFileName),
                 Path.Combine(directory, SkillTreeFileName),
-                Path.Combine(directory, ResourcesFileName));
+                Path.Combine(directory, ResourcesFileName),
+                Path.Combine(directory, RecipesFileName),
+                Path.Combine(directory, TradersFileName));
         }
 
-        /// <summary>Загружает конфигурацию из шести файлов.</summary>
+        /// <summary>Загружает конфигурацию из восьми файлов.</summary>
         /// <param name="actorsPath">Путь к <see cref="ActorsFileName"/>.</param>
         /// <param name="abilitiesPath">Путь к <see cref="AbilitiesFileName"/>.</param>
         /// <param name="zonesPath">Путь к <see cref="ZonesFileName"/>.</param>
         /// <param name="itemsPath">Путь к <see cref="ItemsFileName"/>.</param>
         /// <param name="skillTreePath">Путь к <see cref="SkillTreeFileName"/>.</param>
         /// <param name="resourcesPath">Путь к <see cref="ResourcesFileName"/>.</param>
+        /// <param name="recipesPath">Путь к <see cref="RecipesFileName"/>.</param>
+        /// <param name="tradersPath">Путь к <see cref="TradersFileName"/>.</param>
         /// <exception cref="ConfigValidationException">Если файлы отсутствуют или невалидны.</exception>
         public static SimulationConfig Load(
             string actorsPath,
@@ -104,7 +120,9 @@ namespace Shared
             string zonesPath,
             string itemsPath,
             string skillTreePath,
-            string resourcesPath)
+            string resourcesPath,
+            string recipesPath,
+            string tradersPath)
         {
             if (actorsPath == null)
             {
@@ -136,12 +154,24 @@ namespace Shared
                 throw new ArgumentNullException(nameof(resourcesPath));
             }
 
+            if (recipesPath == null)
+            {
+                throw new ArgumentNullException(nameof(recipesPath));
+            }
+
+            if (tradersPath == null)
+            {
+                throw new ArgumentNullException(nameof(tradersPath));
+            }
+
             var actorsJson = ReadFile(actorsPath);
             var abilitiesJson = ReadFile(abilitiesPath);
             var zonesJson = ReadFile(zonesPath);
             var itemsJson = ReadFile(itemsPath);
             var skillTreeJson = ReadFile(skillTreePath);
             var resourcesJson = ReadFile(resourcesPath);
+            var recipesJson = ReadFile(recipesPath);
+            var tradersJson = ReadFile(tradersPath);
 
             return LoadFromJson(
                 actorsJson,
@@ -150,7 +180,9 @@ namespace Shared
                 itemsJson,
                 actorsPath,
                 skillTreeJson,
-                resourcesJson);
+                resourcesJson,
+                recipesJson,
+                tradersJson);
         }
 
         /// <summary>Загружает конфигурацию из строк JSON.</summary>
@@ -161,6 +193,8 @@ namespace Shared
         /// <param name="source">Метка источника для сообщений об ошибках.</param>
         /// <param name="skillTreeJson">Содержимое <see cref="SkillTreeFileName"/>; пустое дерево по умолчанию.</param>
         /// <param name="resourcesJson">Содержимое <see cref="ResourcesFileName"/>; пустой список по умолчанию.</param>
+        /// <param name="recipesJson">Содержимое <see cref="RecipesFileName"/>; пустой список по умолчанию.</param>
+        /// <param name="tradersJson">Содержимое <see cref="TradersFileName"/>; пустой список по умолчанию.</param>
         /// <exception cref="ConfigValidationException">Если JSON невалиден.</exception>
         public static SimulationConfig LoadFromJson(
             string actorsJson,
@@ -169,7 +203,9 @@ namespace Shared
             string itemsJson,
             string source = "config",
             string skillTreeJson = EmptySkillTreeJson,
-            string resourcesJson = EmptyResourcesJson)
+            string resourcesJson = EmptyResourcesJson,
+            string recipesJson = EmptyRecipesJson,
+            string tradersJson = EmptyTradersJson)
         {
             if (actorsJson == null)
             {
@@ -201,11 +237,23 @@ namespace Shared
                 throw new ArgumentNullException(nameof(resourcesJson));
             }
 
+            if (recipesJson == null)
+            {
+                throw new ArgumentNullException(nameof(recipesJson));
+            }
+
+            if (tradersJson == null)
+            {
+                throw new ArgumentNullException(nameof(tradersJson));
+            }
+
             var actorDtos = ParseArray(actorsJson, "actors", source);
             var abilityDtos = ParseArray(abilitiesJson, "abilities", source);
             var zoneDtos = ParseArray(zonesJson, "zones", source);
             var itemDtos = ParseArray(itemsJson, "items", source);
             var resourceDtos = ParseArray(resourcesJson, "resources", source);
+            var recipeDtos = ParseArray(recipesJson, "recipes", source);
+            var traderDtos = ParseArray(tradersJson, "npc-traders", source);
             var skillTree = ToSkillTree(skillTreeJson, source);
 
             var items = new List<ItemDefinition>(itemDtos.Count);
@@ -238,9 +286,21 @@ namespace Shared
                 nodes.Add(ToResourceNode(resourceDtos[i], source, i));
             }
 
+            var recipes = new List<Recipe>(recipeDtos.Count);
+            for (var i = 0; i < recipeDtos.Count; i++)
+            {
+                recipes.Add(ToRecipe(recipeDtos[i], source, i));
+            }
+
+            var traders = new List<NpcTrader>(traderDtos.Count);
+            for (var i = 0; i < traderDtos.Count; i++)
+            {
+                traders.Add(ToTrader(traderDtos[i], source, i));
+            }
+
             try
             {
-                return new SimulationConfig(actors, abilities, zones, items, skillTree, nodes);
+                return new SimulationConfig(actors, abilities, zones, items, skillTree, nodes, recipes, traders);
             }
             catch (ArgumentException exception)
             {
@@ -249,13 +309,13 @@ namespace Shared
         }
 
         /// <summary>
-        /// Считает SHA-256 от содержимого четырёх файлов конфигурации: одинаковый хеш означает,
-        /// что сервер и клиент читают один и тот же файл (M9, Auto-Gate).
+        /// Считает SHA-256 от содержимого восьми файлов конфигурации: одинаковый хеш означает,
+        /// что сервер и клиент читают одни и те же файлы (M9, Auto-Gate).
         /// </summary>
         /// <param name="directory">
         /// Каталог с <see cref="ActorsFileName"/>, <see cref="AbilitiesFileName"/>,
-        /// <see cref="ZonesFileName"/>, <see cref="ItemsFileName"/>, <see cref="SkillTreeFileName"/>
-        /// и <see cref="ResourcesFileName"/>.
+        /// <see cref="ZonesFileName"/>, <see cref="ItemsFileName"/>, <see cref="SkillTreeFileName"/>,
+        /// <see cref="ResourcesFileName"/>, <see cref="RecipesFileName"/> и <see cref="TradersFileName"/>.
         /// </param>
         /// <returns>Хеш в нижнем hex-регистре.</returns>
         /// <exception cref="ArgumentNullException">Если <paramref name="directory"/> равен <c>null</c>.</exception>
@@ -273,16 +333,20 @@ namespace Shared
                 ReadFile(Path.Combine(directory, ZonesFileName)),
                 ReadFile(Path.Combine(directory, ItemsFileName)),
                 ReadFile(Path.Combine(directory, SkillTreeFileName)),
-                ReadFile(Path.Combine(directory, ResourcesFileName)));
+                ReadFile(Path.Combine(directory, ResourcesFileName)),
+                ReadFile(Path.Combine(directory, RecipesFileName)),
+                ReadFile(Path.Combine(directory, TradersFileName)));
         }
 
-        /// <summary>Считает хеш от строк JSON всех шести файлов конфигурации.</summary>
+        /// <summary>Считает хеш от строк JSON всех восьми файлов конфигурации.</summary>
         /// <param name="actorsJson">Содержимое <see cref="ActorsFileName"/>.</param>
         /// <param name="abilitiesJson">Содержимое <see cref="AbilitiesFileName"/>.</param>
         /// <param name="zonesJson">Содержимое <see cref="ZonesFileName"/>.</param>
         /// <param name="itemsJson">Содержимое <see cref="ItemsFileName"/>.</param>
         /// <param name="skillTreeJson">Содержимое <see cref="SkillTreeFileName"/>.</param>
         /// <param name="resourcesJson">Содержимое <see cref="ResourcesFileName"/>.</param>
+        /// <param name="recipesJson">Содержимое <see cref="RecipesFileName"/>.</param>
+        /// <param name="tradersJson">Содержимое <see cref="TradersFileName"/>.</param>
         /// <returns>Хеш в нижнем hex-регистре.</returns>
         /// <exception cref="ArgumentNullException">Если строка равна <c>null</c>.</exception>
         public static string ComputeHashFromJson(
@@ -291,7 +355,9 @@ namespace Shared
             string zonesJson,
             string itemsJson,
             string skillTreeJson,
-            string resourcesJson)
+            string resourcesJson,
+            string recipesJson,
+            string tradersJson)
         {
             if (actorsJson == null)
             {
@@ -323,6 +389,16 @@ namespace Shared
                 throw new ArgumentNullException(nameof(resourcesJson));
             }
 
+            if (recipesJson == null)
+            {
+                throw new ArgumentNullException(nameof(recipesJson));
+            }
+
+            if (tradersJson == null)
+            {
+                throw new ArgumentNullException(nameof(tradersJson));
+            }
+
             using var sha = SHA256.Create();
             using var stream = new MemoryStream();
             AppendSection(stream, Encoding.UTF8.GetBytes(actorsJson));
@@ -331,6 +407,8 @@ namespace Shared
             AppendSection(stream, Encoding.UTF8.GetBytes(itemsJson));
             AppendSection(stream, Encoding.UTF8.GetBytes(skillTreeJson));
             AppendSection(stream, Encoding.UTF8.GetBytes(resourcesJson));
+            AppendSection(stream, Encoding.UTF8.GetBytes(recipesJson));
+            AppendSection(stream, Encoding.UTF8.GetBytes(tradersJson));
 
             var hash = sha.ComputeHash(stream.ToArray());
             var builder = new StringBuilder(hash.Length * 2);
@@ -514,6 +592,8 @@ namespace Shared
             var starterItems = ToStarterItems(dto, label);
             var starterEquipment = ToStarterEquipment(dto, label);
             var fameOnKill = OptionalInt(dto, label, "fameOnKill", 0);
+            var inventorySlots = OptionalInt(dto, label, "inventorySlots", Inventory.DefaultCapacity);
+            var startingSilver = OptionalInt(dto, label, "startingSilver", 0);
 
             try
             {
@@ -528,11 +608,87 @@ namespace Shared
                     kind,
                     starterItems,
                     starterEquipment,
-                    fameOnKill);
+                    fameOnKill,
+                    inventorySlots,
+                    startingSilver);
             }
             catch (ArgumentException exception)
             {
                 throw new ConfigValidationException(label + " (id=" + id + "): " + exception.Message, exception);
+            }
+        }
+
+        private static Recipe ToRecipe(Dictionary<string, object?> dto, string source, int index)
+        {
+            var label = source + ": recipes[" + index + "]";
+            var id = RequireUint(dto, label, "id");
+            var key = RequireString(dto, label, "key");
+            var outputItemId = RequireUint(dto, label, "outputItemId");
+            var outputQuantity = OptionalInt(dto, label, "outputQuantity", 1);
+            var famePerCraft = OptionalInt(dto, label, "famePerCraft", 0);
+            var materialDtos = RequireObjectArray(dto, label, "materials");
+            var materials = new List<RecipeMaterial>(materialDtos.Count);
+            for (var i = 0; i < materialDtos.Count; i++)
+            {
+                var materialLabel = label + ".materials[" + i + "]";
+                var itemId = RequireUint(materialDtos[i], materialLabel, "itemId");
+                var quantity = RequireInt(materialDtos[i], materialLabel, "quantity");
+
+                try
+                {
+                    materials.Add(new RecipeMaterial(itemId, quantity));
+                }
+                catch (ArgumentException exception)
+                {
+                    throw new ConfigValidationException(materialLabel + ": " + exception.Message, exception);
+                }
+            }
+
+            try
+            {
+                return new Recipe(id, key, outputItemId, outputQuantity, materials, famePerCraft);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new ConfigValidationException(label + " (key=" + key + "): " + exception.Message, exception);
+            }
+        }
+
+        private static NpcTrader ToTrader(Dictionary<string, object?> dto, string source, int index)
+        {
+            var label = source + ": npc-traders[" + index + "]";
+            var id = RequireUint(dto, label, "id");
+            var key = RequireString(dto, label, "key");
+            var zoneKey = RequireString(dto, label, "zoneKey");
+            var x = RequireFloat(dto, label, "x");
+            var z = RequireFloat(dto, label, "z");
+            var range = RequireFloat(dto, label, "range");
+            var priceDtos = RequireObjectArray(dto, label, "prices");
+            var prices = new List<TraderPrice>(priceDtos.Count);
+            for (var i = 0; i < priceDtos.Count; i++)
+            {
+                var priceLabel = label + ".prices[" + i + "]";
+                var itemId = RequireUint(priceDtos[i], priceLabel, "itemId");
+                var buyPrice = RequireInt(priceDtos[i], priceLabel, "buyPrice");
+                var sellPrice = RequireInt(priceDtos[i], priceLabel, "sellPrice");
+
+                try
+                {
+                    prices.Add(new TraderPrice(itemId, buyPrice, sellPrice));
+                }
+                catch (ArgumentException exception)
+                {
+                    throw new ConfigValidationException(priceLabel + ": " + exception.Message, exception);
+                }
+            }
+
+            try
+            {
+                return new NpcTrader(id, key, zoneKey, x, z, range, prices);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new ConfigValidationException(label + " (key=" + key + "): " + exception.Message, exception);
             }
         }
 
@@ -891,9 +1047,38 @@ namespace Shared
             string label,
             string field)
         {
-            if (!dto.TryGetValue(field, out var value) || value == null)
+            var entries = OptionalObjectArrayOrNull(dto, label, field);
+            if (entries == null)
             {
                 return new List<Dictionary<string, object?>>();
+            }
+
+            return entries;
+        }
+
+        /// <summary>Читает обязательный массив JSON-объектов; отсутствующее поле — ошибка.</summary>
+        private static List<Dictionary<string, object?>> RequireObjectArray(
+            Dictionary<string, object?> dto,
+            string label,
+            string field)
+        {
+            var entries = OptionalObjectArrayOrNull(dto, label, field);
+            if (entries == null)
+            {
+                throw new ConfigValidationException(label + ": поле '" + field + "' обязательно и должно быть JSON-массивом.");
+            }
+
+            return entries;
+        }
+
+        private static List<Dictionary<string, object?>>? OptionalObjectArrayOrNull(
+            Dictionary<string, object?> dto,
+            string label,
+            string field)
+        {
+            if (!dto.TryGetValue(field, out var value) || value == null)
+            {
+                return null;
             }
 
             if (value is not List<object?> list)

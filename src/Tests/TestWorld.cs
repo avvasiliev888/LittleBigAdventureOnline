@@ -84,6 +84,33 @@ namespace Tests
   { ""id"": 1, ""key"": ""wood"", ""kind"": ""material"", ""tier"": 1, ""maxDurability"": 0 }
 ]";
 
+        /// <summary>Загружает конфиг из строк JSON с минимальными актором, способностью и зонами.</summary>
+        public static SimulationConfig LoadFromJson(
+            string skillTreeJson = Shared.ConfigLoader.EmptySkillTreeJson,
+            string resourcesJson = "[]",
+            string recipesJson = Shared.ConfigLoader.EmptyRecipesJson,
+            string tradersJson = Shared.ConfigLoader.EmptyTradersJson,
+            string? itemsJson = null)
+        {
+            const string actors = @"[
+  { ""id"": 1, ""kind"": ""player"", ""maxHp"": 100, ""moveSpeed"": 4.0, ""maxResource"": 100, ""resourceRegenPerSecond"": 0.0, ""respawnSeconds"": 5.0, ""abilityId"": 1 }
+]";
+            const string abilities = @"[
+  { ""id"": 1, ""damage"": 25, ""range"": 3.0, ""cooldownSeconds"": 2.0, ""resourceCost"": 10 }
+]";
+
+            return Shared.ConfigLoader.LoadFromJson(
+                actors,
+                abilities,
+                ZonesJson,
+                itemsJson ?? ItemsJson,
+                "test",
+                skillTreeJson,
+                resourcesJson,
+                recipesJson,
+                tradersJson);
+        }
+
         public static SimulationConfig Config(
             int damage = 25,
             float range = 3f,
@@ -102,7 +129,11 @@ namespace Tests
             SkillTree? skillTree = null,
             IReadOnlyList<ResourceNodeConfig>? resourceNodes = null,
             int fameOnKill = 0,
-            IReadOnlyList<AbilityConfig>? abilities = null)
+            IReadOnlyList<AbilityConfig>? abilities = null,
+            IReadOnlyList<Recipe>? recipes = null,
+            IReadOnlyList<NpcTrader>? traders = null,
+            int inventorySlots = Inventory.DefaultCapacity,
+            int startingSilver = 0)
         {
             var ability = new AbilityConfig(PlayerAbilityId, damage, range, cooldownSeconds, resourceCost);
             var actor = new ActorConfig(
@@ -116,7 +147,9 @@ namespace Tests
                 kind,
                 starterItems,
                 starterEquipment,
-                fameOnKill);
+                fameOnKill,
+                inventorySlots,
+                startingSilver);
 
             var abilityList = abilities ?? new[] { ability };
             var tree = skillTree ?? DefaultSkillTree;
@@ -128,7 +161,9 @@ namespace Tests
                 zones ?? DefaultZones,
                 itemList,
                 tree,
-                resourceNodes);
+                resourceNodes,
+                recipes,
+                traders);
         }
 
         /// <summary>Конфиг с оружием в руках: меч воина или лук лучника (для смены архетипа).</summary>
@@ -225,6 +260,60 @@ namespace Tests
         public static CommandEnvelope Gather(uint entityId, uint nodeId, uint clientTick = 0, uint sequence = 0)
         {
             return new CommandEnvelope(entityId, new GatherCommand(nodeId, clientTick, sequence));
+        }
+
+        public static CommandEnvelope Craft(uint entityId, uint recipeId, uint clientTick = 0, uint sequence = 0)
+        {
+            return new CommandEnvelope(entityId, new CraftCommand(recipeId, clientTick, sequence));
+        }
+
+        public static CommandEnvelope Buy(
+            uint entityId,
+            uint traderId,
+            uint itemId,
+            int quantity,
+            uint clientTick = 0,
+            uint sequence = 0)
+        {
+            return new CommandEnvelope(entityId, new BuyCommand(traderId, itemId, quantity, clientTick, sequence));
+        }
+
+        public static CommandEnvelope Sell(
+            uint entityId,
+            uint traderId,
+            uint itemId,
+            int quantity,
+            uint clientTick = 0,
+            uint sequence = 0)
+        {
+            return new CommandEnvelope(entityId, new SellCommand(traderId, itemId, quantity, clientTick, sequence));
+        }
+
+        public static Recipe Recipe(
+            uint id,
+            uint outputItemId,
+            int famePerCraft,
+            params RecipeMaterial[] materials)
+        {
+            return new Recipe(id, "recipe_" + id, outputItemId, 1, materials, famePerCraft);
+        }
+
+        public static RecipeMaterial Material(uint itemId, int quantity) => new RecipeMaterial(itemId, quantity);
+
+        public static NpcTrader Trader(
+            uint id,
+            string zoneKey,
+            float x,
+            float z,
+            float range,
+            params TraderPrice[] prices)
+        {
+            return new NpcTrader(id, "trader_" + id, zoneKey, x, z, range, prices);
+        }
+
+        public static TraderPrice Price(uint itemId, int buyPrice, int sellPrice)
+        {
+            return new TraderPrice(itemId, buyPrice, sellPrice);
         }
 
         public static void Tick(CoreSimulation simulation, params CommandEnvelope[] commands)

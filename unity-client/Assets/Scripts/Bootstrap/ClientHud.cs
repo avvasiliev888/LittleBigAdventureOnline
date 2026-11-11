@@ -47,22 +47,40 @@ namespace Albion.Client
 
             if (Input.GetKeyDown(KeyCode.C))
             {
-                _showCraft = !_showCraft;
-                _showSkills = false;
+                ToggleCraft();
             }
 
             if (Input.GetKeyDown(KeyCode.K))
             {
-                _showSkills = !_showSkills;
-                _showCraft = false;
+                ToggleSkills();
             }
 
             if (Input.GetKeyDown(KeyCode.E))
             {
-                TryLoot();
+                RequestLoot();
             }
 
             ApplyZoneVisuals();
+        }
+
+        /// <summary>Открывает/закрывает панель крафта (клавиша C или мобильная кнопка).</summary>
+        public void ToggleCraft()
+        {
+            _showCraft = !_showCraft;
+            _showSkills = false;
+        }
+
+        /// <summary>Открывает/закрывает дерево навыков (клавиша K или мобильная кнопка).</summary>
+        public void ToggleSkills()
+        {
+            _showSkills = !_showSkills;
+            _showCraft = false;
+        }
+
+        /// <summary>Подбирает лут ближайшего трупа (клавиша E или мобильная кнопка).</summary>
+        public void RequestLoot()
+        {
+            TryLoot();
         }
 
         private void OnGUI()

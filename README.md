@@ -42,11 +42,13 @@ dotnet run --project src/Server -c Release -- --udp 9050
 | .NET SDK | **10.0.x** (`dotnet --version`) |
 | PowerShell | PowerShell 7 (`pwsh`) |
 | Unity | **6000.3.28f1**, модуль **Windows Build Support (IL2CPP/Mono)** |
+| Android (опционально) | **Android Build Support** (SDK/NDK/OpenJDK) для APK |
 | Git | с Git LFS |
 | GPU | любой с D3D11/D3D12; desktop-профиль использует URP deferred |
 
-Unity Hub → Installs → 6000.3.28f1 → Add modules → Windows Build Support. Точная версия
-зафиксирована в `unity-client/ProjectSettings/ProjectVersion.txt`.
+Unity Hub → Installs → 6000.3.28f1 → Add modules → Windows Build Support; для APK —
+дополнительно Android Build Support. Точная версия зафиксирована в
+`unity-client/ProjectSettings/ProjectVersion.txt`.
 
 ## 1. Клонирование и ассеты
 
@@ -123,6 +125,33 @@ PASS snapshots=5 deltas=4 visuals=8 mobs=6 corpses=0
 можно задать переменной `UNITY_EDITOR_PATH`; если Editor не установлен, скрипт
 завершится с понятной ошибкой.
 
+### 3.2. Android APK
+
+Для телефона нужен модуль **Android Build Support** (SDK/NDK/OpenJDK ставятся вместе с ним).
+В Unity Hub: **Installs → 6000.3.28f1 → Add modules → Android Build Support**.
+
+Затем:
+
+```powershell
+pwsh -File tools/unity/build-android.ps1
+```
+
+Скрипт сам определяет LAN-IP этого компьютера и зашивает его как адрес сервера по
+умолчанию. Готовый файл: `unity-client/Builds/android/AlbionPrototype.apk` (debug-подпись,
+ARM64, IL2CPP).
+
+Порядок запуска:
+
+1. На компьютере: `dotnet run --project src/Server -c Release -- --udp 9050` и разрешить
+   Windows Firewall входящие UDP-соединения для `dotnet`/сервера.
+2. Телефон и компьютер — в одной Wi-Fi сети; установить APK (разрешить установку из
+   неизвестных источников).
+3. В приложении проверить IP (подставлен при сборке) и нажать «Подключиться». Если IP
+   компьютера изменился — ввести новый в поле и нажать «Показать клавиатуру для IP».
+
+Управление: слева виртуальный стик, справа кнопка «УДАР», сверху «Лут/Крафт/Навыки».
+Клавиатура и мышь на телефоне не нужны. iOS на Windows не собирается.
+
 ## 4. Запуск сервера
 
 ```powershell
@@ -197,6 +226,7 @@ Mobile-профиль: **Albion → Build → Mobile** или `BuildMobileBatch`
 | **C** | экран крафта (рецепты и кнопки) |
 | **K** | дерево навыков текущей ветки оружия |
 | **1 / 2** | меч / топор (только визуально, клиентски) |
+| **Android** | левый стик — движение, правая кнопка — удар, верхние кнопки — лут/крафт/навыки |
 | **Esc** | освободить курсор (в редакторе — остановить Play) |
 
 Камера следует за игроком. HUD показывает подключение, снапшоты/дельты, `cfg`-хеш, профиль,
@@ -379,4 +409,5 @@ docs/                  план, ADR, состояние, логи, демо
 Код прототипа — приватный учебный проект. Сторонние ассеты (dReal Warrior, All Star Characters)
 распространяются по лицензии Unity Asset Store и не предназначены для самостоятельной
 перепубликации; в репозиторий включён только минимальный runtime-набор.
+
 

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
@@ -30,16 +31,32 @@ namespace Albion.Editor
             Build("mobile", MobileDefines);
         }
 
+        /// <summary>Сборка Android APK для телефона (меню).</summary>
+        [MenuItem("Albion/Build/Android")]
+        public static void BuildAndroid()
+        {
+            BuildAndroidInternal();
+        }
+
+        /// <summary>Точка входа для batchmode: Android APK.</summary>
+        public static void BuildAndroidBatch()
+        {
+            BuildAndroidInternal();
+            EditorApplication.Exit(0);
+        }
+
         /// <summary>Точка входа для batchmode: desktop.</summary>
         public static void BuildDesktopBatch()
         {
             BuildDesktop();
+            EditorApplication.Exit(0);
         }
 
         /// <summary>Точка входа для batchmode: mobile.</summary>
         public static void BuildMobileBatch()
         {
             BuildMobile();
+            EditorApplication.Exit(0);
         }
 
         private static void Build(string profile, string defines)
@@ -79,6 +96,88 @@ namespace Albion.Editor
             if (summary.result != BuildResult.Succeeded)
             {
                 throw new InvalidOperationException("M10: сборка " + profile + " провалена (" + summary.result + ").");
+            }
+        }
+
+        private static void BuildAndroidInternal()
+        {
+            PlayerSettings.colorSpace = ColorSpace.Linear;
+            PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.Android, MobileDefines);
+
+            PlayerSettings.productName = "Albion Prototype";
+            PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.albion.prototype");
+            PlayerSettings.bundleVersion = "0.5.0";
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
+            PlayerSettings.allowedAutorotateToPortrait = false;
+            PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
+            PlayerSettings.allowedAutorotateToLandscapeRight = false;
+
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26;
+            PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
+            PlayerSettings.Android.forceInternetPermission = true;
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
+            ConfigureAndroidSdk();
+
+            var scenes = EditorBuildSettings.scenes
+                .Where(scene => scene.enabled)
+                .Select(scene => scene.path)
+                .ToArray();
+            if (scenes.Length == 0)
+            {
+                scenes = new[] { AlbionWorldBuilder.ScenePath };
+            }
+
+            var location = "Builds/android/AlbionPrototype.apk";
+            var options = new BuildPlayerOptions
+            {
+                scenes = scenes,
+                locationPathName = location,
+                target = BuildTarget.Android,
+                options = BuildOptions.None,
+            };
+
+            var report = BuildPipeline.BuildPlayer(options);
+            var summary = report.summary;
+
+            PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.Android, string.Empty);
+            Debug.Log("Android build: result=" + summary.result
+                + ", size=" + summary.totalSize
+                + ", errors=" + summary.totalErrors
+                + ", path=" + location);
+
+            if (summary.result != BuildResult.Succeeded)
+            {
+                throw new InvalidOperationException("Android: сборка провалена (" + summary.result + ").");
+            }
+        }
+
+        // Модуль Android из Hub кладёт SDK/NDK/JDK рядом с Editor; если пути ещё не заданы,
+        // прописываем их, иначе batchmode-сборка не находит инструменты.
+        private static void ConfigureAndroidSdk()
+        {
+            var androidRoot = Path.Combine(EditorApplication.applicationContentsPath, "PlaybackEngines/AndroidPlayer");
+            if (!Directory.Exists(androidRoot))
+            {
+                return;
+            }
+
+            var sdk = Path.Combine(androidRoot, "SDK");
+            var ndk = Path.Combine(androidRoot, "NDK");
+            var jdk = Path.Combine(androidRoot, "OpenJDK");
+            if (Directory.Exists(sdk))
+            {
+                EditorPrefs.SetString("AndroidSdkRoot", sdk);
+            }
+
+            if (Directory.Exists(ndk))
+            {
+                EditorPrefs.SetString("AndroidNdkRoot", ndk);
+            }
+
+            if (Directory.Exists(jdk))
+            {
+                EditorPrefs.SetString("JdkPath", jdk);
             }
         }
     }

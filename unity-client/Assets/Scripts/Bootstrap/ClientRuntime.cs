@@ -32,7 +32,14 @@ namespace Albion.Client
         private UnityInputSource _input;
         private CameraFollow _cameraFollow;
         private ClientHud _hud;
+        private MobileControls? _mobile;
         private string _status = "connecting...";
+        private bool _awaitingConnect;
+        private string _hostInput = "192.168.1.2";
+        private string _portInput = "9050";
+        private string _connectError = string.Empty;
+        private TouchScreenKeyboard? _keyboard;
+        private bool _mobileSkinConfigured;
 
         /// <summary>Клиентский конвейер после старта; <c>null</c> до загрузки конфига (для smoke-тестов).</summary>
         public ClientPipeline? Pipeline => _pipeline;
@@ -89,6 +96,43 @@ namespace Albion.Client
 
             var worldRoot = new GameObject("Entities").transform;
             _view = new UnityView(worldRoot, _content);
+
+            // На телефоне сервер не localhost: сначала спрашиваем IP компьютера, иначе клиент
+            // подключался бы к самому устройству. На desktop поведение прежнее — автостарт.
+            if (Application.isMobilePlatform)
+            {
+                Screen.orientation = ScreenOrientation.LandscapeLeft;
+                Screen.sleepTimeout = SleepTimeout.NeverSleep;
+                _awaitingConnect = true;
+                _hostInput = PlayerPrefs.GetString("albion.serverHost", ReadMobileDefaultHost());
+                _portInput = PlayerPrefs.GetString("albion.serverPort", "9050");
+                _status = "укажите адрес сервера";
+                return;
+            }
+
+            StartSession(host, port);
+        }
+
+        private static string ReadMobileDefaultHost()
+        {
+            // build-android.ps1 кладёт IP компьютера в Resources/MobileServerHost.txt, чтобы
+            // на телефоне не вводить адрес вручную. Иначе остаётся понятный placeholder.
+            var asset = Resources.Load<TextAsset>("MobileServerHost");
+            if (asset != null && !string.IsNullOrWhiteSpace(asset.text))
+            {
+                return asset.text.Trim();
+            }
+
+            return "192.168.1.2";
+        }
+
+        private void StartSession(string host, int port)
+        {
+            if (_pipeline != null)
+            {
+                return;
+            }
+
             var moveSpeed = _content.GetActor(1).MoveSpeed;
             _input = new UnityInputSource(
                 ResolveAbilityTarget,
@@ -97,12 +141,20 @@ namespace Albion.Client
                 () => _pipeline != null && _pipeline.Prediction != null && _pipeline.Prediction.IsAbilityReady,
                 PlayerPosition,
                 () => _cameraFollow != null ? _cameraFollow.GetComponent<Camera>() : Camera.main,
-                equipWeapon: _view.EquipWeapon);
+                equipWeapon: _view.EquipWeapon,
+                touchMove: () => _mobile != null ? _mobile.Move : System.Numerics.Vector2.Zero,
+                touchAttack: () => _mobile != null && _mobile.AttackHeld);
             _transport = new LiteNetLibTransport(host, port);
             _pipeline = new ClientPipeline(_transport, _input, _view, content: _content);
             gameObject.AddComponent<CooldownHud>().Initialize(_pipeline);
             _hud = gameObject.AddComponent<ClientHud>();
             _hud.Initialize(_pipeline, _content);
+
+            if (Application.isMobilePlatform)
+            {
+                _mobile = gameObject.AddComponent<MobileControls>();
+                _mobile.Initialize(_hud);
+            }
 
             _pipeline.SessionReady += entityId =>
             {
@@ -190,10 +242,108 @@ namespace Albion.Client
 
         private void OnGUI()
         {
+            if (Application.isMobilePlatform && !_mobileSkinConfigured)
+            {
+                var fontSize = Mathf.Max(18, Mathf.RoundToInt(Screen.height / 55f));
+                GUI.skin.label.fontSize = fontSize;
+                GUI.skin.button.fontSize = fontSize;
+                GUI.skin.textField.fontSize = fontSize;
+                GUI.skin.button.fixedHeight = 48f;
+                GUI.skin.textField.fixedHeight = 40f;
+                _mobileSkinConfigured = true;
+            }
+
+            if (_awaitingConnect)
+            {
+                DrawConnectPanel();
+                return;
+            }
+
             GUI.Label(
                 new Rect(12f, Screen.height - 24f, Screen.width - 24f, 20f),
                 _status + "  |  cfg: " + (_content == null ? "-" : _content.Hash.Substring(0, Math.Min(8, _content.Hash.Length)))
                 + "  |  fps: " + _fpsSmoothed.ToString("0"));
+        }
+
+        private void DrawConnectPanel()
+        {
+            var width = Mathf.Min(Screen.width - 40f, 760f);
+            var height = 420f;
+            var rect = new Rect((Screen.width - width) * 0.5f, (Screen.height - height) * 0.5f, width, height);
+            GUI.Box(rect, "Albion Prototype — подключение");
+
+            GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 52f, width - 48f, height - 76f));
+            GUILayout.Label("IP компьютера, где запущен сервер:");
+            _hostInput = GUILayout.TextField(_hostInput, 64);
+            GUILayout.Label("Порт (по умолчанию 9050):");
+            _portInput = GUILayout.TextField(_portInput, 8);
+
+            if (GUILayout.Button("Показать клавиатуру для IP"))
+            {
+                _keyboard = TouchScreenKeyboard.Open(
+                    _hostInput,
+                    TouchScreenKeyboardType.NumbersAndPunctuation,
+                    false,
+                    false,
+                    false,
+                    false,
+                    "192.168.1.2");
+            }
+
+            if (_keyboard != null)
+            {
+                if (_keyboard.status == TouchScreenKeyboard.Status.Done)
+                {
+                    _hostInput = _keyboard.text.Trim();
+                    _keyboard = null;
+                }
+                else if (_keyboard.status == TouchScreenKeyboard.Status.Canceled)
+                {
+                    _keyboard = null;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(_connectError))
+            {
+                GUILayout.Label(_connectError);
+            }
+
+            if (GUILayout.Button("Подключиться"))
+            {
+                ConnectFromPanel();
+            }
+
+            GUILayout.EndArea();
+        }
+
+        private void ConnectFromPanel()
+        {
+            var host = _hostInput.Trim();
+            if (string.IsNullOrEmpty(host))
+            {
+                _connectError = "Введите IP компьютера.";
+                return;
+            }
+
+            if (!int.TryParse(_portInput.Trim(), out var port) || port <= 0 || port > 65535)
+            {
+                _connectError = "Порт должен быть числом 1..65535.";
+                return;
+            }
+
+            _connectError = string.Empty;
+            if (_keyboard != null)
+            {
+                _keyboard.active = false;
+                _keyboard = null;
+            }
+
+            PlayerPrefs.SetString("albion.serverHost", host);
+            PlayerPrefs.SetString("albion.serverPort", port.ToString());
+            PlayerPrefs.Save();
+            _awaitingConnect = false;
+            _status = "connecting...";
+            StartSession(host, port);
         }
 
         private void EnsureCamera()

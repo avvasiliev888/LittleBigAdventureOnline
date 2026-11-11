@@ -24,6 +24,8 @@ namespace Albion.Client
         private readonly Func<UnityVector3>? _playerPosition;
         private readonly Func<UnityCamera?>? _camera;
         private readonly Action<WeaponKind>? _equipWeapon;
+        private readonly Func<System.Numerics.Vector2>? _touchMove;
+        private readonly Func<bool>? _touchAttack;
         private readonly float _walkScale;
         private readonly float _mouseMoveThreshold;
         private bool _abilityPressed;
@@ -65,6 +67,12 @@ namespace Albion.Client
         /// Клиентское переключение видимого оружия: 1 — меч, 2 — топор. Сервер не участвует,
         /// поэтому команда способности и протокол не меняются (M10.11).
         /// </param>
+        /// <param name="touchMove">
+        /// Направление экранного стика для мобильной сборки; <c>null</c> на desktop.
+        /// </param>
+        /// <param name="touchAttack">
+        /// Удержание экранной кнопки удара для мобильной сборки; <c>null</c> на desktop.
+        /// </param>
         public UnityInputSource(
             Func<uint>? abilityTarget = null,
             float walkScale = 1f,
@@ -73,7 +81,9 @@ namespace Albion.Client
             Func<UnityVector3>? playerPosition = null,
             Func<UnityCamera?>? camera = null,
             float mouseMoveThreshold = 0.5f,
-            Action<WeaponKind>? equipWeapon = null)
+            Action<WeaponKind>? equipWeapon = null,
+            Func<System.Numerics.Vector2>? touchMove = null,
+            Func<bool>? touchAttack = null)
         {
             _abilityTarget = abilityTarget;
             _walkScale = float.IsFinite(walkScale) && walkScale > 0f ? Mathf.Min(walkScale, 1f) : 1f;
@@ -82,6 +92,8 @@ namespace Albion.Client
             _playerPosition = playerPosition;
             _camera = camera;
             _equipWeapon = equipWeapon;
+            _touchMove = touchMove;
+            _touchAttack = touchAttack;
             _mouseMoveThreshold = float.IsFinite(mouseMoveThreshold) && mouseMoveThreshold > 0f
                 ? mouseMoveThreshold
                 : 0.5f;
@@ -95,7 +107,11 @@ namespace Albion.Client
         /// </summary>
         public void PollFrame()
         {
-            if (Input.GetKey(KeyCode.Space) || Input.GetMouseButton(0))
+            var touchAttack = _touchAttack != null && _touchAttack();
+            // На Android касание приходит и как mouse button 0; чтобы тапы по HUD/стику не
+            // запускали удар, мышь учитываем только на desktop. Атака на телефоне — кнопка.
+            if (Input.GetKey(KeyCode.Space) || touchAttack
+                || (!Application.isMobilePlatform && Input.GetMouseButton(0)))
             {
                 _abilityPressed = true;
             }
@@ -174,14 +190,15 @@ namespace Albion.Client
             }
 
             var keyboard = new System.Numerics.Vector2(x, z);
-            if (!TryReadMouseDirection(out var mouse))
+            var touch = _touchMove != null ? _touchMove() : System.Numerics.Vector2.Zero;
+            if (Application.isMobilePlatform || !TryReadMouseDirection(out var mouse))
             {
-                return keyboard;
+                return keyboard + touch;
             }
 
             // Мышь и клавиатура комбинируются: W + ПКМ дают диагональ, а противоположные
             // направления взаимно гасятся (персонаж останавливается).
-            return keyboard + mouse;
+            return keyboard + mouse + touch;
         }
 
         private bool TryReadMouseDirection(out System.Numerics.Vector2 direction)

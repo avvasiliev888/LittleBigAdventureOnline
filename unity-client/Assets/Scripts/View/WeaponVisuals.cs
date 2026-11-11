@@ -65,6 +65,9 @@ namespace Albion.Client
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown weapon.");
             }
 
+            if (Equipped == kind && _sword != null && _axe != null
+                && (_sword.gameObject.activeSelf || _axe.gameObject.activeSelf))
+                return;
             Equipped = kind;
             if (_sword == null || _axe == null) return;
             // The vendor prefab only has sword/axe. Keep a visible weapon for bow/staff/dagger

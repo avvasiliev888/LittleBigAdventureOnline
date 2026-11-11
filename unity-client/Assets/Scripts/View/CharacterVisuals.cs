@@ -199,6 +199,11 @@ namespace Albion.Client
         /// <summary>Equips one authored weapon prefab by kind.</summary>
         public void Equip(WeaponKind kind)
         {
+            var binding = FindBinding(kind);
+            if (_equipped == kind
+                && (_weaponInstance != null || binding == null || binding.Prefab == null))
+                return;
+
             _equipped = kind;
             if (_weaponInstance != null)
             {
@@ -206,7 +211,6 @@ namespace Albion.Client
                 _weaponInstance = null;
             }
 
-            var binding = FindBinding(kind);
             if (binding == null || binding.Prefab == null)
             {
                 return;

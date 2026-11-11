@@ -12,8 +12,6 @@ namespace Albion.Client
     public sealed class FantasyVisuals : MonoBehaviour
     {
         private const string OutlineName = "Toon Outline";
-        private const int OutlineVertexBudget = 80000;
-        private const int OutlineRendererBudget = 16;
         private static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
         private static readonly int ShadeColor = Shader.PropertyToID("_ShadeColor");
         private static readonly Dictionary<Material, Material> Converted = new Dictionary<Material, Material>();
@@ -23,16 +21,6 @@ namespace Albion.Client
         private static Mesh _box;
         private static Mesh _cone;
 
-        private struct OutlinePair
-        {
-            public Renderer Source;
-            public Renderer Hull;
-            public SkinnedMeshRenderer Skin;
-            public SkinnedMeshRenderer HullSkin;
-            public int BlendShapes;
-        }
-
-        private OutlinePair[] _outlines;
         private Transform _facing;
         private Transform _body;
         private Transform[] _limbs;
@@ -40,73 +28,6 @@ namespace Albion.Client
         private Vector3 _bodyRest;
         private bool _golem;
         private float _phase;
-
-        /// <summary>
-        /// Converts only the instantiated warrior materials, retaining its original animated rig,
-        /// authored colors, texture UV transforms and shared source assets. A separate renderer
-        /// draws the outline hull; URP is not expected to execute a second forward material pass.
-        /// </summary>
-        public static void ToonWarrior(GameObject visual)
-        {
-            var renderers = visual.GetComponentsInChildren<Renderer>(true);
-            var pairs = new List<OutlinePair>();
-            var verticesLeft = OutlineVertexBudget;
-            for (var r = 0; r < renderers.Length; r++)
-            {
-                var renderer = renderers[r];
-                if (!(renderer is SkinnedMeshRenderer) && !(renderer is MeshRenderer)) continue;
-                var materials = renderer.sharedMaterials;
-                for (var i = 0; i < materials.Length; i++)
-                {
-                    if (materials[i] != null) materials[i] = ToonMaterial(materials[i]);
-                }
-                renderer.sharedMaterials = materials;
-                var skin = renderer as SkinnedMeshRenderer;
-                var filter = renderer.GetComponent<MeshFilter>();
-                var mesh = skin != null ? skin.sharedMesh : filter != null ? filter.sharedMesh : null;
-                if (mesh == null || mesh.vertexCount > verticesLeft || pairs.Count >= OutlineRendererBudget) continue;
-                verticesLeft -= mesh.vertexCount;
-                var hullObject = new GameObject(OutlineName);
-                hullObject.layer = renderer.gameObject.layer;
-                hullObject.transform.SetParent(renderer.transform, false);
-                Renderer hull;
-                SkinnedMeshRenderer hullSkin = null;
-                if (skin != null)
-                {
-                    hullSkin = hullObject.AddComponent<SkinnedMeshRenderer>();
-                    hullSkin.sharedMesh = mesh;
-                    hullSkin.bones = skin.bones;
-                    hullSkin.rootBone = skin.rootBone;
-                    hullSkin.localBounds = skin.localBounds;
-                    hullSkin.quality = skin.quality;
-                    hullSkin.updateWhenOffscreen = skin.updateWhenOffscreen;
-                    hullSkin.skinnedMotionVectors = false;
-                    hull = hullSkin;
-                }
-                else
-                {
-                    hullObject.AddComponent<MeshFilter>().sharedMesh = mesh;
-                    hull = hullObject.AddComponent<MeshRenderer>();
-                }
-                var outlineMaterials = new Material[Mathf.Max(1, mesh.subMeshCount)];
-                for (var i = 0; i < outlineMaterials.Length; i++) outlineMaterials[i] = OutlineMaterial;
-                hull.sharedMaterials = outlineMaterials;
-                hull.enabled = renderer.enabled;
-                hull.renderingLayerMask = renderer.renderingLayerMask;
-                hull.shadowCastingMode = ShadowCastingMode.Off;
-                hull.receiveShadows = false;
-                hull.lightProbeUsage = LightProbeUsage.Off;
-                hull.reflectionProbeUsage = ReflectionProbeUsage.Off;
-                hull.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
-                pairs.Add(new OutlinePair
-                {
-                    Source = renderer, Hull = hull, Skin = skin, HullSkin = hullSkin,
-                    BlendShapes = skin != null ? mesh.blendShapeCount : 0,
-                });
-            }
-            var controller = visual.AddComponent<FantasyVisuals>();
-            controller._outlines = pairs.ToArray();
-        }
 
         /// <summary>Shared low-poly loot sack instead of a capsule corpse marker.</summary>
         public static GameObject CreateCorpse(Transform parent, uint corpseId)
@@ -157,19 +78,6 @@ namespace Albion.Client
             {
                 var sign = _golem ? (i % 2 == 0 ? 1f : -1f) : (i == 0 || i == 3 ? 1f : -1f);
                 _limbs[i].localRotation = _limbRest[i] * Quaternion.Euler(stride * sign * (_golem ? 19f : 27f), 0f, 0f);
-            }
-        }
-
-        private void LateUpdate()
-        {
-            if (_outlines == null) return;
-            for (var i = 0; i < _outlines.Length; i++)
-            {
-                var pair = _outlines[i];
-                if (pair.Source == null || pair.Hull == null) continue;
-                pair.Hull.enabled = pair.Source.enabled;
-                for (var shape = 0; shape < pair.BlendShapes; shape++)
-                    pair.HullSkin.SetBlendShapeWeight(shape, pair.Skin.GetBlendShapeWeight(shape));
             }
         }
 

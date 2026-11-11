@@ -193,6 +193,7 @@ namespace Albion.Editor
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             AssetDatabase.SaveAssets();
+            WorldColliderExporter.ExportFromOpenScene();
             Debug.Log("Stage6 procedural world: three 320x320 regions, Perlin mountain borders, natural pass, varied volumetric trees, charred red zone, instanced meadow.");
         }
 

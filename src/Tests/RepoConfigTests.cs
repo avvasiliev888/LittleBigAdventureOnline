@@ -38,6 +38,28 @@ namespace Tests
         }
 
         [Fact]
+        public void RepoConfig_ContainsGeneratedStaticColliders()
+        {
+            var config = LoadRepoConfig();
+
+            Assert.True(config.WorldColliders.Count > 500, "Ожидались деревья, камни и столбы из сцены.");
+            var trees = 0;
+            var rocks = 0;
+            var columns = 0;
+            foreach (var collider in config.WorldColliders.Items)
+            {
+                Assert.True(collider.Radius > 0f);
+                if (collider.Kind == "tree") trees++;
+                else if (collider.Kind == "rock") rocks++;
+                else if (collider.Kind == "column") columns++;
+            }
+
+            Assert.True(trees > 400, "Деревьев в конфиге: " + trees);
+            Assert.True(rocks > 50, "Камней в конфиге: " + rocks);
+            Assert.True(columns >= 4, "Столбов/стражей прохода: " + columns);
+        }
+
+        [Fact]
         public void RepoConfig_Zones_HaveDocumentedRules()
         {
             var config = LoadRepoConfig();

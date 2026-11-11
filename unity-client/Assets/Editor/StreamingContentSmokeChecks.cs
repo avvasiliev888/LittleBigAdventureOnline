@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace Albion.Editor
 {
-    /// <summary>Регрессия URI-загрузки: девять файлов, BOM, пробелы, битый/отсутствующий JSON.</summary>
+    /// <summary>Регрессия URI-загрузки: десять файлов, BOM, пробелы, битый/отсутствующий JSON.</summary>
     internal static class StreamingContentSmokeChecks
     {
         public static IEnumerator Run(Action<string> failed, Action passed)
@@ -26,7 +26,7 @@ namespace Albion.Editor
                     ConfigLoader.ZonesFileName, ConfigLoader.ItemsFileName,
                     ConfigLoader.SkillTreeFileName, ConfigLoader.ResourcesFileName,
                     ConfigLoader.RecipesFileName, ConfigLoader.TradersFileName,
-                    ConfigLoader.MobsFileName,
+                    ConfigLoader.MobsFileName, ConfigLoader.WorldCollidersFileName,
                 })
                 {
                     File.Copy(Path.Combine(source, name), Path.Combine(temp, name));
@@ -40,7 +40,7 @@ namespace Albion.Editor
                 yield return StreamingContentLoader.Load(uri, value => content = value, value => error = value);
                 if (content == null || error != null || content.Hash != ConfigLoader.ComputeHash(source))
                 {
-                    failed("URI/BOM/all-nine-file hash mismatch: " + error);
+                    failed("URI/BOM/all-ten-file hash mismatch: " + error);
                     yield break;
                 }
 

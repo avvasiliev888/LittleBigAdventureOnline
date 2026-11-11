@@ -319,7 +319,8 @@ namespace Client.Network
                     EntityId,
                     actor,
                     _content.GetAbility(actor.AbilityId),
-                    zones: _content.Config.Zones);
+                    zones: _content.Config.Zones,
+                    worldColliders: _content.Config.WorldColliders);
                 if (Math.Abs(actor.MoveSpeed - moveSpeed) > 0.001f)
                 {
                     _log.Add("[config] клиент и сервер расходятся: moveSpeed клиента "
@@ -595,7 +596,10 @@ namespace Client.Network
 
             // Представление получит исправленную позицию на ближайшем клиентском тике (сэмплы идут
             // с частотой 20 Гц), поэтому коррекция приходит с задержкой не больше одного тика.
-            Prediction.Reconcile(snapshot, acknowledgedSequence);
+            Prediction.Reconcile(
+                snapshot,
+                acknowledgedSequence,
+                _content == null ? null : _content.GetCollisionRadius);
         }
 
         private void OnReconciled(PredictionReconciliation reconciliation)

@@ -159,6 +159,10 @@ namespace Simulation.Core
 
             ProcessRespawns();
 
+            // Страховка от пересечений на спавне/респавне: даже если два актора появились
+            // в одной точке, сервер мягко разводит их до следующего шага движения.
+            MovementCollision.ResolveOverlaps(_state.Entities, _config?.Zones, _config?.WorldColliders);
+
             _state.Tick++;
         }
 
@@ -347,10 +351,17 @@ namespace Simulation.Core
             var direction = new Vector3(command.Direction.X, 0f, command.Direction.Y);
             var desired = entity.Position + (direction * (entity.MoveSpeed * deltaTime));
 
-            // Граница мира и проходы между зонами — правило симуляции, а не вежливость:
-            // из мира нельзя выйти и «спрятаться» вне зон, а границу с проходами нельзя
-            // пересечь вне прохода (иначе клиент и сервер разойдутся при реконсиляции).
-            entity.Position = _config!.Zones.ResolveMovement(entity.Position, desired);
+            // Граница мира, проходы и препятствия — правило симуляции, а не вежливость:
+            // из мира нельзя выйти и «спрятаться» вне зон, сквозь дерево/камень/столб и
+            // сквозь другого актора нельзя пройти (иначе клиент и сервер разойдутся).
+            entity.Position = MovementCollision.Resolve(
+                entity.Position,
+                desired,
+                entity.Actor.CollisionRadius,
+                _config!.Zones,
+                _config.WorldColliders,
+                BuildActorCircles(entity.Id),
+                entity.Id);
         }
 
         private void ApplyAbility(EntityState caster, AbilityCommand command)
@@ -918,15 +929,45 @@ namespace Simulation.Core
 
             if (distance <= step || distance <= 0.0001f)
             {
-                mob.Position = _config!.Zones.ResolveMovement(
-                    mob.Position, new Vector3(destination.X, 0f, destination.Z));
+                mob.Position = MovementCollision.Resolve(
+                    mob.Position,
+                    new Vector3(destination.X, 0f, destination.Z),
+                    mob.Actor.CollisionRadius,
+                    _config!.Zones,
+                    _config.WorldColliders,
+                    BuildActorCircles(mob.Id),
+                    mob.Id);
                 return true;
             }
 
             var scale = step / distance;
-            mob.Position = _config!.Zones.ResolveMovement(
-                mob.Position, new Vector3(mob.Position.X + (dx * scale), 0f, mob.Position.Z + (dz * scale)));
+            mob.Position = MovementCollision.Resolve(
+                mob.Position,
+                new Vector3(mob.Position.X + (dx * scale), 0f, mob.Position.Z + (dz * scale)),
+                mob.Actor.CollisionRadius,
+                _config!.Zones,
+                _config.WorldColliders,
+                BuildActorCircles(mob.Id),
+                mob.Id);
             return false;
+        }
+
+        /// <summary>
+        /// Круги живых акторов для проверки динамических столкновений; движущийся актор исключён.
+        /// </summary>
+        private List<CollisionCircle> BuildActorCircles(uint selfId)
+        {
+            var circles = new List<CollisionCircle>(_state.Entities.Count);
+            for (var i = 0; i < _state.Entities.Count; i++)
+            {
+                var entity = _state.Entities[i];
+                if (entity.Id != selfId && !entity.IsDead)
+                {
+                    circles.Add(CollisionCircle.FromEntity(entity));
+                }
+            }
+
+            return circles;
         }
 
         private static void ResetMobAi(EntityState mob)

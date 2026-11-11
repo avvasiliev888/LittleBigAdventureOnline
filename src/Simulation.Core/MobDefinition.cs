@@ -15,6 +15,9 @@ namespace Simulation.Core
     /// </remarks>
     public sealed class MobDefinition
     {
+        /// <summary>Радиус круга столкновения моба по умолчанию; значение приходит из JSON.</summary>
+        public const float DefaultCollisionRadius = 0.6f;
+
         private readonly IReadOnlyList<Vector2> _spawns;
         private readonly IReadOnlyList<Vector2> _patrolPoints;
         private readonly List<MobLootEntry> _loot;
@@ -43,6 +46,7 @@ namespace Simulation.Core
         /// <param name="patrolPoints">Смещения точек патруля от точки спавна; пусто — моб стоит на месте.</param>
         /// <param name="spawns">Точки спавна в мире; хотя бы одна.</param>
         /// <param name="loot">Таблица лута; пусто — только серебро.</param>
+        /// <param name="collisionRadius">Радиус круга столкновения моба, мировые единицы; положительный.</param>
         /// <exception cref="ArgumentOutOfRangeException">Если числовое значение вне допустимого диапазона.</exception>
         /// <exception cref="ArgumentException">Если ключ, имя или зона пусты, либо точки патруля некорректны.</exception>
         public MobDefinition(
@@ -68,7 +72,8 @@ namespace Simulation.Core
             float patrolPauseSeconds,
             IReadOnlyList<Vector2>? patrolPoints,
             IReadOnlyList<Vector2>? spawns,
-            IReadOnlyList<MobLootEntry>? loot)
+            IReadOnlyList<MobLootEntry>? loot,
+            float collisionRadius = DefaultCollisionRadius)
         {
             if (id == 0)
             {
@@ -176,6 +181,14 @@ namespace Simulation.Core
                     "PatrolPauseSeconds моба должен быть конечным неотрицательным числом.");
             }
 
+            if (!IsFinite(collisionRadius) || collisionRadius <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(collisionRadius),
+                    collisionRadius,
+                    "CollisionRadius моба должен быть конечным положительным числом.");
+            }
+
             if (spawns == null || spawns.Count == 0)
             {
                 throw new ArgumentException("У моба должна быть хотя бы одна точка спавна.", nameof(spawns));
@@ -229,7 +242,8 @@ namespace Simulation.Core
                 abilityId,
                 kind: ActorKind.Mob,
                 fameOnKill: fameOnKill,
-                inventorySlots: 1);
+                inventorySlots: 1,
+                collisionRadius: collisionRadius);
         }
 
         /// <summary>Идентификатор типа моба.</summary>

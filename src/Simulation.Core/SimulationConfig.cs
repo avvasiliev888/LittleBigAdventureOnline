@@ -19,8 +19,9 @@ namespace Simulation.Core
         private readonly Dictionary<uint, MobDefinition> _mobs;
         private readonly Dictionary<uint, MobDefinition> _mobsByActorId;
         private readonly List<MobDefinition> _mobTypes;
+        private readonly WorldColliders _worldColliders;
 
-        /// <summary>Создаёт конфигурацию мира из акторов, способностей, зон, предметов, дерева навыков, жил, рецептов, торговцев и мобов.</summary>
+        /// <summary>Создаёт конфигурацию мира из акторов, способностей, зон, предметов, дерева навыков, жил, рецептов, торговцев, мобов и препятствий.</summary>
         /// <param name="actors">Типы акторов; идентификаторы уникальны.</param>
         /// <param name="abilities">Способности; идентификаторы уникальны, все ссылки акторов разрешаются.</param>
         /// <param name="zones">Зоны мира; покрывают мир без разрывов и пересечений.</param>
@@ -30,6 +31,7 @@ namespace Simulation.Core
         /// <param name="recipes">Рецепты крафта; <c>null</c> — крафта нет.</param>
         /// <param name="traders">NPC-торговцы; <c>null</c> — торговли нет.</param>
         /// <param name="mobs">Типы PvE-мобов; <c>null</c> — мобов нет (тесты и миры без PvE).</param>
+        /// <param name="worldColliders">Статические препятствия; <c>null</c> — пустой мир.</param>
         /// <exception cref="ArgumentNullException">Если коллекция равна <c>null</c>.</exception>
         /// <exception cref="ArgumentException">
         /// При дубликатах идентификаторов, неразрешённых ссылках и противоречивых зонах.
@@ -43,7 +45,8 @@ namespace Simulation.Core
             IEnumerable<ResourceNodeConfig>? resourceNodes = null,
             IEnumerable<Recipe>? recipes = null,
             IEnumerable<NpcTrader>? traders = null,
-            IEnumerable<MobDefinition>? mobs = null)
+            IEnumerable<MobDefinition>? mobs = null,
+            IEnumerable<WorldCollider>? worldColliders = null)
         {
             if (actors == null)
             {
@@ -162,6 +165,7 @@ namespace Simulation.Core
             }
 
             ValidateMobs();
+            _worldColliders = new WorldColliders(worldColliders);
 
             Actors = _actors;
             Abilities = _abilities;
@@ -178,6 +182,9 @@ namespace Simulation.Core
 
         /// <summary>Карта зон мира с правилами PvP и смерти.</summary>
         public ZoneMap Zones { get; }
+
+        /// <summary>Статические препятствия процедурного мира (деревья, камни, столбы).</summary>
+        public WorldColliders WorldColliders => _worldColliders;
 
         /// <summary>Дерево навыков: ветки архетипов оружия (ADR-015).</summary>
         public SkillTree SkillTree { get; }

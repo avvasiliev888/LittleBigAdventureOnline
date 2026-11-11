@@ -8,6 +8,9 @@ namespace Simulation.Core
     /// </summary>
     public sealed class ActorConfig
     {
+        /// <summary>Радиус круга столкновения актора по умолчанию; значение приходит из JSON.</summary>
+        public const float DefaultCollisionRadius = 0.45f;
+
         /// <summary>Создаёт параметры актора.</summary>
         /// <param name="id">Идентификатор типа актора (уникален в конфиге).</param>
         /// <param name="maxHp">Максимальное здоровье; положительное.</param>
@@ -25,6 +28,10 @@ namespace Simulation.Core
         /// <param name="fameOnKill">Слава, которую получает убийца игрока-жертвы этого типа (ADR-015).</param>
         /// <param name="inventorySlots">Вместимость инвентаря в стопках; положительная (ADR-017).</param>
         /// <param name="startingSilver">Стартовое серебро; неотрицательное (ADR-017).</param>
+        /// <param name="collisionRadius">
+        /// Радиус круга столкновения, мировые единицы; положительный и конечный. Сервер и клиент
+        /// используют его для взаимного выталкивания игроков и мобов.
+        /// </param>
         public ActorConfig(
             uint id,
             int maxHp,
@@ -38,7 +45,8 @@ namespace Simulation.Core
             IReadOnlyList<LoadoutEquipment>? starterEquipment = null,
             int fameOnKill = 0,
             int inventorySlots = Inventory.DefaultCapacity,
-            int startingSilver = 0)
+            int startingSilver = 0,
+            float collisionRadius = DefaultCollisionRadius)
         {
             if (id == 0)
             {
@@ -103,6 +111,14 @@ namespace Simulation.Core
                     "Стартовое серебро не может быть отрицательным.");
             }
 
+            if (!(collisionRadius > 0f) || float.IsInfinity(collisionRadius))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(collisionRadius),
+                    collisionRadius,
+                    "CollisionRadius должен быть конечным положительным числом.");
+            }
+
             Id = id;
             MaxHp = maxHp;
             MoveSpeed = moveSpeed;
@@ -116,6 +132,7 @@ namespace Simulation.Core
             FameOnKill = fameOnKill;
             InventorySlots = inventorySlots;
             StartingSilver = startingSilver;
+            CollisionRadius = collisionRadius;
         }
 
         /// <summary>Идентификатор типа актора.</summary>
@@ -156,6 +173,9 @@ namespace Simulation.Core
 
         /// <summary>Стартовое серебро персонажа.</summary>
         public int StartingSilver { get; }
+
+        /// <summary>Радиус круга столкновения актора в мировых единицах.</summary>
+        public float CollisionRadius { get; }
 
         private static IReadOnlyList<T> CopyLoadout<T>(IReadOnlyList<T>? source, string parameterName)
             where T : class

@@ -28,6 +28,9 @@ namespace Client.Network
         private readonly ActorConfig? _actor;
         private AbilityConfig? _ability;
         private readonly ZoneMap? _zones;
+        private readonly WorldColliders? _worldColliders;
+        private readonly float _collisionRadius;
+        private readonly List<CollisionCircle> _dynamicCircles = new List<CollisionCircle>();
         private readonly List<ICommand> _unacknowledged = new List<ICommand>();
         private Vector3 _position;
         private bool _hasPosition;
@@ -39,8 +42,16 @@ namespace Client.Network
         /// <param name="moveSpeed">Скорость перемещения актора, единиц в секунду.</param>
         /// <param name="tolerance">Допустимое расхождение для реконсиляции.</param>
         /// <param name="zones">Карта зон для тех же границ и проходов, что у сервера; <c>null</c> — без границ.</param>
-        public ClientPrediction(uint entityId, float moveSpeed, float tolerance = DefaultTolerance, ZoneMap? zones = null)
-            : this(entityId, moveSpeed, null, null, tolerance, zones)
+        /// <param name="worldColliders">Те же статические препятствия, что у сервера; <c>null</c> — без них.</param>
+        /// <param name="collisionRadius">Радиус актора; по умолчанию — значение из <see cref="ActorConfig"/>.</param>
+        public ClientPrediction(
+            uint entityId,
+            float moveSpeed,
+            float tolerance = DefaultTolerance,
+            ZoneMap? zones = null,
+            WorldColliders? worldColliders = null,
+            float collisionRadius = ActorConfig.DefaultCollisionRadius)
+            : this(entityId, moveSpeed, null, null, tolerance, zones, worldColliders, collisionRadius)
         {
         }
 
@@ -53,20 +64,24 @@ namespace Client.Network
         /// <param name="ability">Способность актора из конфига.</param>
         /// <param name="tolerance">Допустимое расхождение для реконсиляции.</param>
         /// <param name="zones">Карта зон для тех же границ и проходов, что у сервера; <c>null</c> — без границ.</param>
+        /// <param name="worldColliders">Те же статические препятствия, что у сервера; <c>null</c> — без них.</param>
         /// <exception cref="ArgumentNullException">Если <paramref name="actor"/> или <paramref name="ability"/> равны <c>null</c>.</exception>
         public ClientPrediction(
             uint entityId,
             ActorConfig actor,
             AbilityConfig ability,
             float tolerance = DefaultTolerance,
-            ZoneMap? zones = null)
+            ZoneMap? zones = null,
+            WorldColliders? worldColliders = null)
             : this(
                 entityId,
                 (actor ?? throw new ArgumentNullException(nameof(actor))).MoveSpeed,
                 actor,
                 ability ?? throw new ArgumentNullException(nameof(ability)),
                 tolerance,
-                zones)
+                zones,
+                worldColliders,
+                (actor ?? throw new ArgumentNullException(nameof(actor))).CollisionRadius)
         {
         }
 
@@ -76,11 +91,18 @@ namespace Client.Network
             ActorConfig? actor,
             AbilityConfig? ability,
             float tolerance,
-            ZoneMap? zones)
+            ZoneMap? zones,
+            WorldColliders? worldColliders,
+            float collisionRadius)
         {
             if (float.IsNaN(moveSpeed) || float.IsInfinity(moveSpeed) || moveSpeed < 0f)
             {
                 throw new ArgumentOutOfRangeException(nameof(moveSpeed), moveSpeed, "Скорость должна быть конечной и неотрицательной.");
+            }
+
+            if (!(collisionRadius > 0f) || float.IsInfinity(collisionRadius))
+            {
+                throw new ArgumentOutOfRangeException(nameof(collisionRadius), collisionRadius, "Радиус должен быть конечным положительным числом.");
             }
 
             _entityId = entityId;
@@ -88,6 +110,8 @@ namespace Client.Network
             _actor = actor;
             _ability = ability;
             _zones = zones;
+            _worldColliders = worldColliders;
+            _collisionRadius = collisionRadius;
             Tolerance = tolerance;
         }
 
@@ -96,6 +120,9 @@ namespace Client.Network
 
         /// <summary>Скорость актора из HelloAck (или из конфига, если он передан).</summary>
         public float MoveSpeed => _moveSpeed;
+
+        /// <summary>Радиус столкновения актора из конфига.</summary>
+        public float CollisionRadius => _collisionRadius;
 
         /// <summary>Тип актора из конфига клиента (M9); <c>null</c>, если конфиг не передан.</summary>
         public ActorConfig? Actor => _actor;
@@ -231,8 +258,15 @@ namespace Client.Network
         /// </summary>
         /// <param name="snapshot">Снапшот сервера на том же тике, что и подтверждение.</param>
         /// <param name="acknowledgedSequence">Последняя команда, обработанная сервером на этом тике.</param>
+        /// <param name="radiusForActor">
+        /// Радиус актора по <c>actorId</c> из снапшота; <c>null</c> — радиус игрока по умолчанию.
+        /// Клиент берёт его из того же конфига, что сервер.
+        /// </param>
         /// <returns><c>true</c>, если предсказание было скорректировано.</returns>
-        public bool Reconcile(SimulationSnapshot snapshot, uint acknowledgedSequence)
+        public bool Reconcile(
+            SimulationSnapshot snapshot,
+            uint acknowledgedSequence,
+            Func<uint, float>? radiusForActor = null)
         {
             if (snapshot == null)
             {
@@ -242,6 +276,29 @@ namespace Client.Network
             if (!TryFindOwnEntity(snapshot, out var ownEntity))
             {
                 return false;
+            }
+
+            // Удалённые акторы из последнего снапшота — динамические препятствия предсказания.
+            // Радиусы берутся из того же конфига, а не из визуального масштаба Unity-модели.
+            _dynamicCircles.Clear();
+            foreach (var entity in snapshot.Entities)
+            {
+                if (entity.Id == _entityId || entity.IsDead)
+                {
+                    continue;
+                }
+
+                var radius = radiusForActor == null
+                    ? ActorConfig.DefaultCollisionRadius
+                    : radiusForActor(entity.ActorId);
+                if (radius > 0f && !float.IsInfinity(radius))
+                {
+                    _dynamicCircles.Add(new CollisionCircle(
+                        entity.Id,
+                        entity.Position.X,
+                        entity.Position.Z,
+                        radius));
+                }
             }
 
             var serverPosition = new Vector3(ownEntity.Position.X, ownEntity.Position.Y, ownEntity.Position.Z);
@@ -311,6 +368,7 @@ namespace Client.Network
             _hasPosition = true;
             _cooldownRemainingTicks = 0;
             _pendingAbilitySequence = 0;
+            _dynamicCircles.Clear();
         }
 
         private Vector3 Step(Vector3 position, ICommand command)
@@ -322,9 +380,17 @@ namespace Client.Network
                     position.Y,
                     position.Z + (move.Direction.Y * _moveSpeed * TickDelta));
 
-                // То же правило границ/проходов, что в симуляции: иначе стена даёт
-                // постоянную реконсиляцию и «дрожание» у перехода между зонами.
-                return _zones == null ? desired : _zones.ResolveMovement(position, desired);
+                // Та же логика, что в симуляции: границы/проходы и круговые препятствия.
+                // Иначе клиент проходил бы сквозь дерево до ближайшего снапшота, а затем
+                // получал рывок при реконсиляции.
+                return MovementCollision.Resolve(
+                    position,
+                    desired,
+                    _collisionRadius,
+                    _zones,
+                    _worldColliders,
+                    _dynamicCircles,
+                    _entityId);
             }
 
             return position;

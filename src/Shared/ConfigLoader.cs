@@ -70,6 +70,9 @@ namespace Shared
         /// <summary>Имя файла с PvE-мобами (ADR-019).</summary>
         public const string MobsFileName = "mobs.json";
 
+        /// <summary>Имя файла со статическими препятствиями процедурного мира.</summary>
+        public const string WorldCollidersFileName = "world-colliders.json";
+
         /// <summary>Пустое дерево навыков: используется тестами и мирами без прогрессии.</summary>
         public const string EmptySkillTreeJson = "{\"archetypes\": []}";
 
@@ -85,15 +88,18 @@ namespace Shared
         /// <summary>Пустой список мобов: используется тестами и мирами без PvE.</summary>
         public const string EmptyMobsJson = "[]";
 
+        /// <summary>Пустой список статических препятствий: тестовые миры без декора.</summary>
+        public const string EmptyWorldCollidersJson = "[]";
+
         /// <summary>Загружает конфигурацию из каталога.</summary>
         /// <param name="directory">
         /// Каталог с <see cref="ActorsFileName"/>, <see cref="AbilitiesFileName"/>,
         /// <see cref="ZonesFileName"/>, <see cref="ItemsFileName"/>, <see cref="SkillTreeFileName"/>,
-        /// <see cref="ResourcesFileName"/>, <see cref="RecipesFileName"/>, <see cref="TradersFileName"/>
-        /// и <see cref="MobsFileName"/>.
+        /// <see cref="ResourcesFileName"/>, <see cref="RecipesFileName"/>, <see cref="TradersFileName"/>,
+        /// <see cref="MobsFileName"/> и <see cref="WorldCollidersFileName"/>.
         /// </param>
         /// <exception cref="ArgumentNullException">Если <paramref name="directory"/> равен <c>null</c>.</exception>
-        /// <exception cref="ConfigValidationException">Если файлы отсутствуют или невалидны.</exception>
+        /// <exception cref="ConfigValidationException">Если обязательные файлы отсутствуют или невалидны.</exception>
         public static SimulationConfig LoadFromDirectory(string directory)
         {
             if (directory == null)
@@ -110,10 +116,11 @@ namespace Shared
                 Path.Combine(directory, ResourcesFileName),
                 Path.Combine(directory, RecipesFileName),
                 Path.Combine(directory, TradersFileName),
-                Path.Combine(directory, MobsFileName));
+                Path.Combine(directory, MobsFileName),
+                Path.Combine(directory, WorldCollidersFileName));
         }
 
-        /// <summary>Загружает конфигурацию из девяти файлов.</summary>
+        /// <summary>Загружает конфигурацию из десяти файлов.</summary>
         /// <param name="actorsPath">Путь к <see cref="ActorsFileName"/>.</param>
         /// <param name="abilitiesPath">Путь к <see cref="AbilitiesFileName"/>.</param>
         /// <param name="zonesPath">Путь к <see cref="ZonesFileName"/>.</param>
@@ -123,7 +130,11 @@ namespace Shared
         /// <param name="recipesPath">Путь к <see cref="RecipesFileName"/>.</param>
         /// <param name="tradersPath">Путь к <see cref="TradersFileName"/>.</param>
         /// <param name="mobsPath">Путь к <see cref="MobsFileName"/>.</param>
-        /// <exception cref="ConfigValidationException">Если файлы отсутствуют или невалидны.</exception>
+        /// <param name="worldCollidersPath">
+        /// Путь к <see cref="WorldCollidersFileName"/>; <c>null</c> или отсутствующий файл — мир без
+        /// статических препятствий (тесты и старые конфиги).
+        /// </param>
+        /// <exception cref="ConfigValidationException">Если обязательные файлы отсутствуют или невалидны.</exception>
         public static SimulationConfig Load(
             string actorsPath,
             string abilitiesPath,
@@ -133,7 +144,8 @@ namespace Shared
             string resourcesPath,
             string recipesPath,
             string tradersPath,
-            string mobsPath)
+            string mobsPath,
+            string? worldCollidersPath = null)
         {
             if (actorsPath == null)
             {
@@ -189,6 +201,7 @@ namespace Shared
             var recipesJson = ReadFile(recipesPath);
             var tradersJson = ReadFile(tradersPath);
             var mobsJson = ReadFile(mobsPath);
+            var worldCollidersJson = ReadOptionalFile(worldCollidersPath);
 
             return LoadFromJson(
                 actorsJson,
@@ -200,7 +213,8 @@ namespace Shared
                 resourcesJson,
                 recipesJson,
                 tradersJson,
-                mobsJson);
+                mobsJson,
+                worldCollidersJson);
         }
 
         /// <summary>Загружает конфигурацию из строк JSON.</summary>
@@ -214,6 +228,7 @@ namespace Shared
         /// <param name="recipesJson">Содержимое <see cref="RecipesFileName"/>; пустой список по умолчанию.</param>
         /// <param name="tradersJson">Содержимое <see cref="TradersFileName"/>; пустой список по умолчанию.</param>
         /// <param name="mobsJson">Содержимое <see cref="MobsFileName"/>; пустой список по умолчанию.</param>
+        /// <param name="worldCollidersJson">Содержимое <see cref="WorldCollidersFileName"/>; пустой список по умолчанию.</param>
         /// <exception cref="ConfigValidationException">Если JSON невалиден.</exception>
         public static SimulationConfig LoadFromJson(
             string actorsJson,
@@ -225,7 +240,8 @@ namespace Shared
             string resourcesJson = EmptyResourcesJson,
             string recipesJson = EmptyRecipesJson,
             string tradersJson = EmptyTradersJson,
-            string mobsJson = EmptyMobsJson)
+            string mobsJson = EmptyMobsJson,
+            string worldCollidersJson = EmptyWorldCollidersJson)
         {
             if (actorsJson == null)
             {
@@ -272,6 +288,11 @@ namespace Shared
                 throw new ArgumentNullException(nameof(mobsJson));
             }
 
+            if (worldCollidersJson == null)
+            {
+                throw new ArgumentNullException(nameof(worldCollidersJson));
+            }
+
             var actorDtos = ParseArray(actorsJson, "actors", source);
             var abilityDtos = ParseArray(abilitiesJson, "abilities", source);
             var zoneDtos = ParseArray(zonesJson, "zones", source);
@@ -280,6 +301,7 @@ namespace Shared
             var recipeDtos = ParseArray(recipesJson, "recipes", source);
             var traderDtos = ParseArray(tradersJson, "npc-traders", source);
             var mobDtos = ParseArray(mobsJson, "mobs", source);
+            var colliderDtos = ParseArray(worldCollidersJson, "world-colliders", source);
             var skillTree = ToSkillTree(skillTreeJson, source);
 
             var items = new List<ItemDefinition>(itemDtos.Count);
@@ -330,9 +352,25 @@ namespace Shared
                 mobs.Add(ToMob(mobDtos[i], source, i));
             }
 
+            var colliders = new List<WorldCollider>(colliderDtos.Count);
+            for (var i = 0; i < colliderDtos.Count; i++)
+            {
+                colliders.Add(ToWorldCollider(colliderDtos[i], source, i));
+            }
+
             try
             {
-                return new SimulationConfig(actors, abilities, zones, items, skillTree, nodes, recipes, traders, mobs);
+                return new SimulationConfig(
+                    actors,
+                    abilities,
+                    zones,
+                    items,
+                    skillTree,
+                    nodes,
+                    recipes,
+                    traders,
+                    mobs,
+                    colliders);
             }
             catch (ArgumentException exception)
             {
@@ -341,18 +379,18 @@ namespace Shared
         }
 
         /// <summary>
-        /// Считает SHA-256 от содержимого девяти файлов конфигурации: одинаковый хеш означает,
+        /// Считает SHA-256 от содержимого десяти файлов конфигурации: одинаковый хеш означает,
         /// что сервер и клиент читают одни и те же файлы (M9, Auto-Gate).
         /// </summary>
         /// <param name="directory">
         /// Каталог с <see cref="ActorsFileName"/>, <see cref="AbilitiesFileName"/>,
         /// <see cref="ZonesFileName"/>, <see cref="ItemsFileName"/>, <see cref="SkillTreeFileName"/>,
-        /// <see cref="ResourcesFileName"/>, <see cref="RecipesFileName"/>, <see cref="TradersFileName"/>
-        /// и <see cref="MobsFileName"/>.
+        /// <see cref="ResourcesFileName"/>, <see cref="RecipesFileName"/>, <see cref="TradersFileName"/>,
+        /// <see cref="MobsFileName"/> и <see cref="WorldCollidersFileName"/>.
         /// </param>
         /// <returns>Хеш в нижнем hex-регистре.</returns>
         /// <exception cref="ArgumentNullException">Если <paramref name="directory"/> равен <c>null</c>.</exception>
-        /// <exception cref="ConfigValidationException">Если файлы отсутствуют.</exception>
+        /// <exception cref="ConfigValidationException">Если обязательные файлы отсутствуют.</exception>
         public static string ComputeHash(string directory)
         {
             if (directory == null)
@@ -369,10 +407,11 @@ namespace Shared
                 ReadFile(Path.Combine(directory, ResourcesFileName)),
                 ReadFile(Path.Combine(directory, RecipesFileName)),
                 ReadFile(Path.Combine(directory, TradersFileName)),
-                ReadFile(Path.Combine(directory, MobsFileName)));
+                ReadFile(Path.Combine(directory, MobsFileName)),
+                ReadOptionalFile(Path.Combine(directory, WorldCollidersFileName)));
         }
 
-        /// <summary>Считает хеш от строк JSON всех девяти файлов конфигурации.</summary>
+        /// <summary>Считает хеш от строк JSON всех десяти файлов конфигурации.</summary>
         /// <param name="actorsJson">Содержимое <see cref="ActorsFileName"/>.</param>
         /// <param name="abilitiesJson">Содержимое <see cref="AbilitiesFileName"/>.</param>
         /// <param name="zonesJson">Содержимое <see cref="ZonesFileName"/>.</param>
@@ -382,6 +421,7 @@ namespace Shared
         /// <param name="recipesJson">Содержимое <see cref="RecipesFileName"/>.</param>
         /// <param name="tradersJson">Содержимое <see cref="TradersFileName"/>.</param>
         /// <param name="mobsJson">Содержимое <see cref="MobsFileName"/>.</param>
+        /// <param name="worldCollidersJson">Содержимое <see cref="WorldCollidersFileName"/>; пустой список по умолчанию.</param>
         /// <returns>Хеш в нижнем hex-регистре.</returns>
         /// <exception cref="ArgumentNullException">Если строка равна <c>null</c>.</exception>
         public static string ComputeHashFromJson(
@@ -393,7 +433,8 @@ namespace Shared
             string resourcesJson,
             string recipesJson,
             string tradersJson,
-            string mobsJson)
+            string mobsJson,
+            string worldCollidersJson = EmptyWorldCollidersJson)
         {
             if (actorsJson == null)
             {
@@ -440,6 +481,11 @@ namespace Shared
                 throw new ArgumentNullException(nameof(mobsJson));
             }
 
+            if (worldCollidersJson == null)
+            {
+                throw new ArgumentNullException(nameof(worldCollidersJson));
+            }
+
             using var sha = SHA256.Create();
             using var stream = new MemoryStream();
             AppendSection(stream, Encoding.UTF8.GetBytes(actorsJson));
@@ -451,6 +497,7 @@ namespace Shared
             AppendSection(stream, Encoding.UTF8.GetBytes(recipesJson));
             AppendSection(stream, Encoding.UTF8.GetBytes(tradersJson));
             AppendSection(stream, Encoding.UTF8.GetBytes(mobsJson));
+            AppendSection(stream, Encoding.UTF8.GetBytes(worldCollidersJson));
 
             var hash = sha.ComputeHash(stream.ToArray());
             var builder = new StringBuilder(hash.Length * 2);
@@ -473,6 +520,20 @@ namespace Shared
             if (!File.Exists(path))
             {
                 throw new ConfigValidationException("Файл конфигурации не найден: " + path);
+            }
+
+            return File.ReadAllText(path);
+        }
+
+        /// <summary>
+        /// Читает необязательный файл. Отсутствие <c>world-colliders.json</c> допустимо для старых
+        /// тестовых каталогов и означает мир без статических препятствий, а не тихий сброс боевых данных.
+        /// </summary>
+        private static string ReadOptionalFile(string? path)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                return EmptyWorldCollidersJson;
             }
 
             return File.ReadAllText(path);
@@ -620,6 +681,25 @@ namespace Shared
             }
         }
 
+        private static WorldCollider ToWorldCollider(Dictionary<string, object?> dto, string source, int index)
+        {
+            var label = source + ": world-colliders[" + index + "]";
+            var id = RequireString(dto, label, "id");
+            var kind = OptionalString(dto, label, "kind") ?? "obstacle";
+            var x = RequireFloat(dto, label, "x");
+            var z = RequireFloat(dto, label, "z");
+            var radius = RequireFloat(dto, label, "radius");
+
+            try
+            {
+                return new WorldCollider(id, x, z, radius, kind);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new ConfigValidationException(label + " (id=" + id + "): " + exception.Message, exception);
+            }
+        }
+
         private static ActorConfig ToActor(Dictionary<string, object?> dto, string source, int index)
         {
             var label = source + ": actors[" + index + "]";
@@ -636,6 +716,7 @@ namespace Shared
             var fameOnKill = OptionalInt(dto, label, "fameOnKill", 0);
             var inventorySlots = OptionalInt(dto, label, "inventorySlots", Inventory.DefaultCapacity);
             var startingSilver = OptionalInt(dto, label, "startingSilver", 0);
+            var collisionRadius = OptionalFloat(dto, label, "collisionRadius", ActorConfig.DefaultCollisionRadius);
 
             try
             {
@@ -652,7 +733,8 @@ namespace Shared
                     starterEquipment,
                     fameOnKill,
                     inventorySlots,
-                    startingSilver);
+                    startingSilver,
+                    collisionRadius);
             }
             catch (ArgumentException exception)
             {
@@ -757,6 +839,7 @@ namespace Shared
             var lootRange = RequireFloat(dto, label, "lootRange");
             var corpseSeconds = RequireFloat(dto, label, "corpseSeconds");
             var patrolPauseSeconds = OptionalFloat(dto, label, "patrolPauseSeconds", 0f);
+            var collisionRadius = OptionalFloat(dto, label, "collisionRadius", MobDefinition.DefaultCollisionRadius);
 
             var spawnDtos = RequireObjectArray(dto, label, "spawns");
             var spawns = ToPoints(spawnDtos, label + ".spawns");
@@ -808,7 +891,8 @@ namespace Shared
                     patrolPauseSeconds,
                     patrol,
                     spawns,
-                    loot);
+                    loot,
+                    collisionRadius);
             }
             catch (ArgumentException exception)
             {

@@ -11,7 +11,7 @@ namespace Albion.Client
     public static class StreamingContentLoader
     {
         /// <summary>
-        /// Асинхронно читает все девять JSON без дискового кеша и передаёт их общему загрузчику.
+        /// Асинхронно читает все десять JSON без дискового кеша и передаёт их общему загрузчику.
         /// Ошибка любого файла прерывает загрузку; дефолтные игровые конфиги не подставляются.
         /// </summary>
         /// <param name="directory">Локальный каталог или URI каталога Config в StreamingAssets.</param>
@@ -25,7 +25,7 @@ namespace Albion.Client
                 ConfigLoader.ZonesFileName, ConfigLoader.ItemsFileName,
                 ConfigLoader.SkillTreeFileName, ConfigLoader.ResourcesFileName,
                 ConfigLoader.RecipesFileName, ConfigLoader.TradersFileName,
-                ConfigLoader.MobsFileName,
+                ConfigLoader.MobsFileName, ConfigLoader.WorldCollidersFileName,
             };
             // Path.Combine/File.Exists cannot access Android's jar:file://...!/assets paths.
             var root = directory.Contains("://")
@@ -55,7 +55,7 @@ namespace Albion.Client
             try
             {
                 content = ClientContent.LoadFromJson(json[0], json[1], json[2], json[3], directory,
-                    json[4], json[5], json[6], json[7], json[8]);
+                    json[4], json[5], json[6], json[7], json[8], json[9]);
             }
             catch (Exception exception)
             {

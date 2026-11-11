@@ -136,7 +136,8 @@ namespace Tests
             IReadOnlyList<NpcTrader>? traders = null,
             int inventorySlots = Inventory.DefaultCapacity,
             int startingSilver = 0,
-            IReadOnlyList<MobDefinition>? mobs = null)
+            IReadOnlyList<MobDefinition>? mobs = null,
+            IReadOnlyList<WorldCollider>? worldColliders = null)
         {
             var ability = new AbilityConfig(PlayerAbilityId, damage, range, cooldownSeconds, resourceCost);
             var actor = new ActorConfig(
@@ -167,7 +168,8 @@ namespace Tests
                 resourceNodes,
                 recipes,
                 traders,
-                mobs);
+                mobs,
+                worldColliders);
         }
 
         /// <summary>Конфиг с оружием в руках: меч воина или лук лучника (для смены архетипа).</summary>

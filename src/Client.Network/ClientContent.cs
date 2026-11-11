@@ -52,6 +52,7 @@ namespace Client.Network
         /// <param name="recipesJson">Содержимое <c>recipes.json</c>; пустой список по умолчанию.</param>
         /// <param name="tradersJson">Содержимое <c>npc-traders.json</c>; пустой список по умолчанию.</param>
         /// <param name="mobsJson">Содержимое <c>mobs.json</c>; пустой список по умолчанию.</param>
+        /// <param name="worldCollidersJson">Содержимое <c>world-colliders.json</c>; пустой список по умолчанию.</param>
         /// <exception cref="ConfigValidationException">Если JSON невалиден.</exception>
         public static ClientContent LoadFromJson(
             string actorsJson,
@@ -63,7 +64,8 @@ namespace Client.Network
             string resourcesJson = ConfigLoader.EmptyResourcesJson,
             string recipesJson = ConfigLoader.EmptyRecipesJson,
             string tradersJson = ConfigLoader.EmptyTradersJson,
-            string mobsJson = ConfigLoader.EmptyMobsJson)
+            string mobsJson = ConfigLoader.EmptyMobsJson,
+            string worldCollidersJson = ConfigLoader.EmptyWorldCollidersJson)
         {
             return new ClientContent(
                 ConfigLoader.LoadFromJson(
@@ -76,7 +78,8 @@ namespace Client.Network
                     resourcesJson,
                     recipesJson,
                     tradersJson,
-                    mobsJson),
+                    mobsJson,
+                    worldCollidersJson),
                 ConfigLoader.ComputeHashFromJson(
                     actorsJson,
                     abilitiesJson,
@@ -86,7 +89,8 @@ namespace Client.Network
                     resourcesJson,
                     recipesJson,
                     tradersJson,
-                    mobsJson));
+                    mobsJson,
+                    worldCollidersJson));
         }
 
         /// <summary>Тип актора по идентификатору.</summary>
@@ -130,6 +134,24 @@ namespace Client.Network
         public MobDefinition? FindMobByActorId(uint actorId)
         {
             return Config.TryGetMobByActorId(actorId, out var mob) ? mob : null;
+        }
+
+        /// <summary>
+        /// Радиус столкновения по actorId снапшота: у моба — из синтезированного профиля,
+        /// у игрока — из <c>actors.json</c>; неизвестный актор получает радиус игрока по умолчанию.
+        /// </summary>
+        /// <param name="actorId">Идентификатор актора из снапшота.</param>
+        /// <returns>Конечный положительный радиус.</returns>
+        public float GetCollisionRadius(uint actorId)
+        {
+            if (Config.Actors.TryGetValue(actorId, out var actor))
+            {
+                return actor.CollisionRadius;
+            }
+
+            return Config.TryGetMobByActorId(actorId, out var mob)
+                ? mob.Actor.CollisionRadius
+                : ActorConfig.DefaultCollisionRadius;
         }
     }
 }

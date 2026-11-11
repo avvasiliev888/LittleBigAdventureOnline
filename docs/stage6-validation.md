@@ -32,7 +32,8 @@
 | Сервер по умолчанию | `192.168.1.174:9050` |
 | Конфиг | hash `9dfd2b1e49b03cf2ec43c6053d2b8c0d680f8459c2b195757f9fe4a835370616` |
 | В APK | `assets/Config/zones.json` содержит `"gates"` у blue и yellow |
-| Релизные файлы | `artifacts/release/` (server + config, APK, zip, SHA256SUMS) |
+| Windows-клиент | `unity-client/Builds/desktop`, zip `AlbionPrototype-desktop-0.6.0-win-x64.zip` |
+| Релизные файлы | `artifacts/release/` (server + config, APK, desktop и server zip, SHA256SUMS) |
 
 `dotnet test Prototype.sln -c Debug`: **436 пройдено, 0 не пройдено** (включая 10 новых тестов
 `ZoneGateTests` и тест реального конфига на большие зоны/ворота). После остановки сервера оператора
@@ -40,6 +41,12 @@ Release-сборка также прошла: `dotnet build -c Release` — 0 о
 `dotnet test -c Release --no-build` — **436 пройдено**, опубликованный `Server.dll` валидирует конфиг
 с тем же hash. Runtime-смоук Release-сервера: тест-клиент подключился по protocol v8, получил
 156 снапшотов (155 дельтами) и 156 acks; тик p99 ≤ 10.2 ms на одном клиенте.
+
+`play.cmd` проверен с пересобранным Windows-плеером: клиент загрузил конфиг с тем же hash,
+подключился к `127.0.0.1:9050`, получил сессию и держал ~120 FPS на RX 5700 (2560×1440).
+Скрипт `build-windows.ps1` теперь передаёт `-buildTarget Win64` и полностью пересоздаёт
+временную копию проекта: после аварийного завершения Editor старые артефакты давали
+`BadImageFormatException` на ref-сборках URP.
 
 Unity smoke (`tools/unity/agent-smoke.ps1`) прошёл на **исходной** сцене `Assets/Scenes/Arena.unity`
 без пересборки мира: `PASS snapshots=5 deltas=4 visuals=8 mobs=6 corpses=0`, плюс проверки HUD,

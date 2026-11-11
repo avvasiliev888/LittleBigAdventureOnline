@@ -34,7 +34,7 @@ Stage 8 с процедурными гуманоидами из сфер/куб�
 - Импортированный warrior regression: prefab, URP Lit/Albedo, скелет, анимации,
   оружие, смерть/респавн, удалённая интерполяция — PASS.
 - Runtime smoke: `PASS snapshots=5 deltas=4 visuals=8 mobs=6 corpses=0`.
-- Скриншот: `artifacts/art-pipeline-smoke.png` (временный fallback, не финальный арт).
+- Скриншот: `artifacts/release/desktop-play.png` (временный fallback, не финальный арт).
 
 ## Релиз 0.7.1
 

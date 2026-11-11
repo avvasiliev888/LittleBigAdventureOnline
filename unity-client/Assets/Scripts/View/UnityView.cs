@@ -73,6 +73,15 @@ namespace Albion.Client
         /// <summary>Сколько снапшотов принято (диагностика для HUD).</summary>
         public int SnapshotsApplied { get; private set; }
 
+        /// <summary>Сколько визуальных сущностей создано (игроки и мобы) — для smoke-тестов.</summary>
+        public int VisualEntityCount => _entities.Count;
+
+        /// <summary>Сколько визуальных трупов создано — для smoke-тестов.</summary>
+        public int CorpseVisualCount => _corpses.Count;
+
+        /// <summary>Последний применённый снапшот — для smoke-тестов.</summary>
+        public SimulationSnapshot? LatestSnapshot => _latestSnapshot;
+
         /// <summary>Была ли последняя реконсиляция (диагностика для HUD).</summary>
         public bool LastReconciliationCorrected { get; private set; }
 

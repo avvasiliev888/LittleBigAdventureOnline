@@ -34,6 +34,12 @@ namespace Albion.Client
         private ClientHud _hud;
         private string _status = "connecting...";
 
+        /// <summary>Клиентский конвейер после старта; <c>null</c> до загрузки конфига (для smoke-тестов).</summary>
+        public ClientPipeline? Pipeline => _pipeline;
+
+        /// <summary>Представление мира после старта; <c>null</c> до загрузки конфига (для smoke-тестов).</summary>
+        public UnityView? View => _view;
+
         /// <summary>Автостарт без правки сцены: клиент поднимается после загрузки любой сцены.</summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoStart()

@@ -100,6 +100,28 @@ pwsh -File tools/unity/build-plugins.ps1
 читают **один и тот же** JSON; хеш конфига виден в HUD (`cfg: …`) и в логе сервера
 (`config: … hash: …`) — они должны совпадать.
 
+### 3.1. Автономная проверка Unity без GUI
+
+Если Unity Editor установлен, клиент можно проверить без ручного запуска сцены:
+
+```powershell
+pwsh -File tools/unity/agent-smoke.ps1
+```
+
+Скрипт сам пересобирает плагины, поднимает сервер на случайном порту, копирует
+`unity-client` во временный каталог (открытый Editor блокирует исходный проект),
+запускает Unity в `-batchmode`, открывает `Arena`, входит в Play и проверяет, что
+клиент получил снапшоты, создал HUD и нарисовал мобов. Успех выглядит так:
+
+```text
+PASS snapshots=5 deltas=4 visuals=8 mobs=6 corpses=0
+```
+
+Полезные флаги: `-Port 9300`, `-UnityPath <путь к Unity.exe>`, `-KeepProject`
+(оставить `%TEMP%\albion-unity-agent` с `Library` для быстрых повторных прогонов),
+`-SkipPlugins`. Путь к Unity также можно задать переменной `UNITY_EDITOR_PATH`;
+если Editor не установлен, скрипт завершится с понятной ошибкой.
+
 ## 4. Запуск сервера
 
 ```powershell

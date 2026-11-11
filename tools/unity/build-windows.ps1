@@ -68,6 +68,9 @@ if (-not $SkipPlugins) {
 }
 
 Write-Host "Копирование проекта в $work..."
+# Полный сброс: после аварийного завершения Unity в temp-копии остаются
+# повреждённые артефакты, из-за которых сборка падает на BadImageFormat.
+if (Test-Path $work) { Remove-Item $work -Recurse -Force }
 New-Item -ItemType Directory -Force $work | Out-Null
 & robocopy $client $work /E /XD Library Temp Logs Builds UserSettings obj /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
 if ($LASTEXITCODE -gt 7) { throw "robocopy завершился с кодом $LASTEXITCODE" }
@@ -79,7 +82,7 @@ if (Test-Path $buildInWork) { Remove-Item $buildInWork -Recurse -Force }
 
 Write-Host "Сборка Windows-плеера..."
 $unityProcess = Start-Process -FilePath $unity `
-    -ArgumentList @("-batchmode", "-projectPath", $work, "-executeMethod", "Albion.Editor.AlbionBuild.BuildDesktopBatch", "-logFile", $unityLog) `
+    -ArgumentList @("-batchmode", "-projectPath", $work, "-buildTarget", "Win64", "-executeMethod", "Albion.Editor.AlbionBuild.BuildDesktopBatch", "-logFile", $unityLog) `
     -PassThru -Wait -WindowStyle Hidden
 
 Write-Host "Unity exit code: $($unityProcess.ExitCode)"

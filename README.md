@@ -129,7 +129,24 @@ PASS snapshots=5 deltas=4 visuals=8 mobs=6 corpses=0
 можно задать переменной `UNITY_EDITOR_PATH`; если Editor не установлен, скрипт
 завершится с понятной ошибкой.
 
-### 3.2. Android APK
+### 3.2. Windows-плеер
+
+```powershell
+pwsh -File tools/unity/build-windows.ps1
+```
+
+Скрипт собирает x64 Mono-плеер в `unity-client/Builds/desktop`, явно переключая Unity
+на `-buildTarget Win64`, и перед сборкой полностью пересоздаёт временную копию проекта —
+после аварийного завершения Editor старые артефакты иначе дают `BadImageFormatException`.
+Запуск одной командой:
+
+```powershell
+.\play.cmd
+```
+
+`play.cmd` поднимает Release-сервер на UDP 9050 и открывает клиент.
+
+### 3.3. Android APK
 
 Для телефона нужен модуль **Android Build Support** (SDK/NDK/OpenJDK ставятся вместе с ним).
 В Unity Hub: **Installs → 6000.3.28f1 → Add modules → Android Build Support**.
@@ -164,16 +181,18 @@ ARM64, IL2CPP).
 поверх предыдущей сборки с той же debug-подписью. Версия 0.5.1 (versionCode 2) исправляла
 ошибку «Файл конфигурации не найден …/assets/Config/actors.json» из 0.5.0.
 
-### 3.3. Релизная сборка
+### 3.4. Релизная сборка
 
 ```powershell
+pwsh -File tools/unity/build-windows.ps1
+pwsh -File tools/unity/build-android.ps1
 dotnet build Prototype.sln -c Release
 dotnet test Prototype.sln -c Release --no-build
 dotnet publish src/Server -c Release -o artifacts/release/server
 ```
 
-`artifacts/release/` содержит опубликованный сервер вместе с `config/`, APK 0.6.0 и контрольные
-суммы; каталог исключён из Git и пересобирается этими командами.
+`artifacts/release/` содержит опубликованный сервер вместе с `config/`, APK 0.6.0,
+Windows-клиент и контрольные суммы; каталог исключён из Git и пересобирается этими командами.
 
 ## 4. Запуск сервера
 

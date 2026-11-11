@@ -17,5 +17,5 @@ if not exist "unity-client\Builds\desktop\AlbionPrototype.exe" (
 )
 
 start "Albion Server" "src\Server\bin\Release\net10.0\Server.exe" --udp 9050
-timeout /t 2 /nobreak >nul
+ping -n 3 127.0.0.1 >nul
 start "" "unity-client\Builds\desktop\AlbionPrototype.exe"

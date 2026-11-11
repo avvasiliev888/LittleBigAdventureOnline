@@ -107,7 +107,7 @@ Remove-Item $unityLog, $apkInWork -ErrorAction SilentlyContinue
 
 Write-Host "Сборка APK (IL2CPP ARM64, это может занять несколько минут)..."
 $unityProcess = Start-Process -FilePath $unity `
-    -ArgumentList @("-batchmode", "-projectPath", $work, "-executeMethod", "Albion.Editor.AlbionBuild.BuildAndroidBatch", "-logFile", $unityLog) `
+    -ArgumentList @("-batchmode", "-projectPath", $work, "-buildTarget", "Android", "-executeMethod", "Albion.Editor.AlbionBuild.BuildAndroidBatch", "-logFile", $unityLog) `
     -PassThru -Wait -WindowStyle Hidden
 
 Write-Host "Unity exit code: $($unityProcess.ExitCode)"

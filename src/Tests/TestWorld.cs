@@ -12,17 +12,58 @@ namespace Tests
         public const uint PlayerActorId = 1;
         public const uint PlayerAbilityId = 1;
         public const uint DummyActorId = 2;
+        public const uint SwordItemId = 10;
+        public const uint BowItemId = 14;
 
-        /// <summary>Каталог предметов по умолчанию: сырьё и четыре слота снаряжения.</summary>
+        /// <summary>Каталог предметов по умолчанию: сырьё, оружие двух архетипов и доспехи.</summary>
         public static readonly IReadOnlyList<ItemDefinition> DefaultItems = new[]
         {
             new ItemDefinition(1, "wood", ItemKind.Material, 1, 0),
             new ItemDefinition(2, "ore", ItemKind.Material, 1, 0),
-            new ItemDefinition(10, "sword", ItemKind.Equipment, 1, 100, EquipmentSlot.MainHand),
-            new ItemDefinition(11, "chest", ItemKind.Equipment, 1, 100, EquipmentSlot.Chest),
-            new ItemDefinition(12, "legs", ItemKind.Equipment, 1, 80, EquipmentSlot.Legs),
-            new ItemDefinition(13, "feet", ItemKind.Equipment, 1, 60, EquipmentSlot.Feet),
+            new ItemDefinition(SwordItemId, "sword", ItemKind.Equipment, 1, 100, EquipmentSlot.MainHand, "warrior", 4),
+            new ItemDefinition(11, "chest", ItemKind.Equipment, 1, 100, EquipmentSlot.Chest, maxHpBonus: 20),
+            new ItemDefinition(12, "legs", ItemKind.Equipment, 1, 80, EquipmentSlot.Legs, maxHpBonus: 10),
+            new ItemDefinition(13, "feet", ItemKind.Equipment, 1, 60, EquipmentSlot.Feet, moveSpeedBonus: 0.05f),
+            new ItemDefinition(BowItemId, "bow", ItemKind.Equipment, 1, 90, EquipmentSlot.MainHand, "archer", 3),
         };
+
+        /// <summary>
+        /// Дерево навыков по умолчанию: две ветки с базовой способностью 1, пассивом на урон
+        /// и пассивом на здоровье. Тесты прогрессии задают своё дерево и свои способности.
+        /// </summary>
+        public static readonly SkillTree DefaultSkillTree = new SkillTree(new[]
+        {
+            new SkillArchetype("warrior", "Воин", new[]
+            {
+                new SkillNode(1, "Рассечение", 0, SkillNodeKind.Active, PlayerAbilityId),
+                new SkillNode(2, "Сила удара", 10, SkillNodeKind.Passive, damageBonus: 0.10f),
+                new SkillNode(3, "Крепкий доспех", 20, SkillNodeKind.Passive, maxHpBonus: 20),
+            }),
+            new SkillArchetype("archer", "Лучник", new[]
+            {
+                new SkillNode(4, "Выстрел", 0, SkillNodeKind.Active, PlayerAbilityId),
+                new SkillNode(5, "Острый глаз", 10, SkillNodeKind.Passive, damageBonus: 0.05f),
+            }),
+        });
+
+        /// <summary>Дерево по умолчанию в виде JSON — для тестов загрузчика.</summary>
+        public const string SkillTreeJson = @"{
+  ""archetypes"": [
+    { ""key"": ""warrior"", ""name"": ""Воин"", ""nodes"": [
+      { ""id"": 1, ""name"": ""Рассечение"", ""fameThreshold"": 0, ""kind"": ""active"", ""abilityId"": 1 },
+      { ""id"": 2, ""name"": ""Сила удара"", ""fameThreshold"": 10, ""kind"": ""passive"", ""damageBonus"": 0.10 },
+      { ""id"": 3, ""name"": ""Крепкий доспех"", ""fameThreshold"": 20, ""kind"": ""passive"", ""maxHpBonus"": 20 }
+    ] }
+  ]
+}";
+
+        /// <summary>Пустой список жил в виде JSON.</summary>
+        public const string ResourcesJson = "[]";
+
+        /// <summary>Одна жила внутри тестового мира в виде JSON.</summary>
+        public const string WoodResourceJson = @"[
+  { ""id"": 7, ""key"": ""ash_tree"", ""itemId"": 1, ""x"": 2.0, ""z"": 0.0, ""amount"": 2, ""gatherSeconds"": 1.5, ""famePerGather"": 3, ""range"": 3.0 }
+]";
 
         /// <summary>
         /// Зона по умолчанию для старых тестов: один большой мир с включённым PvP, чтобы движение,
@@ -57,7 +98,11 @@ namespace Tests
             IReadOnlyList<ItemDefinition>? items = null,
             IReadOnlyList<LoadoutItem>? starterItems = null,
             IReadOnlyList<LoadoutEquipment>? starterEquipment = null,
-            ActorKind kind = ActorKind.Player)
+            ActorKind kind = ActorKind.Player,
+            SkillTree? skillTree = null,
+            IReadOnlyList<ResourceNodeConfig>? resourceNodes = null,
+            int fameOnKill = 0,
+            IReadOnlyList<AbilityConfig>? abilities = null)
         {
             var ability = new AbilityConfig(PlayerAbilityId, damage, range, cooldownSeconds, resourceCost);
             var actor = new ActorConfig(
@@ -70,13 +115,36 @@ namespace Tests
                 resourceRegenPerSecond,
                 kind,
                 starterItems,
-                starterEquipment);
+                starterEquipment,
+                fameOnKill);
+
+            var abilityList = abilities ?? new[] { ability };
+            var tree = skillTree ?? DefaultSkillTree;
+            var itemList = items ?? DefaultItems;
 
             return new SimulationConfig(
                 new[] { actor },
-                new[] { ability },
+                abilityList,
                 zones ?? DefaultZones,
-                items ?? DefaultItems);
+                itemList,
+                tree,
+                resourceNodes);
+        }
+
+        /// <summary>Конфиг с оружием в руках: меч воина или лук лучника (для смены архетипа).</summary>
+        public static SimulationConfig LoadoutConfig(
+            IReadOnlyList<AbilityConfig> abilities,
+            SkillTree skillTree,
+            uint starterWeaponId,
+            IReadOnlyList<ResourceNodeConfig>? resourceNodes = null,
+            int fameOnKill = 0)
+        {
+            return Config(
+                abilities: abilities,
+                skillTree: skillTree,
+                starterEquipment: new[] { new LoadoutEquipment(starterWeaponId) },
+                resourceNodes: resourceNodes,
+                fameOnKill: fameOnKill);
         }
 
         /// <summary>Зона для тестов зон; границы задаются явно.</summary>
@@ -130,7 +198,8 @@ namespace Tests
                 new[] { player, dummy },
                 new[] { ability },
                 DefaultZones,
-                DefaultItems);
+                DefaultItems,
+                DefaultSkillTree);
         }
 
         public static CoreSimulation Simulation(SimulationConfig config, params EntityState[] entities)
@@ -146,6 +215,16 @@ namespace Tests
         public static CommandEnvelope Attack(uint entityId, uint targetId, uint clientTick = 0, uint sequence = 0)
         {
             return new CommandEnvelope(entityId, new AbilityCommand(targetId, clientTick, sequence));
+        }
+
+        public static CommandEnvelope Equip(uint entityId, uint itemId, uint clientTick = 0, uint sequence = 0)
+        {
+            return new CommandEnvelope(entityId, new EquipCommand(itemId, clientTick, sequence));
+        }
+
+        public static CommandEnvelope Gather(uint entityId, uint nodeId, uint clientTick = 0, uint sequence = 0)
+        {
+            return new CommandEnvelope(entityId, new GatherCommand(nodeId, clientTick, sequence));
         }
 
         public static void Tick(CoreSimulation simulation, params CommandEnvelope[] commands)

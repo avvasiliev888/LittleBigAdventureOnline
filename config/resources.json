@@ -1,0 +1,79 @@
+[
+  {
+    "id": 1,
+    "key": "ash_tree",
+    "itemId": 1,
+    "x": -10.0,
+    "z": 4.0,
+    "amount": 2,
+    "gatherSeconds": 1.5,
+    "famePerGather": 2,
+    "range": 3.0
+  },
+  {
+    "id": 2,
+    "key": "ash_tree",
+    "itemId": 1,
+    "x": -6.0,
+    "z": -5.0,
+    "amount": 2,
+    "gatherSeconds": 1.5,
+    "famePerGather": 2,
+    "range": 3.0
+  },
+  {
+    "id": 3,
+    "key": "iron_vein",
+    "itemId": 2,
+    "x": 5.0,
+    "z": 3.0,
+    "amount": 1,
+    "gatherSeconds": 2.0,
+    "famePerGather": 3,
+    "range": 3.0
+  },
+  {
+    "id": 4,
+    "key": "iron_vein",
+    "itemId": 2,
+    "x": 15.0,
+    "z": 2.0,
+    "amount": 1,
+    "gatherSeconds": 2.0,
+    "famePerGather": 3,
+    "range": 3.0
+  },
+  {
+    "id": 5,
+    "key": "iron_vein",
+    "itemId": 2,
+    "x": 20.0,
+    "z": -4.0,
+    "amount": 1,
+    "gatherSeconds": 2.0,
+    "famePerGather": 3,
+    "range": 3.0
+  },
+  {
+    "id": 6,
+    "key": "ancient_vein",
+    "itemId": 2,
+    "x": 30.0,
+    "z": 0.0,
+    "amount": 2,
+    "gatherSeconds": 2.5,
+    "famePerGather": 5,
+    "range": 3.0
+  },
+  {
+    "id": 7,
+    "key": "ancient_vein",
+    "itemId": 2,
+    "x": 34.0,
+    "z": 3.0,
+    "amount": 2,
+    "gatherSeconds": 2.5,
+    "famePerGather": 5,
+    "range": 3.0
+  }
+]

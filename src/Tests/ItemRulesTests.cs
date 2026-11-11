@@ -11,8 +11,10 @@ namespace Tests
     public sealed class ItemRulesTests
     {
         private static readonly ItemDefinition Wood = new ItemDefinition(1, "wood", ItemKind.Material, 1, 0);
-        private static readonly ItemDefinition Sword = new ItemDefinition(10, "sword", ItemKind.Equipment, 1, 100, EquipmentSlot.MainHand);
-        private static readonly ItemDefinition Chest = new ItemDefinition(11, "chest", ItemKind.Equipment, 1, 80, EquipmentSlot.Chest);
+        private static readonly ItemDefinition Sword = new ItemDefinition(
+            10, "sword", ItemKind.Equipment, 1, 100, EquipmentSlot.MainHand, "warrior", 4);
+        private static readonly ItemDefinition Chest = new ItemDefinition(
+            11, "chest", ItemKind.Equipment, 1, 80, EquipmentSlot.Chest, maxHpBonus: 20);
 
         [Fact]
         public void Inventory_MergesStacksAndRemovesPartially()
@@ -128,7 +130,8 @@ namespace Tests
                     new[] { actor },
                     new[] { new AbilityConfig(1, 25, 3f, 2f, 10) },
                     TestWorld.DefaultZones,
-                    TestWorld.DefaultItems));
+                    TestWorld.DefaultItems,
+                    TestWorld.DefaultSkillTree));
 
             Assert.Contains("999", exception.Message);
         }
@@ -136,9 +139,9 @@ namespace Tests
         [Fact]
         public void SimulationConfig_RejectsDuplicateEquipmentSlotInLoadout()
         {
-            var secondSword = new ItemDefinition(14, "second_sword", ItemKind.Equipment, 1, 50, EquipmentSlot.MainHand);
+            var secondSword = new ItemDefinition(19, "second_sword", ItemKind.Equipment, 1, 50, EquipmentSlot.MainHand, "warrior");
             var actor = new ActorConfig(1, 100, 4f, 100, 5f, 1, 0f, ActorKind.Player,
-                starterEquipment: new[] { new LoadoutEquipment(10), new LoadoutEquipment(14) });
+                starterEquipment: new[] { new LoadoutEquipment(10), new LoadoutEquipment(19) });
             var items = new List<ItemDefinition>(TestWorld.DefaultItems) { secondSword };
 
             var exception = Assert.Throws<ArgumentException>(
@@ -146,7 +149,8 @@ namespace Tests
                     new[] { actor },
                     new[] { new AbilityConfig(1, 25, 3f, 2f, 10) },
                     TestWorld.DefaultZones,
-                    items));
+                    items,
+                    TestWorld.DefaultSkillTree));
 
             Assert.Contains("занят дважды", exception.Message);
         }

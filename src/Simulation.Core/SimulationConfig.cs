@@ -12,12 +12,15 @@ namespace Simulation.Core
         private readonly Dictionary<uint, ActorConfig> _actors;
         private readonly Dictionary<uint, AbilityConfig> _abilities;
         private readonly Dictionary<uint, ItemDefinition> _items;
+        private readonly List<ResourceNodeConfig> _resourceNodes;
 
-        /// <summary>Создаёт конфигурацию мира из акторов, способностей, зон и предметов.</summary>
+        /// <summary>Создаёт конфигурацию мира из акторов, способностей, зон, предметов, дерева навыков и жил.</summary>
         /// <param name="actors">Типы акторов; идентификаторы уникальны.</param>
         /// <param name="abilities">Способности; идентификаторы уникальны, все ссылки акторов разрешаются.</param>
         /// <param name="zones">Зоны мира; покрывают мир без разрывов и пересечений.</param>
         /// <param name="items">Каталог предметов: сырьё и снаряжение.</param>
+        /// <param name="skillTree">Дерево навыков; <c>null</c> — пустое дерево (тесты без прогрессии).</param>
+        /// <param name="resourceNodes">Ресурсные жилы; <c>null</c> — жил нет.</param>
         /// <exception cref="ArgumentNullException">Если коллекция равна <c>null</c>.</exception>
         /// <exception cref="ArgumentException">
         /// При дубликатах идентификаторов, неразрешённых ссылках и противоречивых зонах.
@@ -26,7 +29,9 @@ namespace Simulation.Core
             IEnumerable<ActorConfig> actors,
             IEnumerable<AbilityConfig> abilities,
             IEnumerable<ZoneConfig> zones,
-            IEnumerable<ItemDefinition> items)
+            IEnumerable<ItemDefinition> items,
+            SkillTree? skillTree = null,
+            IEnumerable<ResourceNodeConfig>? resourceNodes = null)
         {
             if (actors == null)
             {
@@ -67,6 +72,13 @@ namespace Simulation.Core
             }
 
             Zones = new ZoneMap(zones);
+            SkillTree = skillTree ?? SkillTree.Empty;
+
+            ValidateItemArchetypes();
+            ValidateSkillTreeAbilities();
+
+            _resourceNodes = resourceNodes == null ? new List<ResourceNodeConfig>() : new List<ResourceNodeConfig>(resourceNodes);
+            ValidateResourceNodes();
 
             _actors = new Dictionary<uint, ActorConfig>();
             foreach (var actor in actors)
@@ -101,6 +113,12 @@ namespace Simulation.Core
 
         /// <summary>Карта зон мира с правилами PvP и смерти.</summary>
         public ZoneMap Zones { get; }
+
+        /// <summary>Дерево навыков: ветки архетипов оружия (ADR-015).</summary>
+        public SkillTree SkillTree { get; }
+
+        /// <summary>Ресурсные жилы мира: источники сырья и Славы за сбор.</summary>
+        public IReadOnlyList<ResourceNodeConfig> ResourceNodes => _resourceNodes;
 
         /// <summary>Возвращает тип актора по идентификатору.</summary>
         /// <param name="actorId">Идентификатор типа актора.</param>
@@ -177,6 +195,75 @@ namespace Simulation.Core
                     throw new ArgumentException(
                         "Актор " + actor.Id + ": слот " + item.Slot.Value + " занят дважды в стартовом снаряжении.",
                         "actors");
+                }
+            }
+        }
+
+        private void ValidateItemArchetypes()
+        {
+            foreach (var pair in _items)
+            {
+                var item = pair.Value;
+                if (item.Archetype != null && !SkillTree.Has(item.Archetype))
+                {
+                    throw new ArgumentException(
+                        "Предмет '" + item.Key + "' ссылается на отсутствующую ветку дерева навыков '" + item.Archetype + "'.",
+                        "items");
+                }
+            }
+        }
+
+        private void ValidateSkillTreeAbilities()
+        {
+            foreach (var archetype in SkillTree.Archetypes)
+            {
+                for (var i = 0; i < archetype.Nodes.Count; i++)
+                {
+                    var node = archetype.Nodes[i];
+                    if (node.Kind == SkillNodeKind.Active && !_abilities.ContainsKey(node.AbilityId))
+                    {
+                        throw new ArgumentException(
+                            "Узел " + node.Id + " ветки '" + archetype.Key + "' ссылается на отсутствующую способность "
+                            + node.AbilityId + ".",
+                            "skill-tree");
+                    }
+                }
+            }
+        }
+
+        private void ValidateResourceNodes()
+        {
+            var ids = new HashSet<uint>();
+            for (var i = 0; i < _resourceNodes.Count; i++)
+            {
+                var node = _resourceNodes[i];
+                if (node == null)
+                {
+                    throw new ArgumentException("Список жил содержит null в позиции " + i + ".", "resourceNodes");
+                }
+
+                if (!ids.Add(node.Id))
+                {
+                    throw new ArgumentException("Дубликат Id жилы: " + node.Id + ".", "resourceNodes");
+                }
+
+                if (!_items.TryGetValue(node.ItemId, out var item))
+                {
+                    throw new ArgumentException(
+                        "Жила '" + node.Key + "' ссылается на отсутствующий предмет " + node.ItemId + ".",
+                        "resourceNodes");
+                }
+
+                if (item.ItemKind != ItemKind.Material)
+                {
+                    throw new ArgumentException(
+                        "Жила '" + node.Key + "' ссылается на предмет '" + item.Key + "', который не является сырьём.",
+                        "resourceNodes");
+                }
+
+                if (!Zones.TryGetZone(node.Position, out _))
+                {
+                    throw new ArgumentException("Жила '" + node.Key + "' находится вне зон мира.", "resourceNodes");
                 }
             }
         }

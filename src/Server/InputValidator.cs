@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using Simulation.Core;
 
 namespace Server
@@ -41,6 +42,24 @@ namespace Server
 
         /// <summary>Цель совпадает с кастером: урон по себе запрещён.</summary>
         SelfTarget = 11,
+
+        /// <summary>Предмета смены снаряжения нет в конфиге.</summary>
+        UnknownItem = 12,
+
+        /// <summary>Предмет нельзя надеть: это не снаряжение.</summary>
+        NotEquippable = 13,
+
+        /// <summary>Предмета нет в инвентаре игрока.</summary>
+        ItemNotInInventory = 14,
+
+        /// <summary>Ресурсной жилы нет в конфиге.</summary>
+        UnknownNode = 15,
+
+        /// <summary>Сбор ресурса на кулдауне.</summary>
+        GatherOnCooldown = 16,
+
+        /// <summary>Жила вне радиуса сбора.</summary>
+        GatherOutOfRange = 17,
     }
 
     /// <summary>Результат валидации команды.</summary>
@@ -146,6 +165,12 @@ namespace Server
                 case AbilityCommand ability:
                     return ValidateAbility(tick, caster, ability);
 
+                case EquipCommand equip:
+                    return ValidateEquip(caster, equip);
+
+                case GatherCommand gather:
+                    return ValidateGather(tick, caster, gather);
+
                 default:
                     return ValidationResult.Reject(
                         CommandRejectReason.UnsupportedCommand,
@@ -155,7 +180,7 @@ namespace Server
 
         private ValidationResult ValidateAbility(uint tick, EntityState caster, AbilityCommand ability)
         {
-            var abilityConfig = _config.GetAbility(_config.GetActor(caster.ActorId).AbilityId);
+            var abilityConfig = _config.GetAbility(caster.AbilityId);
 
             // Self-target is still invalid; a missing, dead or out-of-range target is a legal miss.
             // The cooldown is charged for any valid activation, hit or miss (M10.8).
@@ -176,6 +201,71 @@ namespace Server
                 return ValidationResult.Reject(
                     CommandRejectReason.NotEnoughResource,
                     "ресурс " + caster.Resource + " < " + abilityConfig.ResourceCost);
+            }
+
+            return ValidationResult.Accept();
+        }
+
+        private ValidationResult ValidateEquip(EntityState caster, EquipCommand command)
+        {
+            if (!_config.Items.TryGetValue(command.ItemId, out var item))
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.UnknownItem,
+                    "предмета " + command.ItemId + " нет в конфиге");
+            }
+
+            if (item.ItemKind != ItemKind.Equipment || !item.Slot.HasValue)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.NotEquippable,
+                    "'" + item.Key + "' не является снаряжением");
+            }
+
+            if (caster.Inventory.CountOf(item.Id) <= 0)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.ItemNotInInventory,
+                    "в инвентаре нет '" + item.Key + "'");
+            }
+
+            return ValidationResult.Accept();
+        }
+
+        private ValidationResult ValidateGather(uint tick, EntityState caster, GatherCommand command)
+        {
+            ResourceNodeConfig? node = null;
+            for (var i = 0; i < _config.ResourceNodes.Count; i++)
+            {
+                if (_config.ResourceNodes[i].Id == command.NodeId)
+                {
+                    node = _config.ResourceNodes[i];
+                    break;
+                }
+            }
+
+            if (node == null)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.UnknownNode,
+                    "жилы " + command.NodeId + " нет в конфиге");
+            }
+
+            if (caster.GatherCooldownUntilTick > tick)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.GatherOnCooldown,
+                    "сбор до тика " + caster.GatherCooldownUntilTick);
+            }
+
+            var dx = caster.Position.X - node.Position.X;
+            var dz = caster.Position.Z - node.Position.Z;
+            var distance = MathF.Sqrt((dx * dx) + (dz * dz));
+            if (distance > node.Range)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.GatherOutOfRange,
+                    "жила '" + node.Key + "' на расстоянии " + distance.ToString("0.###") + " > " + node.Range.ToString("0.###"));
             }
 
             return ValidationResult.Accept();

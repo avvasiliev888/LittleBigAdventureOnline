@@ -31,6 +31,9 @@ namespace Simulation.Core
             Position = spawnPosition;
             Hp = actor.MaxHp;
             Resource = actor.MaxResource;
+            MoveSpeed = actor.MoveSpeed;
+            AbilityId = actor.AbilityId;
+            DamageMultiplier = 1f;
         }
 
         /// <summary>Идентификатор сущности в мире.</summary>
@@ -51,8 +54,17 @@ namespace Simulation.Core
         /// <summary>Текущее здоровье.</summary>
         public int Hp { get; set; }
 
-        /// <summary>Максимальное здоровье.</summary>
-        public int MaxHp { get; }
+        /// <summary>Максимальное здоровье с учётом снаряжения и открытых пассивных узлов.</summary>
+        public int MaxHp { get; private set; }
+
+        /// <summary>Скорость движения с учётом снаряжения и открытых пассивных узлов.</summary>
+        public float MoveSpeed { get; private set; }
+
+        /// <summary>Действующая способность: оружие в руке определяет ветку дерева навыков.</summary>
+        public uint AbilityId { get; private set; }
+
+        /// <summary>Множитель урона от открытых пассивных узлов дерева (1 — без бонуса).</summary>
+        public float DamageMultiplier { get; private set; }
 
         /// <summary>Текущий ресурс.</summary>
         public int Resource { get; set; }
@@ -79,6 +91,12 @@ namespace Simulation.Core
         /// </remarks>
         public uint HostileUntilTick { get; set; }
 
+        /// <summary>Тик, до которого игрок не может собирать ресурсы (0 — можно).</summary>
+        public uint GatherCooldownUntilTick { get; set; }
+
+        /// <summary>Слава по архетипам оружия (ADR-015); смена оружия прогресс не сбрасывает.</summary>
+        public FameProgress Fame { get; } = new FameProgress();
+
         /// <summary>Инвентарь сущности; у мобов пуст.</summary>
         public Inventory Inventory { get; } = new Inventory();
 
@@ -92,6 +110,104 @@ namespace Simulation.Core
         /// <param name="currentTick">Текущий тик симуляции.</param>
         /// <returns><c>true</c>, если игрок ещё враждебен.</returns>
         public bool IsHostile(uint currentTick) => HostileUntilTick > currentTick;
+
+        /// <summary>
+        /// Надевает предмет из инвентаря и пересчитывает характеристики. Правила замены слота —
+        /// в <see cref="Equipment"/>: старая вещь в этом слоте вытесняется (возврат в инвентарь —
+        /// обязанность вызывающего кода, <see cref="Simulation.ApplyEquip"/>).
+        /// </summary>
+        /// <param name="config">Конфигурация мира с деревом навыков.</param>
+        /// <param name="item">Определение снаряжения из конфига.</param>
+        /// <exception cref="ArgumentNullException">Если аргумент равен <c>null</c>.</exception>
+        /// <exception cref="ArgumentException">Если предмет не является снаряжением.</exception>
+        public void Equip(SimulationConfig config, ItemDefinition item)
+        {
+            if (config == null)
+            {
+                throw new ArgumentNullException(nameof(config));
+            }
+
+            if (item == null)
+            {
+                throw new ArgumentNullException(nameof(item));
+            }
+
+            if (item.ItemKind != ItemKind.Equipment || !item.Slot.HasValue)
+            {
+                throw new ArgumentException(
+                    "Надеть можно только снаряжение '" + item.Key + "'.", nameof(item));
+            }
+
+            Equipment.Equip(item);
+            RecalculateStats(config);
+        }
+
+        /// <summary>
+        /// Начисляет Славу в ветку оружия в руке и пересчитывает характеристики.
+        /// Без оружия (или если ветки нет в дереве) Слава не начисляется: прогресс привязан к оружию.
+        /// </summary>
+        /// <param name="config">Конфигурация мира с деревом навыков.</param>
+        /// <param name="amount">Сколько Славы начислить; неотрицательное.</param>
+        /// <returns>Начисленная Слава; 0, если начислять некуда.</returns>
+        /// <exception cref="ArgumentNullException">Если <paramref name="config"/> равен <c>null</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Если количество отрицательное.</exception>
+        public int AwardFame(SimulationConfig config, int amount)
+        {
+            if (config == null)
+            {
+                throw new ArgumentNullException(nameof(config));
+            }
+
+            if (amount < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(amount), amount, "Слава не может быть отрицательной.");
+            }
+
+            if (amount == 0)
+            {
+                return 0;
+            }
+
+            var archetypeKey = Equipment.Weapon?.Definition.Archetype;
+            if (archetypeKey == null || !config.SkillTree.Has(archetypeKey))
+            {
+                return 0;
+            }
+
+            Fame.Add(archetypeKey, amount);
+            RecalculateStats(config);
+            return amount;
+        }
+
+        /// <summary>
+        /// Пересчитывает производные характеристики (<see cref="MaxHp"/>, <see cref="MoveSpeed"/>,
+        /// <see cref="AbilityId"/>, <see cref="DamageMultiplier"/>) по актору, снаряжению и Славе
+        /// в ветке оружия в руке. Вызывается после смены снаряжения, начисления Славы и смерти.
+        /// </summary>
+        /// <param name="config">Конфигурация мира с деревом навыков.</param>
+        /// <exception cref="ArgumentNullException">Если <paramref name="config"/> равен <c>null</c>.</exception>
+        public void RecalculateStats(SimulationConfig config)
+        {
+            if (config == null)
+            {
+                throw new ArgumentNullException(nameof(config));
+            }
+
+            var archetypeKey = Equipment.Weapon?.Definition.Archetype;
+            var branch = archetypeKey != null && config.SkillTree.TryGet(archetypeKey, out var found) ? found : null;
+            var fame = branch == null ? 0 : Fame.Get(branch.Key);
+
+            MaxHp = Actor.MaxHp + Equipment.MaxHpBonus + (branch == null ? 0 : branch.GetMaxHpBonus(fame));
+            MoveSpeed = Actor.MoveSpeed
+                * (1f + Equipment.MoveSpeedBonus + (branch == null ? 0f : branch.GetMoveSpeedBonus(fame)));
+            DamageMultiplier = 1f + (branch == null ? 0f : branch.GetDamageBonus(fame));
+            AbilityId = branch == null ? Actor.AbilityId : branch.ResolveAbilityId(fame);
+
+            if (Hp > MaxHp)
+            {
+                Hp = MaxHp;
+            }
+        }
 
         /// <summary>
         /// Выдаёт страховочный набор из конфига актора: предметы в инвентарь, снаряжение — с полной прочностью.
@@ -116,6 +232,11 @@ namespace Simulation.Core
             {
                 Equipment.Equip(config.GetItem(Actor.StarterEquipment[i].ItemId));
             }
+
+            // Набор выдаётся на спавне/респавне: после пересчёта бонусов доспехов игрок
+            // обязан начать с полным здоровьем, а не с базовым MaxHp актора.
+            RecalculateStats(config);
+            Hp = MaxHp;
         }
     }
 }

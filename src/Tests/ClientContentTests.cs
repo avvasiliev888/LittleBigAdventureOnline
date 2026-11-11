@@ -67,6 +67,8 @@ namespace Tests
                     ConfigLoader.AbilitiesFileName,
                     ConfigLoader.ZonesFileName,
                     ConfigLoader.ItemsFileName,
+                    ConfigLoader.SkillTreeFileName,
+                    ConfigLoader.ResourcesFileName,
                 })
                 {
                     File.Copy(Path.Combine(RepoConfigDirectory(), fileName), Path.Combine(temp, fileName));

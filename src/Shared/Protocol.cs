@@ -21,8 +21,9 @@ namespace Shared
         /// <see cref="MessageType.ServerAck"/> с подтверждением последней обработанной команды (ADR-009).
         /// Версия 4 (M8): снапшоты передаются дельтой от базового тика (<see cref="MessageType.Delta"/>),
         /// полный снапшот — по запросу при потере базы (ADR-010).
+        /// Версия 5 (M13): в кодек команд добавлены смена снаряжения и сбор ресурса (ADR-014).
         /// </remarks>
-        public const ushort Version = 4;
+        public const ushort Version = 5;
     }
 
     /// <summary>

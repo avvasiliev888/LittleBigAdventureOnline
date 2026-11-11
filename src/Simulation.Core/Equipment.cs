@@ -43,6 +43,69 @@ namespace Simulation.Core
             }
         }
 
+        /// <summary>
+        /// Суммарный бонус к максимальному здоровью от надетых вещей.
+        /// Сломанные вещи бонусов не дают: прочность 0 — вещь больше не помогает.
+        /// </summary>
+        public int MaxHpBonus
+        {
+            get
+            {
+                var total = 0;
+                for (var i = 0; i < _slots.Length; i++)
+                {
+                    var item = _slots[i];
+                    if (item != null && !item.IsBroken)
+                    {
+                        total += item.Definition.MaxHpBonus;
+                    }
+                }
+
+                return total;
+            }
+        }
+
+        /// <summary>Суммарный плоский бонус к урону способности от надетых вещей.</summary>
+        public int DamageBonus
+        {
+            get
+            {
+                var total = 0;
+                for (var i = 0; i < _slots.Length; i++)
+                {
+                    var item = _slots[i];
+                    if (item != null && !item.IsBroken)
+                    {
+                        total += item.Definition.DamageBonus;
+                    }
+                }
+
+                return total;
+            }
+        }
+
+        /// <summary>Суммарная доля бонуса к скорости движения от надетых вещей.</summary>
+        public float MoveSpeedBonus
+        {
+            get
+            {
+                var total = 0f;
+                for (var i = 0; i < _slots.Length; i++)
+                {
+                    var item = _slots[i];
+                    if (item != null && !item.IsBroken)
+                    {
+                        total += item.Definition.MoveSpeedBonus;
+                    }
+                }
+
+                return total;
+            }
+        }
+
+        /// <summary>Оружие в руке; <c>null</c>, если рука пуста.</summary>
+        public EquippedItem? Weapon => _slots[ToIndex(EquipmentSlot.MainHand)];
+
         /// <summary>Возвращает вещь в слоте.</summary>
         /// <param name="slot">Слот снаряжения.</param>
         /// <returns>Надетая вещь или <c>null</c>, если слот пуст.</returns>

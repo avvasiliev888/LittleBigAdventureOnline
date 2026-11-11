@@ -115,7 +115,8 @@ namespace Tests
         {
             var missing = Path.Combine(Path.GetTempPath(), "albion-missing-" + Guid.NewGuid().ToString("N"), "actors.json");
 
-            var exception = Assert.Throws<ConfigValidationException>(() => ConfigLoader.Load(missing, missing, missing, missing));
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.Load(missing, missing, missing, missing, missing, missing));
 
             Assert.Contains("не найден", exception.Message);
         }
@@ -151,8 +152,16 @@ namespace Tests
   { ""id"": 7, ""key"": ""crimson"", ""kind"": ""red"", ""minX"": -5.0, ""minZ"": -5.0, ""maxX"": 5.0, ""maxZ"": 5.0, ""pvpEnabled"": true, ""fullLootOnDeath"": true, ""durabilityLossFraction"": 0.0, ""hostileFlagSeconds"": 30.0, ""resourceTierMin"": 3, ""resourceTierMax"": 4 }
 ]",
                 @"[
-  { ""id"": 10, ""key"": ""sword"", ""kind"": ""equipment"", ""tier"": 2, ""maxDurability"": 90, ""slot"": ""mainHand"" }
-]");
+  { ""id"": 10, ""key"": ""sword"", ""kind"": ""equipment"", ""tier"": 2, ""maxDurability"": 90, ""slot"": ""mainHand"", ""archetype"": ""warrior"", ""damageBonus"": 4 }
+]",
+                "config",
+                @"{
+  ""archetypes"": [
+    { ""key"": ""warrior"", ""name"": ""Воин"", ""nodes"": [
+      { ""id"": 1, ""name"": ""Рассечение"", ""fameThreshold"": 0, ""kind"": ""active"", ""abilityId"": 1 }
+    ] }
+  ]
+}");
 
             var zone = config.Zones.GetZone(new System.Numerics.Vector3(0f, 0f, 0f));
             var item = config.GetItem(10);
@@ -163,6 +172,126 @@ namespace Tests
             Assert.Equal(ItemKind.Equipment, item.ItemKind);
             Assert.Equal(EquipmentSlot.MainHand, item.Slot);
             Assert.Equal(90, item.MaxDurability);
+            Assert.Equal("warrior", item.Archetype);
+            Assert.Equal(4, item.DamageBonus);
+            Assert.Equal(1, config.SkillTree.Count);
+        }
+
+        [Fact]
+        public void SkillTreeAndResources_AreParsedFromJson()
+        {
+            var config = ConfigLoader.LoadFromJson(
+                ValidActors,
+                ValidAbilities,
+                TestWorld.ZonesJson,
+                TestWorld.ItemsJson,
+                "config",
+                TestWorld.SkillTreeJson,
+                TestWorld.WoodResourceJson);
+
+            Assert.Equal(1, config.SkillTree.Count);
+            Assert.Equal(3, config.SkillTree.NodeCount);
+
+            var warrior = config.SkillTree.Get("warrior");
+            Assert.Equal("Воин", warrior.Name);
+            Assert.Equal(3, warrior.Nodes.Count);
+            Assert.Equal(SkillNodeKind.Active, warrior.Nodes[0].Kind);
+            Assert.Equal(1u, warrior.Nodes[0].AbilityId);
+            Assert.Equal(SkillNodeKind.Passive, warrior.Nodes[1].Kind);
+            Assert.Equal(0.10f, warrior.Nodes[1].DamageBonus, 5);
+            Assert.Equal(10, warrior.Nodes[1].FameThreshold);
+
+            var node = Assert.Single(config.ResourceNodes);
+            Assert.Equal(7u, node.Id);
+            Assert.Equal(1u, node.ItemId);
+            Assert.Equal(2, node.Amount);
+            Assert.Equal(3, node.FamePerGather);
+            Assert.Equal(2f, node.Position.X);
+            Assert.Equal(3f, node.Range);
+        }
+
+        [Fact]
+        public void ItemArchetypeWithoutSkillBranch_Throws()
+        {
+            const string items = @"[
+  { ""id"": 10, ""key"": ""sword"", ""kind"": ""equipment"", ""tier"": 1, ""maxDurability"": 100, ""slot"": ""mainHand"", ""archetype"": ""mage"" }
+]";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(ValidActors, ValidAbilities, TestWorld.ZonesJson, items));
+
+            Assert.Contains("отсутствующую ветку", exception.Message);
+            Assert.Contains("mage", exception.Message);
+        }
+
+        [Fact]
+        public void SkillTreeActiveNodeWithoutAbility_Throws()
+        {
+            const string tree = @"{
+  ""archetypes"": [
+    { ""key"": ""warrior"", ""name"": ""Воин"", ""nodes"": [
+      { ""id"": 1, ""name"": ""Рассечение"", ""fameThreshold"": 0, ""kind"": ""active"", ""abilityId"": 9 }
+    ] }
+  ]
+}";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(
+                    ValidActors, ValidAbilities, TestWorld.ZonesJson, TestWorld.ItemsJson, "config", tree));
+
+            Assert.Contains("отсутствующую способность", exception.Message);
+        }
+
+        [Fact]
+        public void DuplicateSkillNodeId_Throws()
+        {
+            const string tree = @"{
+  ""archetypes"": [
+    { ""key"": ""a"", ""name"": ""А"", ""nodes"": [
+      { ""id"": 1, ""name"": ""База"", ""fameThreshold"": 0, ""kind"": ""active"", ""abilityId"": 1 }
+    ] },
+    { ""key"": ""b"", ""name"": ""Б"", ""nodes"": [
+      { ""id"": 1, ""name"": ""База"", ""fameThreshold"": 0, ""kind"": ""active"", ""abilityId"": 1 }
+    ] }
+  ]
+}";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(
+                    ValidActors, ValidAbilities, TestWorld.ZonesJson, TestWorld.ItemsJson, "config", tree));
+
+            Assert.Contains("дважды во всём дереве", exception.Message);
+        }
+
+        [Fact]
+        public void ResourceNodeNotMaterial_Throws()
+        {
+            const string items = @"[
+  { ""id"": 11, ""key"": ""chest"", ""kind"": ""equipment"", ""tier"": 1, ""maxDurability"": 100, ""slot"": ""chest"", ""maxHpBonus"": 20 }
+]";
+            const string resources = @"[
+  { ""id"": 7, ""key"": ""vein"", ""itemId"": 11, ""x"": 2.0, ""z"": 0.0, ""amount"": 1, ""gatherSeconds"": 1.0, ""range"": 3.0 }
+]";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(
+                    ValidActors, ValidAbilities, TestWorld.ZonesJson, items, "config", ConfigLoader.EmptySkillTreeJson, resources));
+
+            Assert.Contains("не является сырьём", exception.Message);
+        }
+
+        [Fact]
+        public void ResourceNodeOutsideZones_Throws()
+        {
+            const string resources = @"[
+  { ""id"": 7, ""key"": ""vein"", ""itemId"": 1, ""x"": 5000.0, ""z"": 0.0, ""amount"": 1, ""gatherSeconds"": 1.0, ""range"": 3.0 }
+]";
+
+            var exception = Assert.Throws<ConfigValidationException>(
+                () => ConfigLoader.LoadFromJson(
+                    ValidActors, ValidAbilities, TestWorld.ZonesJson, TestWorld.ItemsJson, "config", ConfigLoader.EmptySkillTreeJson, resources));
+
+            Assert.Contains("вне зон", exception.Message);
         }
 
         [Fact]
@@ -315,7 +444,8 @@ namespace Tests
                     new[] { actor },
                     new[] { ability },
                     TestWorld.DefaultZones,
-                    TestWorld.DefaultItems));
+                    TestWorld.DefaultItems,
+                    TestWorld.DefaultSkillTree));
 
             Assert.Contains("7", exception.Message);
         }

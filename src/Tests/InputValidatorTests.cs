@@ -168,6 +168,93 @@ namespace Tests
                 () => validator.Validate(null!, 0, Envelope(1, Move(1f, 0f)), 0));
         }
 
+        [Fact]
+        public void ValidEquip_IsAccepted()
+        {
+            var (validator, state) = CreateProgression();
+
+            var result = validator.Validate(
+                state, 0, Envelope(1, new EquipCommand(ProgressionFixture.BowItemId, 0, 0)), 0);
+
+            Assert.True(result.IsValid);
+        }
+
+        [Fact]
+        public void EquipUnknownItem_IsRejected()
+        {
+            var (validator, state) = CreateProgression();
+
+            var result = validator.Validate(state, 0, Envelope(1, new EquipCommand(999, 0, 0)), 0);
+
+            Assert.Equal(CommandRejectReason.UnknownItem, result.Reason);
+        }
+
+        [Fact]
+        public void EquipMaterial_IsRejected()
+        {
+            var (validator, state) = CreateProgression();
+
+            var result = validator.Validate(state, 0, Envelope(1, new EquipCommand(1, 0, 0)), 0);
+
+            Assert.Equal(CommandRejectReason.NotEquippable, result.Reason);
+        }
+
+        [Fact]
+        public void EquipItemNotInInventory_IsRejected()
+        {
+            var (validator, state) = CreateProgression();
+
+            // Меч уже надет, поэтому в инвентаре его нет.
+            var result = validator.Validate(
+                state, 0, Envelope(1, new EquipCommand(ProgressionFixture.SwordItemId, 0, 0)), 0);
+
+            Assert.Equal(CommandRejectReason.ItemNotInInventory, result.Reason);
+        }
+
+        [Fact]
+        public void ValidGather_IsAccepted()
+        {
+            var (validator, state) = CreateProgression();
+
+            var result = validator.Validate(
+                state, 0, Envelope(1, new GatherCommand(ProgressionFixture.WoodNodeId, 0, 0)), 0);
+
+            Assert.True(result.IsValid);
+        }
+
+        [Fact]
+        public void GatherUnknownNode_IsRejected()
+        {
+            var (validator, state) = CreateProgression();
+
+            var result = validator.Validate(state, 0, Envelope(1, new GatherCommand(99, 0, 0)), 0);
+
+            Assert.Equal(CommandRejectReason.UnknownNode, result.Reason);
+        }
+
+        [Fact]
+        public void GatherOnCooldown_IsRejected()
+        {
+            var (validator, state) = CreateProgression();
+            state.Entities[0].GatherCooldownUntilTick = 10;
+
+            var result = validator.Validate(
+                state, 5, Envelope(1, new GatherCommand(ProgressionFixture.WoodNodeId, 0, 0)), 0);
+
+            Assert.Equal(CommandRejectReason.GatherOnCooldown, result.Reason);
+        }
+
+        [Fact]
+        public void GatherOutOfRange_IsRejected()
+        {
+            var (validator, state) = CreateProgression();
+
+            var result = validator.Validate(
+                state, 0, Envelope(1, new GatherCommand(ProgressionFixture.FarNodeId, 0, 0)), 0);
+
+            Assert.Equal(CommandRejectReason.GatherOutOfRange, result.Reason);
+        }
+
         private static (InputValidator Validator, SimulationState State) Create(ServerOptions? options = null)
         {
             var config = TestWorld.Config();
@@ -178,6 +265,18 @@ namespace Tests
             });
 
             return (new InputValidator(config, options ?? new ServerOptions()), state);
+        }
+
+        private static (InputValidator Validator, SimulationState State) CreateProgression()
+        {
+            var config = ProgressionFixture.Config();
+            var state = new SimulationState(0, new[]
+            {
+                ProgressionFixture.Player(config),
+                ProgressionFixture.Target(config),
+            });
+
+            return (new InputValidator(config, new ServerOptions()), state);
         }
 
         private static CommandEnvelope Envelope(uint entityId, ICommand command) => new CommandEnvelope(entityId, command);

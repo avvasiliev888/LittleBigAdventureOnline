@@ -44,6 +44,16 @@ namespace Simulation.Core
         {
             _state = initialState ?? throw new ArgumentNullException(nameof(initialState));
             _config = config;
+
+            // Сущности могли получить снаряжение и Славу до создания симуляции (спавн сервера,
+            // тестовые миры): производные характеристики обязаны учитывать их с первого тика.
+            if (_config != null)
+            {
+                for (var i = 0; i < _state.Entities.Count; i++)
+                {
+                    _state.Entities[i].RecalculateStats(_config);
+                }
+            }
         }
 
         /// <inheritdoc />
@@ -162,6 +172,22 @@ namespace Simulation.Core
 
                     return;
 
+                case EquipCommand equip:
+                    if (_state.TryGetEntity(envelope.EntityId, out var equipper))
+                    {
+                        ApplyEquip(equipper, equip);
+                    }
+
+                    return;
+
+                case GatherCommand gather:
+                    if (_state.TryGetEntity(envelope.EntityId, out var gatherer))
+                    {
+                        ApplyGather(gatherer, gather);
+                    }
+
+                    return;
+
                 default:
                     throw new NotSupportedException(
                         "Тип команды " + envelope.Command.GetType().FullName + " не поддерживается симуляцией.");
@@ -175,12 +201,11 @@ namespace Simulation.Core
                 return;
             }
 
-            var speed = _config!.GetActor(entity.ActorId).MoveSpeed;
             var direction = new Vector3(command.Direction.X, 0f, command.Direction.Y);
-            entity.Position += direction * (speed * deltaTime);
+            entity.Position += direction * (entity.MoveSpeed * deltaTime);
 
             // Граница мира — правило зон, а не вежливость: из мира нельзя выйти и «спрятаться» вне зон.
-            entity.Position = _config.Zones.ClampToBounds(entity.Position);
+            entity.Position = _config!.Zones.ClampToBounds(entity.Position);
         }
 
         private void ApplyAbility(EntityState caster, AbilityCommand command)
@@ -190,7 +215,7 @@ namespace Simulation.Core
                 return;
             }
 
-            var ability = _config!.GetAbility(_config.GetActor(caster.ActorId).AbilityId);
+            var ability = _config!.GetAbility(caster.AbilityId);
 
             // Self-target is never a valid hit. It is also the one target error that does not
             // activate the ability, so a direct simulation caller cannot spend the cooldown on it.
@@ -246,7 +271,12 @@ namespace Simulation.Core
                 return;
             }
 
-            target.Hp -= ability.Damage;
+            // Урон = база способности + бонус оружия, умноженный на пассивные узлы дерева.
+            // Округление от нуля: 2.5 урона не «теряются» на ветке с +5%.
+            var damage = (int)MathF.Round(
+                (ability.Damage + caster.Equipment.DamageBonus) * caster.DamageMultiplier,
+                MidpointRounding.AwayFromZero);
+            target.Hp -= damage;
 
             if (targetZone != null)
             {
@@ -256,20 +286,103 @@ namespace Simulation.Core
 
             if (target.Hp <= 0)
             {
-                Kill(target);
+                Kill(target, caster);
             }
+        }
+
+        /// <summary>
+        /// Смена оружия: предмет берётся из инвентаря, вытесненная вещь возвращается в инвентарь.
+        /// Смена архетипа оружия меняет активную способность, но Слава копится по веткам и не сбрасывается.
+        /// </summary>
+        /// <param name="entity">Сущность, меняющая снаряжение.</param>
+        /// <param name="command">Команда с идентификатором предмета.</param>
+        private void ApplyEquip(EntityState entity, EquipCommand command)
+        {
+            if (entity.IsDead || !_config!.Items.TryGetValue(command.ItemId, out var item))
+            {
+                return;
+            }
+
+            if (item.ItemKind != ItemKind.Equipment || !item.Slot.HasValue)
+            {
+                return;
+            }
+
+            if (!entity.Inventory.Remove(item.Id, 1))
+            {
+                return;
+            }
+
+            var previous = entity.Equipment.Get(item.Slot.Value);
+            entity.Equip(_config, item);
+
+            if (previous != null)
+            {
+                entity.Inventory.Add(previous.Definition, 1);
+            }
+        }
+
+        /// <summary>
+        /// Сбор ресурсов из жилы: сырьё в инвентарь, Слава в ветку оружия в руке, кулдаун сбора.
+        /// Жила статична: истощение и респавн появятся вместе с экономикой (этап 3).
+        /// </summary>
+        /// <param name="entity">Сущность, собирающая ресурс.</param>
+        /// <param name="command">Команда с идентификатором жилы.</param>
+        private void ApplyGather(EntityState entity, GatherCommand command)
+        {
+            if (entity.IsDead)
+            {
+                return;
+            }
+
+            var node = FindNode(command.NodeId);
+            if (node == null || entity.GatherCooldownUntilTick > _state.Tick)
+            {
+                return;
+            }
+
+            if (HorizontalDistance(entity.Position, node.Position) > node.Range)
+            {
+                return;
+            }
+
+            entity.Inventory.Add(_config!.GetItem(node.ItemId), node.Amount);
+            entity.GatherCooldownUntilTick = _state.Tick + ToTicks(node.GatherSeconds);
+            entity.AwardFame(_config, node.FamePerGather);
+        }
+
+        private ResourceNodeConfig? FindNode(uint nodeId)
+        {
+            for (var i = 0; i < _config!.ResourceNodes.Count; i++)
+            {
+                if (_config.ResourceNodes[i].Id == nodeId)
+                {
+                    return _config.ResourceNodes[i];
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
         /// Применяет смерть по правилам зоны жертвы (ADR-013): в красной зоне игрок теряет снаряжение
         /// и инвентарь, в остальных зонах — только прочность; мобы правилам игроков не подчиняются.
+        /// Убийца-игрок получает Славу в ветку оружия в руке (ADR-015).
         /// </summary>
-        private void Kill(EntityState victim)
+        /// <param name="victim">Погибшая сущность.</param>
+        /// <param name="killer">Нанесшая смертельный удар сущность; совпадает с жертвой при «самоубийстве».</param>
+        private void Kill(EntityState victim, EntityState killer)
         {
             victim.Hp = 0;
             victim.CooldownUntilTick = 0;
             victim.HostileUntilTick = 0;
             victim.RespawnAtTick = _state.Tick + ToTicks(victim.Actor.RespawnSeconds);
+
+            // Слава убийцы начисляется до правил лута: прогресс не зависит от зоны гибели жертвы.
+            if (killer.Id != victim.Id && killer.Actor.Kind == ActorKind.Player)
+            {
+                killer.AwardFame(_config!, victim.Actor.FameOnKill);
+            }
 
             if (victim.Actor.Kind != ActorKind.Player)
             {
@@ -281,10 +394,15 @@ namespace Simulation.Core
             {
                 victim.Inventory.Clear();
                 victim.Equipment.Clear();
-                return;
+            }
+            else
+            {
+                victim.Equipment.ApplyDurabilityLoss(zone.DurabilityLossFraction);
             }
 
-            victim.Equipment.ApplyDurabilityLoss(zone.DurabilityLossFraction);
+            // Лут и износ меняют характеристики: без пересчёта оружие после полного лута
+            // продолжало бы давать способность, а MaxHp — бонусы снятых вещей.
+            victim.RecalculateStats(_config);
         }
 
         private void RegenerateResources(float deltaTime)

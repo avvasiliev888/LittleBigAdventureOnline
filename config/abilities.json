@@ -5,5 +5,68 @@
     "range": 3.0,
     "cooldownSeconds": 2.0,
     "resourceCost": 10
+  },
+  {
+    "id": 2,
+    "damage": 30,
+    "range": 2.5,
+    "cooldownSeconds": 3.0,
+    "resourceCost": 15
+  },
+  {
+    "id": 3,
+    "damage": 20,
+    "range": 8.0,
+    "cooldownSeconds": 1.5,
+    "resourceCost": 5
+  },
+  {
+    "id": 4,
+    "damage": 35,
+    "range": 7.0,
+    "cooldownSeconds": 2.5,
+    "resourceCost": 20
+  },
+  {
+    "id": 5,
+    "damage": 45,
+    "range": 2.5,
+    "cooldownSeconds": 6.0,
+    "resourceCost": 25
+  },
+  {
+    "id": 6,
+    "damage": 35,
+    "range": 9.0,
+    "cooldownSeconds": 5.0,
+    "resourceCost": 15
+  },
+  {
+    "id": 7,
+    "damage": 50,
+    "range": 6.5,
+    "cooldownSeconds": 5.0,
+    "resourceCost": 30
+  },
+  {
+    "id": 8,
+    "damage": 60,
+    "range": 3.5,
+    "cooldownSeconds": 9.0,
+    "resourceCost": 35
+  },
+  {
+    "id": 9,
+    "damage": 50,
+    "range": 10.0,
+    "cooldownSeconds": 8.0,
+    "resourceCost": 25
+  },
+  {
+    "id": 10,
+    "damage": 80,
+    "range": 6.0,
+    "cooldownSeconds": 10.0,
+    "resourceCost": 45
   }
 ]

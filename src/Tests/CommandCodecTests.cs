@@ -67,6 +67,40 @@ namespace Tests
             Assert.Equal(2u, ability.Sequence);
         }
 
+        [Fact]
+        public void EncodeDecode_EquipCommand()
+        {
+            var command = new EquipCommand(itemId: 14, clientTick: 8, sequence: 3);
+
+            var decoded = Decode(CommandCodec.Encode(command));
+
+            var equip = Assert.IsType<EquipCommand>(decoded);
+            Assert.Equal(14u, equip.ItemId);
+            Assert.Equal(8u, equip.ClientTick);
+            Assert.Equal(3u, equip.Sequence);
+        }
+
+        [Fact]
+        public void EncodeDecode_GatherCommand()
+        {
+            var command = new GatherCommand(nodeId: 7, clientTick: 9, sequence: 4);
+
+            var decoded = Decode(CommandCodec.Encode(command));
+
+            var gather = Assert.IsType<GatherCommand>(decoded);
+            Assert.Equal(7u, gather.NodeId);
+            Assert.Equal(9u, gather.ClientTick);
+            Assert.Equal(4u, gather.Sequence);
+        }
+
+        [Fact]
+        public void Decode_TruncatedEquipAndGather_ReturnsFalse()
+        {
+            Assert.False(CommandCodec.TryDecode(new byte[] { CommandCodec.EquipTag, 0, 0 }, out _));
+            Assert.False(CommandCodec.TryDecode(new byte[] { CommandCodec.GatherTag, 0, 0 }, out _));
+            Assert.False(CommandCodec.TryDecode(new byte[13], out _));
+        }
+
         private static ICommand Decode(byte[] payload)
         {
             Assert.True(CommandCodec.TryDecode(payload, out var command));

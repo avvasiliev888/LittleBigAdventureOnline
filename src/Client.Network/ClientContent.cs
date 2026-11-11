@@ -24,7 +24,10 @@ namespace Client.Network
         public string Hash { get; }
 
         /// <summary>Загружает конфиг из каталога (в Unity — <c>StreamingAssets/Config</c>).</summary>
-        /// <param name="directory">Каталог с <c>actors.json</c>, <c>abilities.json</c>, <c>zones.json</c> и <c>items.json</c>.</param>
+        /// <param name="directory">
+        /// Каталог с <c>actors.json</c>, <c>abilities.json</c>, <c>zones.json</c>, <c>items.json</c>,
+        /// <c>skill-tree.json</c> и <c>resources.json</c>.
+        /// </param>
         /// <exception cref="ArgumentNullException">Если <paramref name="directory"/> равен <c>null</c>.</exception>
         /// <exception cref="ConfigValidationException">Если файлы отсутствуют или невалидны.</exception>
         public static ClientContent LoadFromDirectory(string directory)
@@ -43,17 +46,21 @@ namespace Client.Network
         /// <param name="zonesJson">Содержимое <c>zones.json</c>.</param>
         /// <param name="itemsJson">Содержимое <c>items.json</c>.</param>
         /// <param name="source">Метка источника для сообщений об ошибках.</param>
+        /// <param name="skillTreeJson">Содержимое <c>skill-tree.json</c>; пустое дерево по умолчанию.</param>
+        /// <param name="resourcesJson">Содержимое <c>resources.json</c>; пустой список по умолчанию.</param>
         /// <exception cref="ConfigValidationException">Если JSON невалиден.</exception>
         public static ClientContent LoadFromJson(
             string actorsJson,
             string abilitiesJson,
             string zonesJson,
             string itemsJson,
-            string source = "client-config")
+            string source = "client-config",
+            string skillTreeJson = ConfigLoader.EmptySkillTreeJson,
+            string resourcesJson = ConfigLoader.EmptyResourcesJson)
         {
             return new ClientContent(
-                ConfigLoader.LoadFromJson(actorsJson, abilitiesJson, zonesJson, itemsJson, source),
-                ConfigLoader.ComputeHashFromJson(actorsJson, abilitiesJson, zonesJson, itemsJson));
+                ConfigLoader.LoadFromJson(actorsJson, abilitiesJson, zonesJson, itemsJson, source, skillTreeJson, resourcesJson),
+                ConfigLoader.ComputeHashFromJson(actorsJson, abilitiesJson, zonesJson, itemsJson, skillTreeJson, resourcesJson));
         }
 
         /// <summary>Тип актора по идентификатору.</summary>

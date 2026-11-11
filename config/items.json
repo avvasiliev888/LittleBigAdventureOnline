@@ -19,7 +19,9 @@
     "kind": "equipment",
     "tier": 1,
     "maxDurability": 100,
-    "slot": "mainHand"
+    "slot": "mainHand",
+    "archetype": "warrior",
+    "damageBonus": 4
   },
   {
     "id": 11,
@@ -27,7 +29,8 @@
     "kind": "equipment",
     "tier": 1,
     "maxDurability": 100,
-    "slot": "chest"
+    "slot": "chest",
+    "maxHpBonus": 20
   },
   {
     "id": 12,
@@ -35,7 +38,8 @@
     "kind": "equipment",
     "tier": 1,
     "maxDurability": 80,
-    "slot": "legs"
+    "slot": "legs",
+    "maxHpBonus": 10
   },
   {
     "id": 13,
@@ -43,6 +47,55 @@
     "kind": "equipment",
     "tier": 1,
     "maxDurability": 60,
-    "slot": "feet"
+    "slot": "feet",
+    "moveSpeedBonus": 0.05
+  },
+  {
+    "id": 14,
+    "key": "hunter_bow",
+    "kind": "equipment",
+    "tier": 1,
+    "maxDurability": 90,
+    "slot": "mainHand",
+    "archetype": "archer",
+    "damageBonus": 3
+  },
+  {
+    "id": 15,
+    "key": "apprentice_staff",
+    "kind": "equipment",
+    "tier": 1,
+    "maxDurability": 80,
+    "slot": "mainHand",
+    "archetype": "mage",
+    "damageBonus": 5
+  },
+  {
+    "id": 16,
+    "key": "iron_sword",
+    "kind": "equipment",
+    "tier": 2,
+    "maxDurability": 120,
+    "slot": "mainHand",
+    "archetype": "warrior",
+    "damageBonus": 8
+  },
+  {
+    "id": 17,
+    "key": "reinforced_chest",
+    "kind": "equipment",
+    "tier": 2,
+    "maxDurability": 140,
+    "slot": "chest",
+    "maxHpBonus": 40
+  },
+  {
+    "id": 18,
+    "key": "swift_boots",
+    "kind": "equipment",
+    "tier": 2,
+    "maxDurability": 80,
+    "slot": "feet",
+    "moveSpeedBonus": 0.1
   }
 ]

@@ -1,0 +1,40 @@
+{
+  "archetypes": [
+    {
+      "key": "warrior",
+      "name": "Воин",
+      "nodes": [
+        { "id": 1, "name": "Рассечение", "fameThreshold": 0, "kind": "active", "abilityId": 2 },
+        { "id": 2, "name": "Сила удара", "fameThreshold": 10, "kind": "passive", "damageBonus": 0.05 },
+        { "id": 3, "name": "Крепкий доспех", "fameThreshold": 25, "kind": "passive", "maxHpBonus": 15 },
+        { "id": 4, "name": "Сокрушение", "fameThreshold": 40, "kind": "active", "abilityId": 5 },
+        { "id": 5, "name": "Быстрый шаг", "fameThreshold": 60, "kind": "passive", "moveSpeedBonus": 0.03 },
+        { "id": 6, "name": "Вихрь", "fameThreshold": 80, "kind": "active", "abilityId": 8 }
+      ]
+    },
+    {
+      "key": "archer",
+      "name": "Лучник",
+      "nodes": [
+        { "id": 7, "name": "Выстрел", "fameThreshold": 0, "kind": "active", "abilityId": 3 },
+        { "id": 8, "name": "Острый глаз", "fameThreshold": 10, "kind": "passive", "damageBonus": 0.05 },
+        { "id": 9, "name": "Лёгкая поступь", "fameThreshold": 25, "kind": "passive", "moveSpeedBonus": 0.03 },
+        { "id": 10, "name": "Град стрел", "fameThreshold": 40, "kind": "active", "abilityId": 6 },
+        { "id": 11, "name": "Выносливость", "fameThreshold": 60, "kind": "passive", "maxHpBonus": 15 },
+        { "id": 12, "name": "Пробивающий выстрел", "fameThreshold": 80, "kind": "active", "abilityId": 9 }
+      ]
+    },
+    {
+      "key": "mage",
+      "name": "Маг",
+      "nodes": [
+        { "id": 13, "name": "Огненный шар", "fameThreshold": 0, "kind": "active", "abilityId": 4 },
+        { "id": 14, "name": "Сила стихий", "fameThreshold": 10, "kind": "passive", "damageBonus": 0.05 },
+        { "id": 15, "name": "Магический щит", "fameThreshold": 25, "kind": "passive", "maxHpBonus": 15 },
+        { "id": 16, "name": "Ледяная стрела", "fameThreshold": 40, "kind": "active", "abilityId": 7 },
+        { "id": 17, "name": "Поток маны", "fameThreshold": 60, "kind": "passive", "moveSpeedBonus": 0.03 },
+        { "id": 18, "name": "Метеор", "fameThreshold": 80, "kind": "active", "abilityId": 10 }
+      ]
+    }
+  ]
+}

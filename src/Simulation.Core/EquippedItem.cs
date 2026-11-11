@@ -26,7 +26,11 @@ namespace Simulation.Core
             Slot = item.Slot.Value;
             MaxDurability = item.MaxDurability;
             Durability = item.MaxDurability;
+            Definition = item;
         }
+
+        /// <summary>Определение предмета из конфига (для бонусов к характеристикам).</summary>
+        public ItemDefinition Definition { get; }
 
         /// <summary>Идентификатор предмета из конфига.</summary>
         public uint ItemId { get; }

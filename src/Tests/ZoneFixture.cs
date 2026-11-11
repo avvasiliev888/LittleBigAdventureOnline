@@ -61,7 +61,8 @@ namespace Tests
                 new[] { player, mob },
                 new[] { ability },
                 ThreeZones(),
-                TestWorld.DefaultItems);
+                TestWorld.DefaultItems,
+                TestWorld.DefaultSkillTree);
         }
     }
 }

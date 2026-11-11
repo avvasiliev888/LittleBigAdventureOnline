@@ -16,6 +16,12 @@ namespace Shared
         /// <summary>Тег команды способности.</summary>
         public const byte AbilityTag = 2;
 
+        /// <summary>Тег команды смены снаряжения.</summary>
+        public const byte EquipTag = 3;
+
+        /// <summary>Тег команды сбора ресурса.</summary>
+        public const byte GatherTag = 4;
+
         /// <summary>Кодирует команду в тело сообщения.</summary>
         /// <param name="command">Команда для кодирования.</param>
         /// <returns>Байты тела.</returns>
@@ -46,6 +52,20 @@ namespace Shared
                     writer.Write(ability.ClientTick);
                     writer.Write(ability.Sequence);
                     writer.Write(ability.TargetId);
+                    break;
+
+                case EquipCommand equip:
+                    writer.Write(EquipTag);
+                    writer.Write(equip.ClientTick);
+                    writer.Write(equip.Sequence);
+                    writer.Write(equip.ItemId);
+                    break;
+
+                case GatherCommand gather:
+                    writer.Write(GatherTag);
+                    writer.Write(gather.ClientTick);
+                    writer.Write(gather.Sequence);
+                    writer.Write(gather.NodeId);
                     break;
 
                 default:
@@ -98,6 +118,26 @@ namespace Shared
 
                     var targetId = reader.ReadUInt32();
                     command = new AbilityCommand(targetId, clientTick, sequence);
+                    return true;
+
+                case EquipTag:
+                    if (payload.Length != 13)
+                    {
+                        return false;
+                    }
+
+                    var itemId = reader.ReadUInt32();
+                    command = new EquipCommand(itemId, clientTick, sequence);
+                    return true;
+
+                case GatherTag:
+                    if (payload.Length != 13)
+                    {
+                        return false;
+                    }
+
+                    var nodeId = reader.ReadUInt32();
+                    command = new GatherCommand(nodeId, clientTick, sequence);
                     return true;
 
                 default:

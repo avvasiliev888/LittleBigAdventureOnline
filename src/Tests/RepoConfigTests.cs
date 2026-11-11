@@ -74,12 +74,15 @@ namespace Tests
         public void RepoConfig_DamageFromJson_IsAppliedInSimulation()
         {
             var config = LoadRepoConfig();
-            var expectedHp = config.GetActor(1).MaxHp - config.GetAbility(1).Damage;
+            var player = TestWorld.Entity(1, config, x: 18f);
+            var ability = config.GetAbility(player.AbilityId);
+            var expectedDamage = ability.Damage + player.Equipment.DamageBonus;
+            var expectedHp = player.MaxHp - expectedDamage;
 
             // Бой возможен только в зоне с PvP: репозиторный конфиг держит спавн в синей зоне.
             var simulation = TestWorld.Simulation(
                 config,
-                TestWorld.Entity(1, config, x: 18f),
+                player,
                 TestWorld.Entity(2, config, x: 19f));
 
             TestWorld.Tick(simulation, TestWorld.Attack(1, 2));

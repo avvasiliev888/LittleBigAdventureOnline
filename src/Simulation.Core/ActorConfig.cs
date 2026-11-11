@@ -22,6 +22,7 @@ namespace Simulation.Core
         /// <param name="kind">Роль актора: игрок участвует в PvP и теряет предметы, моб — нет.</param>
         /// <param name="starterItems">Стартовые предметы в инвентаре; <c>null</c> — набор пуст.</param>
         /// <param name="starterEquipment">Стартовое снаряжение; <c>null</c> — надето ничего.</param>
+        /// <param name="fameOnKill">Слава, которую получает убийца игрока-жертвы этого типа (ADR-015).</param>
         public ActorConfig(
             uint id,
             int maxHp,
@@ -32,7 +33,8 @@ namespace Simulation.Core
             float resourceRegenPerSecond = 0f,
             ActorKind kind = ActorKind.Player,
             IReadOnlyList<LoadoutItem>? starterItems = null,
-            IReadOnlyList<LoadoutEquipment>? starterEquipment = null)
+            IReadOnlyList<LoadoutEquipment>? starterEquipment = null,
+            int fameOnKill = 0)
         {
             if (id == 0)
             {
@@ -73,6 +75,14 @@ namespace Simulation.Core
                     "ResourceRegenPerSecond должен быть конечным неотрицательным числом.");
             }
 
+            if (fameOnKill < 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(fameOnKill),
+                    fameOnKill,
+                    "Слава за убийство не может быть отрицательной.");
+            }
+
             Id = id;
             MaxHp = maxHp;
             MoveSpeed = moveSpeed;
@@ -83,6 +93,7 @@ namespace Simulation.Core
             Kind = kind;
             StarterItems = CopyLoadout(starterItems, nameof(starterItems));
             StarterEquipment = CopyLoadout(starterEquipment, nameof(starterEquipment));
+            FameOnKill = fameOnKill;
         }
 
         /// <summary>Идентификатор типа актора.</summary>
@@ -114,6 +125,9 @@ namespace Simulation.Core
 
         /// <summary>Стартовое снаряжение (страховочный набор).</summary>
         public IReadOnlyList<LoadoutEquipment> StarterEquipment { get; }
+
+        /// <summary>Слава убийце за убийство актора этого типа.</summary>
+        public int FameOnKill { get; }
 
         private static IReadOnlyList<T> CopyLoadout<T>(IReadOnlyList<T>? source, string parameterName)
             where T : class

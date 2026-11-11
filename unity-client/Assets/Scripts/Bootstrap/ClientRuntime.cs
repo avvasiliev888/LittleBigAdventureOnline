@@ -31,6 +31,7 @@ namespace Albion.Client
         private UnityView _view;
         private UnityInputSource _input;
         private CameraFollow _cameraFollow;
+        private ClientHud _hud;
         private string _status = "connecting...";
 
         /// <summary>Автостарт без правки сцены: клиент поднимается после загрузки любой сцены.</summary>
@@ -81,7 +82,7 @@ namespace Albion.Client
             }
 
             var worldRoot = new GameObject("Entities").transform;
-            _view = new UnityView(worldRoot);
+            _view = new UnityView(worldRoot, _content);
             var moveSpeed = _content.GetActor(1).MoveSpeed;
             _input = new UnityInputSource(
                 ResolveAbilityTarget,
@@ -94,6 +95,8 @@ namespace Albion.Client
             _transport = new LiteNetLibTransport(host, port);
             _pipeline = new ClientPipeline(_transport, _input, _view, content: _content);
             gameObject.AddComponent<CooldownHud>().Initialize(_pipeline);
+            _hud = gameObject.AddComponent<ClientHud>();
+            _hud.Initialize(_pipeline, _content);
 
             _pipeline.SessionReady += entityId =>
             {
@@ -181,64 +184,10 @@ namespace Albion.Client
 
         private void OnGUI()
         {
-            var snapshots = _pipeline == null ? 0 : _pipeline.SnapshotsApplied;
-            var deltas = _pipeline == null ? 0 : _pipeline.DeltasApplied;
-            var fullRequests = _pipeline == null ? 0 : _pipeline.FullSnapshotRequests;
-            var configHash = _content == null ? "-" : _content.Hash.Substring(0, Math.Min(8, _content.Hash.Length));
-
             GUI.Label(
-                new Rect(12f, 12f, 1000f, 24f),
-                "Albion: " + _status + " | snapshots: " + snapshots + " (delta " + deltas + ", fullReq " + fullRequests + ")"
-                + " | cfg: " + configHash
-                + " | profile: " + (_quality == null ? "-" : _quality.ModeName)
-                + " | fps: " + _fpsSmoothed.ToString("0")
-                + " | WASD/ПКМ — движение, Ctrl — шаг, Space/ЛКМ — способность, 1/2 — оружие");
-
-            if (_pipeline?.Prediction != null)
-            {
-                var prediction = _pipeline.Prediction;
-                GUI.Label(
-                    new Rect(12f, 34f, 1000f, 24f),
-                    "prediction: reconciles=" + prediction.Reconciliations
-                    + " | lastError=" + prediction.LastError.ToString("0.000")
-                    + " | pos=(" + prediction.Position.X.ToString("0.##") + ", " + prediction.Position.Z.ToString("0.##") + ")"
-                    + " | unacked=" + prediction.Unacknowledged.Count
-                    + " | hp: " + OwnHpText()
-                    + " | res: " + OwnResourceText()
-                    + " | cd: " + prediction.CooldownRemainingTicks + " тиков"
-                    + " | range: " + prediction.AbilityRange.ToString("0.##"));
-            }
-        }
-
-        private string OwnHpText()
-        {
-            var entity = OwnEntity();
-            return entity.HasValue ? entity.Value.Hp + "/" + entity.Value.MaxHp : "-";
-        }
-
-        private string OwnResourceText()
-        {
-            var entity = OwnEntity();
-            return entity.HasValue ? entity.Value.Resource + "/" + entity.Value.MaxResource : "-";
-        }
-
-        private EntitySnapshot? OwnEntity()
-        {
-            var snapshot = _pipeline?.LastSnapshot;
-            if (snapshot == null)
-            {
-                return null;
-            }
-
-            foreach (var entity in snapshot.Entities)
-            {
-                if (entity.Id == _pipeline!.EntityId)
-                {
-                    return entity;
-                }
-            }
-
-            return null;
+                new Rect(12f, Screen.height - 24f, Screen.width - 24f, 20f),
+                _status + "  |  cfg: " + (_content == null ? "-" : _content.Hash.Substring(0, Math.Min(8, _content.Hash.Length)))
+                + "  |  fps: " + _fpsSmoothed.ToString("0"));
         }
 
         private void EnsureCamera()

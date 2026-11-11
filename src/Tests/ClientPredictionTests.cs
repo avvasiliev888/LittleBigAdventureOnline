@@ -140,6 +140,40 @@ namespace Tests
             Assert.Equal(3u, remaining.Sequence);
         }
 
+        [Fact]
+        public void SetAbility_UpdatesCooldownFromEquippedWeapon()
+        {
+            var prediction = new ClientPrediction(1, Speed);
+            var slow = new AbilityConfig(1, 10, 3f, 4f, 0);
+            var fast = new AbilityConfig(2, 10, 5f, 1f, 0);
+
+            prediction.SetAbility(slow);
+            Assert.Equal(80, prediction.AbilityCooldownTicks);
+            Assert.Equal(3f, prediction.AbilityRange);
+
+            prediction.SetAbility(fast);
+            Assert.Equal(2u, prediction.Ability!.Id);
+            Assert.Equal(20, prediction.AbilityCooldownTicks);
+            Assert.Equal(5f, prediction.AbilityRange);
+
+            prediction.SetAbility(null);
+            Assert.Equal(2u, prediction.Ability!.Id);
+        }
+
+        [Fact]
+        public void SetMoveSpeed_RejectsNegativeAndUpdatesStep()
+        {
+            var prediction = new ClientPrediction(1, Speed);
+            prediction.Reset(Vector3.Zero);
+
+            prediction.SetMoveSpeed(8f);
+            prediction.ApplyLocalCommand(Move(1f, 0f, 1));
+
+            Assert.Equal(8f * ClientPrediction.TickDelta, prediction.Position.X, 4);
+            Assert.Throws<ArgumentOutOfRangeException>(() => prediction.SetMoveSpeed(-1f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => prediction.SetMoveSpeed(float.NaN));
+        }
+
         private static MoveCommand Move(float x, float z, uint sequence)
         {
             return new MoveCommand(new Vector2(x, z), sequence, sequence);

@@ -98,5 +98,38 @@ namespace Client.Network
         /// <param name="abilityId">Идентификатор способности.</param>
         /// <exception cref="InvalidOperationException">Если такой способности нет.</exception>
         public AbilityConfig GetAbility(uint abilityId) => Config.GetAbility(abilityId);
+
+        /// <summary>Пытается определить тип актора по идентификатору (ADR-019, ADR-020).</summary>
+        /// <param name="actorId">Идентификатор актора из снапшота.</param>
+        /// <param name="kind">Найденный тип или <c>null</c>, если актор неизвестен.</param>
+        /// <returns><c>true</c>, если актор объявлен в <c>actors.json</c> или <c>mobs.json</c>.</returns>
+        public bool TryGetActorKind(uint actorId, out ActorKind? kind)
+        {
+            try
+            {
+                kind = Config.GetActor(actorId).Kind;
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                // Синтетические акторы мобов не лежат в actors.json: их тип задаёт mobs.json.
+            }
+
+            if (Config.TryGetMobByActorId(actorId, out _))
+            {
+                kind = ActorKind.Mob;
+                return true;
+            }
+
+            kind = null;
+            return false;
+        }
+
+        /// <summary>Моб по actorId; <c>null</c>, если actorId не моб.</summary>
+        /// <param name="actorId">Идентификатор актора.</param>
+        public MobDefinition? FindMobByActorId(uint actorId)
+        {
+            return Config.TryGetMobByActorId(actorId, out var mob) ? mob : null;
+        }
     }
 }

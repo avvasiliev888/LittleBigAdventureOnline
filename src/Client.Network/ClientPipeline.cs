@@ -37,6 +37,7 @@ namespace Client.Network
         private float _sinceSnapshot;
         private float _sinceFullRequest;
         private uint _clientTick;
+        private uint _uiSequence;
         private bool _disposed;
 
         /// <summary>Создаёт конвейер.</summary>
@@ -104,6 +105,61 @@ namespace Client.Network
         {
             _transport.Start();
             SendHello();
+        }
+
+        /// <summary>Отправляет команду крафта из UI (ADR-017, ADR-020).</summary>
+        /// <param name="recipeId">Идентификатор рецепта.</param>
+        /// <returns><c>true</c>, если сессия есть и команда ушла в транспорт.</returns>
+        public bool SendCraft(uint recipeId)
+        {
+            return SendUiCommand(new CraftCommand(recipeId, _clientTick, ++_uiSequence));
+        }
+
+        /// <summary>Отправляет команду покупки у NPC из UI (ADR-017).</summary>
+        /// <param name="traderId">Идентификатор торговца.</param>
+        /// <param name="itemId">Идентификатор предмета.</param>
+        /// <param name="quantity">Количество.</param>
+        /// <returns><c>true</c>, если сессия есть и команда ушла в транспорт.</returns>
+        public bool SendBuy(uint traderId, uint itemId, int quantity)
+        {
+            return SendUiCommand(new BuyCommand(traderId, itemId, quantity, _clientTick, ++_uiSequence));
+        }
+
+        /// <summary>Отправляет команду продажи NPC из UI (ADR-017).</summary>
+        /// <param name="traderId">Идентификатор торговца.</param>
+        /// <param name="itemId">Идентификатор предмета.</param>
+        /// <param name="quantity">Количество.</param>
+        /// <returns><c>true</c>, если сессия есть и команда ушла в транспорт.</returns>
+        public bool SendSell(uint traderId, uint itemId, int quantity)
+        {
+            return SendUiCommand(new SellCommand(traderId, itemId, quantity, _clientTick, ++_uiSequence));
+        }
+
+        /// <summary>Отправляет команду сбора лута из трупа (ADR-018).</summary>
+        /// <param name="corpseId">Идентификатор трупа из снапшота.</param>
+        /// <returns><c>true</c>, если сессия есть и команда ушла в транспорт.</returns>
+        public bool SendLoot(uint corpseId)
+        {
+            return SendUiCommand(new LootCommand(corpseId, _clientTick, ++_uiSequence));
+        }
+
+        /// <summary>Отправляет команду экипировки предмета из UI (ADR-016).</summary>
+        /// <param name="itemId">Идентификатор предмета в инвентаре.</param>
+        /// <returns><c>true</c>, если сессия есть и команда ушла в транспорт.</returns>
+        public bool SendEquip(uint itemId)
+        {
+            return SendUiCommand(new EquipCommand(itemId, _clientTick, ++_uiSequence));
+        }
+
+        private bool SendUiCommand(ICommand command)
+        {
+            if (!HasSession)
+            {
+                return false;
+            }
+
+            _transport.Send(MessageFraming.Wrap(MessageType.Command, CommandCodec.Encode(command)), DeliveryMode.ReliableOrdered);
+            return true;
         }
 
         /// <summary>
@@ -396,6 +452,7 @@ namespace Client.Network
 
             _view.ApplySnapshot(snapshot);
             _lastSnapshot = snapshot;
+            SyncPredictionFromSnapshot(snapshot);
 
             if (Prediction == null || !_acknowledgedByTick.TryGetValue(snapshot.Tick, out var acknowledgedSequence))
             {
@@ -405,6 +462,42 @@ namespace Client.Network
             // Пара «снапшот + подтверждение на одном тике» — единственный консистентный вход
             // для реконсиляции: снапшот мог прийти с задержкой, а ack уже уйти вперёд (M7).
             Reconcile(snapshot, acknowledgedSequence);
+        }
+
+        private void SyncPredictionFromSnapshot(SimulationSnapshot snapshot)
+        {
+            if (Prediction == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < snapshot.Entities.Count; i++)
+            {
+                var entity = snapshot.Entities[i];
+                if (entity.Id != EntityId)
+                {
+                    continue;
+                }
+
+                if (entity.MoveSpeed > 0f)
+                {
+                    Prediction.SetMoveSpeed(entity.MoveSpeed);
+                }
+
+                if (_content != null && entity.AbilityId != 0)
+                {
+                    try
+                    {
+                        Prediction.SetAbility(_content.GetAbility(entity.AbilityId));
+                    }
+                    catch (InvalidOperationException exception)
+                    {
+                        _log.Add("[ability] " + exception.Message);
+                    }
+                }
+
+                return;
+            }
         }
 
         /// <summary>

@@ -60,6 +60,39 @@ namespace Tests
         }
 
         [Fact]
+        public void Delta_ProtocolV8FieldsAndCorpses_RoundTrip()
+        {
+            var baseline = new SimulationSnapshot(
+                20,
+                new[]
+                {
+                    new EntitySnapshot(1, 1, new Vector3(1f, 0f, 1f), Vector3.Zero,
+                        100, 100, 50, 100, 0, 0, false,
+                        zoneId: 1, abilityId: 1, moveSpeed: 4f, silver: 10, hostileUntilTick: 0,
+                        weaponItemId: 10, fameTotal: 5, branchFame: 5),
+                });
+            var current = new SimulationSnapshot(
+                21,
+                new[]
+                {
+                    new EntitySnapshot(1, 1, new Vector3(1f, 0f, 1f), Vector3.Zero,
+                        90, 120, 40, 120, 130, 0, false,
+                        zoneId: 2, abilityId: 4, moveSpeed: 4.2f, silver: 25, hostileUntilTick: 800,
+                        weaponItemId: 14, chestItemId: 11, legsItemId: 12, feetItemId: 13,
+                        fameTotal: 60, branchFame: 45),
+                },
+                new[]
+                {
+                    new CorpseSnapshot(7, new Vector3(2f, 0f, 3f), 2f, 9,
+                        new[] { new ItemStack(1, 2) }, 900),
+                });
+
+            var restored = _serializer.ApplyDelta(baseline, _serializer.SerializeDelta(baseline, current));
+
+            SnapshotAssert.Equal(current, restored);
+        }
+
+        [Fact]
         public void Delta_WithNoChanges_IsHeaderOnly()
         {
             var snapshot = new SimulationSnapshot(5, new[] { Entity(1, 0f, 0f) });

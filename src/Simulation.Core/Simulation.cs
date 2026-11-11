@@ -169,6 +169,9 @@ namespace Simulation.Core
             for (var i = 0; i < entities.Length; i++)
             {
                 var entity = _state.Entities[i];
+                var weapon = entity.Equipment.Weapon;
+                var archetype = weapon?.Definition.Archetype;
+                var branchFame = archetype == null ? 0 : entity.Fame.Get(archetype);
                 entities[i] = new EntitySnapshot(
                     entity.Id,
                     entity.ActorId,
@@ -180,10 +183,44 @@ namespace Simulation.Core
                     entity.MaxResource,
                     entity.CooldownUntilTick,
                     entity.RespawnAtTick,
-                    entity.IsDead);
+                    entity.IsDead,
+                    GetZoneId(entity.Position),
+                    entity.AbilityId,
+                    entity.MoveSpeed,
+                    entity.Silver,
+                    entity.HostileUntilTick,
+                    weapon?.Definition.Id ?? 0u,
+                    entity.Equipment.Get(EquipmentSlot.Chest)?.Definition.Id ?? 0u,
+                    entity.Equipment.Get(EquipmentSlot.Legs)?.Definition.Id ?? 0u,
+                    entity.Equipment.Get(EquipmentSlot.Feet)?.Definition.Id ?? 0u,
+                    entity.Fame.Total,
+                    branchFame);
             }
 
-            return new SimulationSnapshot(_state.Tick, entities);
+            var corpses = new CorpseSnapshot[_state.Corpses.Count];
+            for (var i = 0; i < corpses.Length; i++)
+            {
+                var corpse = _state.Corpses[i];
+                corpses[i] = new CorpseSnapshot(
+                    corpse.Id,
+                    corpse.Position,
+                    corpse.LootRange,
+                    corpse.Silver,
+                    corpse.Loot,
+                    corpse.ExpireAtTick);
+            }
+
+            return new SimulationSnapshot(_state.Tick, entities, corpses);
+        }
+
+        private uint GetZoneId(Vector3 position)
+        {
+            if (_config == null)
+            {
+                return 0u;
+            }
+
+            return _config.Zones.TryGetZone(position, out var zone) && zone != null ? zone.Id : 0u;
         }
 
         /// <inheritdoc />

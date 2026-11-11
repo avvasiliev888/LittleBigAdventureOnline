@@ -105,12 +105,75 @@ namespace Tests
         [Fact]
         public void EntityRecordSize_MatchesDocumentedFormat()
         {
-            Assert.Equal(57, BinarySnapshotSerializer.EntityRecordSize);
+            Assert.Equal(101, BinarySnapshotSerializer.EntityRecordSize);
 
             var bytes = _serializer.Serialize(
                 new SimulationSnapshot(0, new[] { ToSnapshot(TestWorld.Entity(1, TestWorld.Config())) }));
 
-            Assert.Equal(6 + BinarySnapshotSerializer.EntityRecordSize, bytes.Length);
+            Assert.Equal(6 + BinarySnapshotSerializer.EntityRecordSize + 2, bytes.Length);
+        }
+
+        [Fact]
+        public void RoundTrip_PreservesProtocolV8FieldsAndCorpses()
+        {
+            var snapshot = new SimulationSnapshot(
+                77,
+                new[]
+                {
+                    new EntitySnapshot(
+                        5,
+                        1,
+                        new Vector3(1f, 0f, 2f),
+                        new Vector3(3f, 0f, 4f),
+                        90,
+                        120,
+                        30,
+                        100,
+                        150,
+                        0,
+                        false,
+                        zoneId: 2,
+                        abilityId: 3,
+                        moveSpeed: 4.25f,
+                        silver: 321,
+                        hostileUntilTick: 900,
+                        weaponItemId: 10,
+                        chestItemId: 11,
+                        legsItemId: 12,
+                        feetItemId: 13,
+                        fameTotal: 55,
+                        branchFame: 40),
+                },
+                new[]
+                {
+                    new CorpseSnapshot(42, new Vector3(5f, 0f, -6f), 2.5f, 17,
+                        new[] { new ItemStack(1, 3), new ItemStack(2, 1) }, 1200),
+                });
+
+            var restored = _serializer.Deserialize(_serializer.Serialize(snapshot));
+
+            SnapshotAssert.Equal(snapshot, restored);
+        }
+
+        [Fact]
+        public void SimulationSnapshot_CarriesZoneEquipmentAbilityAndFame()
+        {
+            var config = TestWorld.Config(
+                starterEquipment: new[] { new LoadoutEquipment(TestWorld.SwordItemId) });
+            var entity = TestWorld.Entity(1, config);
+            entity.Fame.Add("warrior", 15);
+            var simulation = TestWorld.Simulation(config, entity);
+
+            var snapshot = simulation.CreateSnapshot();
+            var own = Assert.Single(snapshot.Entities);
+
+            Assert.Equal(1u, own.ZoneId);
+            Assert.Equal(TestWorld.SwordItemId, own.WeaponItemId);
+            Assert.Equal(TestWorld.PlayerAbilityId, own.AbilityId);
+            Assert.Equal(config.GetActor(TestWorld.PlayerActorId).MoveSpeed, own.MoveSpeed);
+            Assert.Equal(15, own.FameTotal);
+            Assert.Equal(15, own.BranchFame);
+            Assert.Empty(snapshot.Corpses);
         }
 
         private static EntitySnapshot ToSnapshot(EntityState entity)

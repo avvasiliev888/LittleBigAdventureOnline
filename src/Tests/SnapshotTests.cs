@@ -23,6 +23,47 @@ namespace Tests
         }
 
         [Fact]
+        public void CreateSnapshot_WithoutConfig_ReportsZeroZone()
+        {
+            var config = TestWorld.Config();
+            var simulation = new CoreSimulation();
+            simulation.State.AddEntity(TestWorld.Entity(1, config, x: 5f, z: -5f));
+
+            var snapshot = simulation.CreateSnapshot();
+
+            Assert.Equal(0u, Assert.Single(snapshot.Entities).ZoneId);
+        }
+
+        [Fact]
+        public void CreateSnapshot_OutsideZones_ReportsZeroZone()
+        {
+            var config = TestWorld.Config();
+            var simulation = TestWorld.Simulation(config, TestWorld.Entity(1, config, x: 5000f, z: 5000f));
+
+            var snapshot = simulation.CreateSnapshot();
+
+            Assert.Equal(0u, Assert.Single(snapshot.Entities).ZoneId);
+        }
+
+        [Fact]
+        public void CreateSnapshot_CopiesCorpses()
+        {
+            var config = TestWorld.Config();
+            var corpse = new CorpseState(3, new Vector3(4f, 0f, 5f), 2.5f, 12,
+                new[] { new ItemStack(1, 2) }, 500);
+            var state = new SimulationState(9, new[] { TestWorld.Entity(1, config) }, new[] { corpse });
+            var simulation = new CoreSimulation(state, config);
+
+            var snapshot = simulation.CreateSnapshot();
+            var copy = Assert.Single(snapshot.Corpses);
+
+            Assert.Equal(3u, copy.Id);
+            Assert.Equal(12, copy.Silver);
+            Assert.Equal(500u, copy.ExpireAtTick);
+            Assert.Equal(2, Assert.Single(copy.Loot).Quantity);
+        }
+
+        [Fact]
         public void RestoreFromSnapshot_RestoresEveryField()
         {
             var config = TestWorld.Config(maxHp: 120);

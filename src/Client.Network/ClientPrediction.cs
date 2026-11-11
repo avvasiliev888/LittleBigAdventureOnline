@@ -24,9 +24,9 @@ namespace Client.Network
         public const float TickDelta = 0.05f;
 
         private readonly uint _entityId;
-        private readonly float _moveSpeed;
+        private float _moveSpeed;
         private readonly ActorConfig? _actor;
-        private readonly AbilityConfig? _ability;
+        private AbilityConfig? _ability;
         private readonly List<ICommand> _unacknowledged = new List<ICommand>();
         private Vector3 _position;
         private bool _hasPosition;
@@ -86,6 +86,36 @@ namespace Client.Network
 
         /// <summary>Способность актора из конфига клиента (M9); <c>null</c>, если конфиг не передан.</summary>
         public AbilityConfig? Ability => _ability;
+
+        /// <summary>
+        /// Обновляет скорость предсказания из снапшота: бонусы обуви и снятое снаряжение
+        /// меняют скорость на сервере, клиент обязан шагать с той же скоростью (ADR-020).
+        /// </summary>
+        /// <param name="moveSpeed">Скорость из снапшота; конечная неотрицательная.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Если скорость NaN/Infinity или отрицательна.</exception>
+        public void SetMoveSpeed(float moveSpeed)
+        {
+            if (float.IsNaN(moveSpeed) || float.IsInfinity(moveSpeed) || moveSpeed < 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(moveSpeed), moveSpeed, "Скорость должна быть конечной и неотрицательной.");
+            }
+
+            _moveSpeed = moveSpeed;
+        }
+
+        /// <summary>
+        /// Обновляет способность предсказания по снапшоту: надетое оружие и Слава меняют
+        /// <see cref="EntityState.AbilityId"/> на сервере, поэтому кулдаун и радиус берутся из
+        /// новой способности, а не из стартовой (ADR-015, ADR-020).
+        /// </summary>
+        /// <param name="ability">Новая способность из конфига; <c>null</c> — оставить прежнюю.</param>
+        public void SetAbility(AbilityConfig? ability)
+        {
+            if (ability != null)
+            {
+                _ability = ability;
+            }
+        }
 
         /// <summary>Радиус способности из конфига (M9), 0 если конфига нет.</summary>
         public float AbilityRange => _ability?.Range ?? 0f;

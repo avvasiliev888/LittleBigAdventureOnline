@@ -114,15 +114,31 @@ namespace Simulation.Core
         /// <exception cref="InvalidOperationException">Если такой зоны нет.</exception>
         public ZoneConfig GetZoneById(uint zoneId)
         {
+            if (TryGetZoneById(zoneId, out var zone))
+            {
+                return zone!;
+            }
+
+            throw new InvalidOperationException("В конфигурации нет зоны с id " + zoneId + ".");
+        }
+
+        /// <summary>Пытается найти зону по идентификатору.</summary>
+        /// <param name="zoneId">Идентификатор зоны.</param>
+        /// <param name="zone">Найденная зона или <c>null</c>.</param>
+        /// <returns><c>true</c>, если зона с таким id объявлена.</returns>
+        public bool TryGetZoneById(uint zoneId, out ZoneConfig? zone)
+        {
             for (var i = 0; i < _zones.Length; i++)
             {
                 if (_zones[i].Id == zoneId)
                 {
-                    return _zones[i];
+                    zone = _zones[i];
+                    return true;
                 }
             }
 
-            throw new InvalidOperationException("В конфигурации нет зоны с id " + zoneId + ".");
+            zone = null;
+            return false;
         }
 
         /// <summary>Пытается найти зону по ключу.</summary>

@@ -36,7 +36,7 @@
 | SHA-256 | `F36FCCC34D4DB7524D3692FB269DC16AB9F60AB6399CB797A3261EAFF590ABB7` |
 | Android | ARM64 IL2CPP, minSdk 26, target 36, landscape-left |
 | Сервер по умолчанию | `192.168.1.174:9050` |
-| Конфиг | hash `9dfd2b1e49b03cf2ec43c6053d2b8c0d680f8459c2b195757f9fe4a835370616` |
+| Конфиг (на момент Stage 6) | hash `9dfd2b1e49b03cf2ec43c6053d2b8c0d680f8459c2b195757f9fe4a835370616`; после Stage 7 — см. `docs/stage7-validation.md` |
 | В APK | `assets/Config/zones.json` содержит `"gates"` у blue и yellow |
 | Windows-клиент | `unity-client/Builds/desktop`, zip `AlbionPrototype-desktop-0.6.0-win-x64.zip` |
 | Релизные файлы | `artifacts/release/` (server + config, APK, desktop и server zip, SHA256SUMS) |

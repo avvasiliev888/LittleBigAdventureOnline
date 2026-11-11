@@ -32,8 +32,8 @@
 | Unity | 6000.3.28f1, URP 17.3.0 |
 | APK | `unity-client/Builds/android/AlbionPrototype.apk` |
 | Пакет / версия | `com.albion.prototype` 0.6.0 (versionCode 3) |
-| Размер | 36.8 MB |
-| SHA-256 | `D575E07D9293CDD353281BA112CB453D4B0F4A620AEAE8EB4E86016FC079D65E` |
+| Размер | 38.3 MB |
+| SHA-256 | `F36FCCC34D4DB7524D3692FB269DC16AB9F60AB6399CB797A3261EAFF590ABB7` |
 | Android | ARM64 IL2CPP, minSdk 26, target 36, landscape-left |
 | Сервер по умолчанию | `192.168.1.174:9050` |
 | Конфиг | hash `9dfd2b1e49b03cf2ec43c6053d2b8c0d680f8459c2b195757f9fe4a835370616` |
@@ -49,9 +49,9 @@ Release-сборка также прошла: `dotnet build -c Release` — 0 о
 156 снапшотов (155 дельтами) и 156 acks; тик p99 ≤ 10.2 ms на одном клиенте.
 
 `play.cmd` проверен с пересобранным Windows-плеером: клиент загрузил конфиг с тем же hash,
-подключился к `127.0.0.1:9050`, получил сессию и держал ~120 FPS на RX 5700 (2560×1440).
-Скрипт `build-windows.ps1` теперь передаёт `-buildTarget Win64` и полностью пересоздаёт
-временную копию проекта: после аварийного завершения Editor старые артефакты давали
+подключился к `127.0.0.1:9050`, получил сессию, держал **119.8 FPS** на RX 5700 (2560×1440) и
+показал новый мир. Скрипт `build-windows.ps1` передаёт `-buildTarget Win64` и полностью
+пересоздаёт временную копию проекта: после аварийного завершения Editor старые артефакты давали
 `BadImageFormatException` на ref-сборках URP.
 
 Unity smoke (`tools/unity/agent-smoke.ps1`) прошёл на **исходной** сцене `Assets/Scenes/Arena.unity`

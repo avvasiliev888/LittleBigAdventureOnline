@@ -57,6 +57,30 @@ namespace Tests
             Assert.True(trees > 400, "Деревьев в конфиге: " + trees);
             Assert.True(rocks > 50, "Камней в конфиге: " + rocks);
             Assert.True(columns >= 4, "Столбов/стражей прохода: " + columns);
+
+            // Реальное дерево из сгенерированного JSON, а не синтетический круг: шаг сквозь него
+            // должен остановиться на сумме радиусов независимо от остальных препятствий.
+            WorldCollider? tree = null;
+            foreach (var collider in config.WorldColliders.Items)
+            {
+                if (collider.Kind == "tree")
+                {
+                    tree = collider;
+                    break;
+                }
+            }
+
+            Assert.NotNull(tree);
+            var start = new System.Numerics.Vector3(tree!.X - 3f, 0f, tree.Z);
+            var end = new System.Numerics.Vector3(tree.X + 3f, 0f, tree.Z);
+            var resolved = MovementCollision.Resolve(start, end, 0.45f, config.Zones, config.WorldColliders);
+            var distance = System.Numerics.Vector2.Distance(
+                new System.Numerics.Vector2(resolved.X, resolved.Z),
+                new System.Numerics.Vector2(tree.X, tree.Z));
+
+            Assert.True(resolved.X < tree.X, "Игрок прошёл сквозь реальное дерево: x=" + resolved.X);
+            Assert.True(distance >= tree.Radius + 0.45f - 0.001f,
+                "Игрок оказался внутри дерева: distance=" + distance);
         }
 
         [Fact]

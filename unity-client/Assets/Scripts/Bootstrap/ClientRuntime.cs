@@ -157,12 +157,13 @@ namespace Albion.Client
                 equipWeapon: _view.EquipWeapon,
                 touchMove: () => _mobile != null ? _mobile.Move : System.Numerics.Vector2.Zero,
                 touchAttack: () => _mobile != null && _mobile.AttackHeld,
-                groundClick: OnGroundClick);
+                groundClick: OnGroundClick,
+                isPointerCapturedByUi: () => _hud != null && _hud.IsPointerOverUi);
             _transport = new LiteNetLibTransport(host, port);
             _pipeline = new ClientPipeline(_transport, _input, _view, content: _content);
             gameObject.AddComponent<CooldownHud>().Initialize(_pipeline);
             _hud = gameObject.AddComponent<ClientHud>();
-            _hud.Initialize(_pipeline, _content, _view);
+            _hud.Initialize(_pipeline, _content, _view, _input);
 
             if (Application.isMobilePlatform)
             {
@@ -173,7 +174,7 @@ namespace Albion.Client
             _pipeline.SessionReady += entityId =>
             {
                 _view.PlayerEntityId = entityId;
-                _status = "connected, entity " + entityId;
+                _status = "подключено, сущность " + entityId;
                 Debug.Log("ClientRuntime: сессия готова, сущность " + entityId);
 
                 if (_pipeline.Prediction != null)
@@ -190,7 +191,7 @@ namespace Albion.Client
 
             _pipeline.Disconnected += reason =>
             {
-                _status = "disconnected: " + reason;
+                _status = "соединение потеряно: " + reason;
                 Debug.LogWarning("ClientRuntime: соединение потеряно — " + reason);
             };
 
@@ -289,8 +290,8 @@ namespace Albion.Client
 
             GUI.Label(
                 new Rect(12f, Screen.height - 24f, Screen.width - 24f, 20f),
-                _status + "  |  cfg: " + (_content == null ? "-" : _content.Hash.Substring(0, Math.Min(8, _content.Hash.Length)))
-                + "  |  fps: " + _fpsSmoothed.ToString("0"));
+                _status + "  |  конфиг: " + (_content == null ? "-" : _content.Hash.Substring(0, Math.Min(8, _content.Hash.Length)))
+                + "  |  кадров/с: " + _fpsSmoothed.ToString("0"));
         }
 
         private static void DrawBuildVersion()
@@ -325,7 +326,7 @@ namespace Albion.Client
             var width = Mathf.Min(Screen.width - 40f, 760f);
             var height = 420f;
             var rect = new Rect((Screen.width - width) * 0.5f, (Screen.height - height) * 0.5f, width, height);
-            GUI.Box(rect, "Albion Prototype — подключение");
+            GUI.Box(rect, "Прототип Albion — подключение");
 
             GUILayout.BeginArea(new Rect(rect.x + 24f, rect.y + 52f, width - 48f, height - 76f));
             GUILayout.Label("IP компьютера, где запущен сервер:");
@@ -397,7 +398,7 @@ namespace Albion.Client
             PlayerPrefs.SetString("albion.serverPort", port.ToString());
             PlayerPrefs.Save();
             _awaitingConnect = false;
-            _status = "connecting...";
+            _status = "подключение…";
             StartSession(host, port);
         }
 

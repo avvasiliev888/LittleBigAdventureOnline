@@ -19,7 +19,8 @@ namespace Albion.Editor
             CheckRatiosAndGeometry();
             CheckOwnSnapshotSelection();
             CheckViewSnapshotUpdates();
-            Debug.Log("[agent-smoke] HUD own snapshot/HP/mana/death/regen/mobile geometry checks PASS");
+            CheckRussianTextAndUiHitTest();
+            Debug.Log("[agent-smoke] HUD own snapshot/HP/mana/death/regen/mobile geometry/Russian UI/click-through checks PASS");
         }
 
         private static void CheckRatiosAndGeometry()
@@ -95,6 +96,54 @@ namespace Albion.Editor
             {
                 // This root belongs only to the test; never destroy any live client/editor/server object.
                 UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        private static void CheckRussianTextAndUiHitTest()
+        {
+            var itemKeys = new[]
+            {
+                "wood", "ore", "oak_log", "iron_ore", "ash_log", "steel_ore", "ironwood_log", "mithril_ore",
+                "rusty_sword", "traveler_chest", "traveler_legs", "traveler_boots", "hunter_bow",
+                "apprentice_staff", "iron_sword", "reinforced_chest", "reinforced_legs", "swift_boots",
+                "iron_bow", "iron_staff", "steel_sword", "steel_chest", "steel_legs", "steel_boots",
+                "steel_bow", "steel_staff", "mithril_sword", "mithril_chest", "mithril_legs",
+                "mithril_boots", "mithril_bow", "mithril_staff",
+            };
+            foreach (var key in itemKeys)
+            {
+                var name = ClientText.Item(key);
+                Require(name != "Неизвестный предмет", "item has no Russian name: " + key);
+                RequireNoLatin(name, "item name: " + key);
+            }
+
+            Require(ClientText.Item("rusty_sword") == "Ржавый меч", "wrong Russian item name");
+            Require(ClientText.Zone("blue") == "Синяя зона", "wrong Russian zone name");
+            Require(ClientText.Zone("yellow") == "Жёлтая зона", "wrong Russian yellow zone name");
+            Require(ClientText.Trader("blue_merchant") == "Синий торговец", "wrong Russian trader name");
+            RequireNoLatin(ClientText.Item("unknown_item"), "unknown item fallback");
+            RequireNoLatin(ClientText.Zone("unknown_zone"), "unknown zone fallback");
+
+            // The button is inside the craft window at 1280x720 and 1920x1080. Clicking it must
+            // be classified as UI input, so UnityInputSource never turns it into a world move.
+            foreach (var size in new[] { new Vector2(1280f, 720f), new Vector2(1920f, 1080f) })
+            {
+                var craft = ClientHud.CraftPanelRect(size.x, size.y);
+                var buttonPoint = new Vector2(craft.x + 40f, craft.y + 80f);
+                Require(craft.Contains(buttonPoint), "craft button is outside its panel");
+                Require(ClientHud.IsPointOverPanel(buttonPoint, size.x, size.y,
+                    true, false, false, false), "craft click is not captured by the UI");
+                Require(!ClientHud.IsPointOverPanel(new Vector2(craft.x - 80f, craft.y + 80f),
+                    size.x, size.y, true, false, false, false), "world click left of craft was blocked");
+            }
+        }
+
+        private static void RequireNoLatin(string value, string context)
+        {
+            foreach (var c in value)
+            {
+                Require(!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')),
+                    "visible Russian text contains Latin letters (" + context + "): " + value);
             }
         }
 

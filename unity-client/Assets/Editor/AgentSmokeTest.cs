@@ -247,6 +247,18 @@ namespace Albion.Editor
             try
             {
                 HudSmokeChecks.Verify();
+                // QA seam: capture the craft window for the release screenshot. It is read
+                // only in the editor smoke test, never by a normal player.
+                if (Environment.GetEnvironmentVariable("ALBION_CRAFT_CAPTURE") == "1")
+                {
+                    var hud = UnityEngine.Object.FindFirstObjectByType<ClientHud>();
+                    if (hud != null)
+                    {
+                        hud.ToggleCraft();
+                        Debug.Log("[agent-smoke] craft window opened for capture");
+                    }
+                }
+
                 var stage6 = Environment.GetEnvironmentVariable("ALBION_REBUILD_WORLD") == "1"
                     || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ALBION_STAGE6_GALLERY"));
                 if (stage6)

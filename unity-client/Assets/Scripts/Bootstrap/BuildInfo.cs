@@ -4,9 +4,9 @@ namespace Albion.Client
     public static class BuildInfo
     {
         /// <summary>Release version, kept in sync with PlayerSettings.bundleVersion.</summary>
-        public const string Version = "0.8.2";
+        public const string Version = "0.8.3";
 
         /// <summary>Short label in the bottom-right corner.</summary>
-        public static string Label => "LittleBigAdventureOnline v" + Version;
+        public static string Label => "Альбион Онлайн v" + Version;
     }
 }

@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using Client.Network;
 using Simulation.Core;
 using UnityEngine;
+using UnityVector2 = UnityEngine.Vector2;
 using UnityVector3 = UnityEngine.Vector3;
 
 namespace Albion.Client
@@ -21,6 +21,7 @@ namespace Albion.Client
         private ClientPipeline? _pipeline;
         private ClientContent? _content;
         private UnityView? _view;
+        private UnityInputSource? _input;
         private bool _showCraft;
         private bool _showSkills;
         private bool _showInventory;
@@ -35,11 +36,13 @@ namespace Albion.Client
         /// <summary>Подключает HUD к конвейеру и контенту.</summary>
         /// <param name="pipeline">Клиентский конвейер.</param>
         /// <param name="content">Контент из JSON.</param>
-        public void Initialize(ClientPipeline pipeline, ClientContent content, UnityView? view = null)
+        public void Initialize(ClientPipeline pipeline, ClientContent content, UnityView? view = null,
+            UnityInputSource? input = null)
         {
             _pipeline = pipeline;
             _content = content;
             _view = view;
+            _input = input;
         }
 
         private void Update()
@@ -83,6 +86,7 @@ namespace Albion.Client
             _showCraft = !_showCraft;
             _showSkills = false;
             _showInventory = false;
+            _input?.CancelPointerDestination();
         }
 
         /// <summary>Открывает/закрывает дерево навыков (клавиша K или мобильная кнопка).</summary>
@@ -91,6 +95,7 @@ namespace Albion.Client
             _showSkills = !_showSkills;
             _showCraft = false;
             _showInventory = false;
+            _input?.CancelPointerDestination();
         }
 
         /// <summary>Открывает/закрывает инвентарь (клавиша I).</summary>
@@ -99,6 +104,7 @@ namespace Albion.Client
             _showInventory = !_showInventory;
             _showCraft = false;
             _showSkills = false;
+            _input?.CancelPointerDestination();
         }
 
         /// <summary>Подбирает лут ближайшего трупа (клавиша E или мобильная кнопка).</summary>
@@ -227,6 +233,87 @@ namespace Albion.Client
             }
         }
 
+        /// <summary>
+        /// Screen-space rectangle of the craft window. It is public so the input layer and
+        /// the regression checks use exactly the same geometry as the rendered window.
+        /// </summary>
+        public static Rect CraftPanelRect(float screenWidth, float screenHeight)
+        {
+            return new Rect(screenWidth - PanelWidth - 12f, 12f, PanelWidth, screenHeight - 96f);
+        }
+
+        private static Rect InventoryPanelRect(float screenWidth, float screenHeight)
+        {
+            return new Rect((screenWidth - SmallPanelWidth) * 0.5f, 80f,
+                SmallPanelWidth, Mathf.Min(440f, screenHeight - 150f));
+        }
+
+        private static Rect SkillsPanelRect(float screenWidth, float screenHeight)
+        {
+            return new Rect((screenWidth - SmallPanelWidth) * 0.5f, 80f,
+                SmallPanelWidth, screenHeight - 200f);
+        }
+
+        private static Rect TradePanelRect(float screenWidth, float screenHeight)
+        {
+            return new Rect(12f, screenHeight - 300f, PanelWidth, 240f);
+        }
+
+        private static Rect HintsPanelRect(float screenWidth, float screenHeight)
+        {
+            return new Rect(6f, screenHeight - 52f, screenWidth - 12f, 30f);
+        }
+
+        /// <summary>True while the mouse is over any visible HUD window or its backdrop.</summary>
+        public bool IsPointerOverUi
+        {
+            get
+            {
+                if (_pipeline == null || _content == null || !_pipeline.HasSession
+                    || Application.isMobilePlatform)
+                {
+                    return false;
+                }
+
+                // Input.mousePosition has its origin at the bottom-left; IMGUI rects use
+                // top-left coordinates, hence the vertical flip.
+                var point = new UnityVector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+                return IsPointOverPanel(point, Screen.width, Screen.height,
+                    _showCraft, _showSkills, _showInventory, FindNearbyTrader() != null);
+            }
+        }
+
+        /// <summary>
+        /// Shared hit-test for HUD windows. Kept pure and public so the editor regression can
+        /// verify that the craft button area blocks world clicks at every supported resolution.
+        /// </summary>
+        public static bool IsPointOverPanel(UnityVector2 point, float screenWidth, float screenHeight,
+            bool craftOpen, bool skillsOpen, bool inventoryOpen, bool tradeOpen)
+        {
+            if (VitalsPanelRect(screenWidth, screenHeight, false).Contains(point)
+                || HintsPanelRect(screenWidth, screenHeight).Contains(point))
+            {
+                return true;
+            }
+
+            if (craftOpen && CraftPanelRect(screenWidth, screenHeight).Contains(point))
+            {
+                return true;
+            }
+
+            if (inventoryOpen && InventoryPanelRect(screenWidth, screenHeight).Contains(point))
+            {
+                return true;
+            }
+
+            if (skillsOpen && SkillsPanelRect(screenWidth, screenHeight).Contains(point))
+            {
+                return true;
+            }
+
+            return tradeOpen && TradePanelRect(screenWidth, screenHeight).Contains(point);
+        }
+
         private void OnGUI()
         {
             if (_pipeline == null || _content == null)
@@ -234,8 +321,12 @@ namespace Albion.Client
                 return;
             }
 
+            // Draw world-facing HUD first, then modal windows. IMGUI hit-testing and painting
+            // both follow call order, so craft stays on top of the trader window and the
+            // stats/hints underneath it.
             DrawStats();
             DrawHints();
+            DrawTrade();
 
             if (_showCraft)
             {
@@ -251,8 +342,6 @@ namespace Albion.Client
             {
                 DrawInventory();
             }
-
-            DrawTrade();
 
             if (!string.IsNullOrEmpty(_message) && Time.unscaledTime < _messageUntil)
             {
@@ -320,7 +409,8 @@ namespace Albion.Client
             var zoneText = "-";
             if (own.HasValue && _content != null && _content.Config.Zones.TryGetZoneById(own.Value.ZoneId, out var zone) && zone != null)
             {
-                zoneText = zone.Key + " (PvP: " + (zone.PvpEnabled ? "да" : "нет") + ")";
+                zoneText = ClientText.Zone(zone.Key) + " (бой с игроками: "
+                    + (zone.PvpEnabled ? "да" : "нет") + ")";
             }
 
             var hostile = own.HasValue && _pipeline != null && _pipeline.LastSnapshot != null
@@ -346,7 +436,7 @@ namespace Albion.Client
             var hp = new Rect(inner.x, rect.y + 36f * scale, inner.width, 30f * scale);
             var mana = new Rect(inner.x, rect.y + 72f * scale, inner.width, 30f * scale);
             DrawVital(hp, own.HasValue ? own.Value.Hp : 0, own.HasValue ? own.Value.MaxHp : 0,
-                own.HasValue, "HP", new Color(0.05f, 0.42f, 0.15f, 1f), fillLabel);
+                own.HasValue, "Здоровье", new Color(0.05f, 0.42f, 0.15f, 1f), fillLabel);
             DrawVital(mana, own.HasValue ? own.Value.Resource : 0, own.HasValue ? own.Value.MaxResource : 0,
                 own.HasValue, "Мана", new Color(0.04f, 0.25f, 0.7f, 1f), fillLabel);
             inner.y = rect.y + 108f * scale;
@@ -372,14 +462,14 @@ namespace Albion.Client
             Backdrop(rect, 0.55f);
             GUI.Label(
                 new Rect(12f, Screen.height - 46f, Screen.width - 24f, 22f),
-                "WASD — ходьба, ЛКМ/ПКМ — бег к курсору, клик — метка и лут с трупа, Space — атака, "
+                "WASD — ходьба, ЛКМ/ПКМ — бег к курсору, клик — метка и лут с трупа, Пробел — атака, "
                 + "I — инвентарь, F — сбор, C — крафт, K — навыки, 1–4 — оружие.");
         }
 
         private void DrawCraft()
         {
-            var rect = new Rect(Screen.width - PanelWidth - 12f, 12f, PanelWidth, Screen.height - 96f);
-            Backdrop(rect, 0.82f);
+            var rect = CraftPanelRect(Screen.width, Screen.height);
+            Backdrop(rect, 0.96f);
             GUILayout.BeginArea(rect, GUI.skin.box);
             GUILayout.Label("Крафт (C — закрыть)");
             _craftScroll = GUILayout.BeginScrollView(_craftScroll);
@@ -387,7 +477,7 @@ namespace Albion.Client
             foreach (var recipe in _content!.Config.Recipes.Values)
             {
                 var output = _content.Config.GetItem(recipe.OutputItemId);
-                GUILayout.Label("#" + recipe.Id + " " + output.Key + " x" + recipe.OutputQuantity
+                GUILayout.Label("#" + recipe.Id + " " + ClientText.Item(output.Key) + " ×" + recipe.OutputQuantity
                     + "  (+" + recipe.FamePerCraft + " славы)");
                 var materials = string.Empty;
                 foreach (var material in recipe.Materials)
@@ -397,7 +487,8 @@ namespace Albion.Client
                         materials += ", ";
                     }
 
-                    materials += _content.Config.GetItem(material.ItemId).Key + " x" + material.Quantity;
+                    materials += ClientText.Item(_content.Config.GetItem(material.ItemId).Key)
+                        + " ×" + material.Quantity;
                 }
 
                 GUILayout.Label("   нужно: " + (materials.Length == 0 ? "ничего" : materials));
@@ -405,7 +496,7 @@ namespace Albion.Client
                 {
                     if (_pipeline!.SendCraft(recipe.Id))
                     {
-                        ShowMessage("Крафт отправлен: " + output.Key);
+                        ShowMessage("Крафт отправлен: " + ClientText.Item(output.Key));
                     }
                 }
 
@@ -418,9 +509,8 @@ namespace Albion.Client
 
         private void DrawInventory()
         {
-            var rect = new Rect((Screen.width - SmallPanelWidth) * 0.5f, 80f,
-                SmallPanelWidth, Mathf.Min(440f, Screen.height - 150f));
-            Backdrop(rect, 0.88f);
+            var rect = InventoryPanelRect(Screen.width, Screen.height);
+            Backdrop(rect, 0.94f);
             GUILayout.BeginArea(rect, GUI.skin.box);
             GUILayout.Label("Инвентарь (I — закрыть)");
             var own = Own();
@@ -464,15 +554,15 @@ namespace Albion.Client
         private string ItemKey(uint itemId)
         {
             return _content != null && _content.Config.Items.TryGetValue(itemId, out var item)
-                ? item.Key
-                : "item " + itemId;
+                ? ClientText.Item(item.Key)
+                : "предмет #" + itemId;
         }
 
         private void DrawSkills()
         {
             var own = Own();
-            var rect = new Rect((Screen.width - SmallPanelWidth) * 0.5f, 80f, SmallPanelWidth, Screen.height - 200f);
-            Backdrop(rect, 0.82f);
+            var rect = SkillsPanelRect(Screen.width, Screen.height);
+            Backdrop(rect, 0.94f);
             GUILayout.BeginArea(rect, GUI.skin.box);
             GUILayout.Label("Дерево навыков (K — закрыть)");
 
@@ -494,7 +584,7 @@ namespace Albion.Client
 
             if (!_content!.Config.SkillTree.TryGet(archetypeKey, out var archetype) || archetype == null)
             {
-                GUILayout.Label("В конфиге нет ветки '" + archetypeKey + "'.");
+                GUILayout.Label("В конфиге нет ветки навыков для этого оружия.");
                 GUILayout.EndArea();
                 return;
             }
@@ -525,24 +615,25 @@ namespace Albion.Client
                 return;
             }
 
-            var rect = new Rect(12f, Screen.height - 300f, PanelWidth, 240f);
-            Backdrop(rect, 0.82f);
+            var rect = TradePanelRect(Screen.width, Screen.height);
+            Backdrop(rect, 0.94f);
             GUILayout.BeginArea(rect, GUI.skin.box);
-            GUILayout.Label("Торговец " + trader.Key + " (" + trader.ZoneKey + ")");
+            GUILayout.Label(ClientText.Trader(trader.Key) + " (" + ClientText.Zone(trader.ZoneKey) + ")");
             _tradeScroll = GUILayout.BeginScrollView(_tradeScroll);
             foreach (var price in trader.Prices)
             {
                 var item = _content.Config.GetItem(price.ItemId);
-                GUILayout.Label(item.Key + ": купить " + price.BuyPrice + ", продать " + price.SellPrice);
+                var itemName = ClientText.Item(item.Key);
+                GUILayout.Label(itemName + ": купить " + price.BuyPrice + ", продать " + price.SellPrice);
                 GUILayout.BeginHorizontal();
                 if (GUILayout.Button("Купить") && _pipeline.SendBuy(trader.Id, price.ItemId, 1))
                 {
-                    ShowMessage("Покупка отправлена: " + item.Key);
+                    ShowMessage("Покупка отправлена: " + itemName);
                 }
 
                 if (GUILayout.Button("Продать") && _pipeline.SendSell(trader.Id, price.ItemId, 1))
                 {
-                    ShowMessage("Продажа отправлена: " + item.Key);
+                    ShowMessage("Продажа отправлена: " + itemName);
                 }
 
                 GUILayout.EndHorizontal();

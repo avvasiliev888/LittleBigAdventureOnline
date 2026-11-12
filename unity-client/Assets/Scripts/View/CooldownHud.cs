@@ -84,7 +84,9 @@ namespace Albion.Client
                 normal = { textColor = Color.white },
             };
             var seconds = (_pipeline?.Prediction?.CooldownRemainingTicks ?? 0) / (float)SimulationConstants.TickRate;
-            var text = Application.isMobilePlatform ? (ready ? "ГОТОВО" : seconds.ToString("0.0") + " с") : "SPACE / LMB";
+            var text = Application.isMobilePlatform
+                ? (ready ? "ГОТОВО" : seconds.ToString("0.0") + " с")
+                : "ПРОБЕЛ / ЛКМ";
             GUI.Label(new Rect(rect.x - 40f, rect.y - 34f, size + 80f, 30f), text, label);
             GUI.color = previousColor;
         }

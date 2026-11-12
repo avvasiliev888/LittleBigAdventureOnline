@@ -27,6 +27,7 @@ namespace Albion.Client
         private readonly Func<System.Numerics.Vector2>? _touchMove;
         private readonly Func<bool>? _touchAttack;
         private readonly Action<UnityVector3>? _groundClick;
+        private readonly Func<bool>? _isPointerCapturedByUi;
         private readonly float _walkScale;
         private readonly float _mouseMoveThreshold;
         private bool _abilityPressed;
@@ -80,6 +81,11 @@ namespace Albion.Client
         /// <param name="groundClick">
         /// Точка земли под кликом ЛКМ/ПКМ: HUD использует её для лута, вид — для кружка-метки.
         /// </param>
+        /// <param name="isPointerCapturedByUi">
+        /// Предикат «курсор сейчас над видимым окном HUD». Пока он true, клики не создают
+        /// точку движения и не отдают команду на карту: иначе кнопка «Скрафтить» одновременно
+        /// запускала бег персонажа к курсору.
+        /// </param>
         public UnityInputSource(
             Func<uint>? abilityTarget = null,
             float walkScale = 1f,
@@ -91,7 +97,8 @@ namespace Albion.Client
             Action<WeaponKind>? equipWeapon = null,
             Func<System.Numerics.Vector2>? touchMove = null,
             Func<bool>? touchAttack = null,
-            Action<UnityVector3>? groundClick = null)
+            Action<UnityVector3>? groundClick = null,
+            Func<bool>? isPointerCapturedByUi = null)
         {
             _abilityTarget = abilityTarget;
             _walkScale = float.IsFinite(walkScale) && walkScale > 0f ? Mathf.Min(walkScale, 1f) : 1f;
@@ -103,6 +110,7 @@ namespace Albion.Client
             _touchMove = touchMove;
             _touchAttack = touchAttack;
             _groundClick = groundClick;
+            _isPointerCapturedByUi = isPointerCapturedByUi;
             _mouseMoveThreshold = float.IsFinite(mouseMoveThreshold) && mouseMoveThreshold > 0f
                 ? mouseMoveThreshold
                 : 0.5f;
@@ -123,6 +131,15 @@ namespace Albion.Client
             _scriptedCommand = provider;
         }
 
+        /// <summary>
+        /// Cancels a destination left over from a world click. Called when a HUD window opens
+        /// so a click that opened or used the window cannot keep the character running.
+        /// </summary>
+        public void CancelPointerDestination()
+        {
+            _destinationActive = false;
+        }
+
         public void PollFrame()
         {
             var touchAttack = _touchAttack != null && _touchAttack();
@@ -136,7 +153,15 @@ namespace Albion.Client
 
             if (!Application.isMobilePlatform)
             {
-                PollMouseDestination();
+                if (_isPointerCapturedByUi != null && _isPointerCapturedByUi())
+                {
+                    // A click on a HUD window is UI input, never a world move command.
+                    _destinationActive = false;
+                }
+                else
+                {
+                    PollMouseDestination();
+                }
             }
 
             // M10.11: client-side weapon visuals only. The server ability is unchanged.

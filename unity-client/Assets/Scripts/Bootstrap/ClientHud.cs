@@ -31,9 +31,11 @@ namespace Albion.Client
         private bool _showSkills;
         private bool _showInventory;
         private uint _pendingLootCorpseId;
-        private readonly Dictionary<uint, int> _inventory = new Dictionary<uint, int>();
         private string _message = string.Empty;
         private float _messageUntil;
+        private uint _pendingCommandSequence;
+        private string _pendingCommandLabel = string.Empty;
+        private uint _shownCommandResultSequence;
         private UnityVector3 _craftScroll;
         private UnityVector3 _skillScroll;
         private UnityVector3 _tradeScroll;
@@ -153,8 +155,8 @@ namespace Albion.Client
 
             if (_pipeline.SendGather(nearest.Id))
             {
-                AddInventory(nearest.ItemId, nearest.Amount);
-                ShowMessage("Сбор: " + ItemKey(nearest.ItemId) + " ×" + nearest.Amount + ".");
+                BeginPendingCommand("Сбор", ItemKey(nearest.ItemId) + " ×" + nearest.Amount);
+                ShowMessage("Сбор запрошен: " + ItemKey(nearest.ItemId) + " ×" + nearest.Amount + ".");
                 var nodePosition = new UnityVector3(nearest.Position.X, nearest.Position.Y, nearest.Position.Z);
                 _view?.TriggerGather(nodePosition);
             }
@@ -399,6 +401,8 @@ namespace Albion.Client
             {
                 return;
             }
+
+            ConsumeCommandResult();
 
             // Draw world-facing HUD first, then modal windows. IMGUI hit-testing and painting
             // both follow call order, so craft stays on top of the trader window and the
@@ -890,7 +894,8 @@ namespace Albion.Client
                 {
                     if (_pipeline!.SendCraft(recipe.Id))
                     {
-                        ShowMessage("Крафт отправлен: " + ClientText.Item(output.Key));
+                        BeginPendingCommand("Крафт", ClientText.Item(output.Key));
+                        ShowMessage("Крафт запрошен: " + ClientText.Item(output.Key) + ".");
                     }
                 }
 
@@ -924,16 +929,20 @@ namespace Albion.Client
             }
 
             GUILayout.Space(8f);
-            GUILayout.Label("Добыча (журнал этого сеанса):");
-            if (_inventory.Count == 0)
+            GUILayout.Label("Инвентарь (данные сервера):");
+            if (_pipeline == null || !_pipeline.HasInventory)
             {
-                GUILayout.Label("Пусто. Подойдите к трупу и нажмите по нему ЛКМ.");
+                GUILayout.Label("Ожидаем инвентарь от сервера…");
+            }
+            else if (_pipeline.Inventory.Count == 0)
+            {
+                GUILayout.Label("Пусто.");
             }
             else
             {
-                foreach (var pair in _inventory)
+                foreach (var stack in _pipeline.Inventory)
                 {
-                    GUILayout.Label("• " + ItemKey(pair.Key) + " ×" + pair.Value);
+                    GUILayout.Label("• " + ItemKey(stack.ItemId) + " ×" + stack.Quantity);
                 }
             }
 
@@ -1022,12 +1031,14 @@ namespace Albion.Client
                 GUILayout.BeginHorizontal();
                 if (GUILayout.Button("Купить") && _pipeline.SendBuy(trader.Id, price.ItemId, 1))
                 {
-                    ShowMessage("Покупка отправлена: " + itemName);
+                    BeginPendingCommand("Покупка", itemName);
+                    ShowMessage("Покупка запрошена: " + itemName + ".");
                 }
 
                 if (GUILayout.Button("Продать") && _pipeline.SendSell(trader.Id, price.ItemId, 1))
                 {
-                    ShowMessage("Продажа отправлена: " + itemName);
+                    BeginPendingCommand("Продажа", itemName);
+                    ShowMessage("Продажа запрошена: " + itemName + ".");
                 }
 
                 GUILayout.EndHorizontal();
@@ -1096,30 +1107,11 @@ namespace Albion.Client
                 return;
             }
 
-            AddLoot(corpse);
             var contents = DescribeLoot(corpse);
-            ShowMessage("Лут с трупа " + corpse.Id + ": " + contents + ".");
+            BeginPendingCommand("Лут", contents);
+            ShowMessage("Лут запрошен: " + contents + ".");
         }
 
-        private void AddLoot(CorpseSnapshot corpse)
-        {
-            for (var i = 0; i < corpse.Loot.Count; i++)
-            {
-                var stack = corpse.Loot[i];
-                AddInventory(stack.ItemId, stack.Quantity);
-            }
-        }
-
-        private void AddInventory(uint itemId, int quantity)
-        {
-            if (itemId == 0 || quantity <= 0)
-            {
-                return;
-            }
-
-            _inventory.TryGetValue(itemId, out var current);
-            _inventory[itemId] = current + quantity;
-        }
 
         private string DescribeLoot(CorpseSnapshot corpse)
         {
@@ -1158,6 +1150,49 @@ namespace Albion.Client
         {
             _message = message;
             _messageUntil = Time.unscaledTime + 4f;
+        }
+
+        private void BeginPendingCommand(string kind, string subject)
+        {
+            if (_pipeline == null)
+            {
+                return;
+            }
+
+            _pendingCommandSequence = _pipeline.LastUiSequence;
+            _pendingCommandLabel = kind + ": " + subject;
+        }
+
+        private void ConsumeCommandResult()
+        {
+            var result = _pipeline?.LastCommandResult;
+            if (!result.HasValue)
+            {
+                return;
+            }
+
+            var value = result.Value;
+            if (value.Sequence == _shownCommandResultSequence)
+            {
+                return;
+            }
+
+            _shownCommandResultSequence = value.Sequence;
+            if (value.Sequence == _pendingCommandSequence)
+            {
+                ShowMessage(value.Accepted
+                    ? _pendingCommandLabel + " — готово."
+                    : _pendingCommandLabel + " — отказ: " + value.Detail);
+                _pendingCommandSequence = 0;
+                return;
+            }
+
+            // Результат для команды без локального ожидания (например, экипировка):
+            // успех не шумит, а причину отказа важно показать.
+            if (!value.Accepted)
+            {
+                ShowMessage("Сервер отклонил команду: " + value.Detail);
+            }
         }
     }
 }

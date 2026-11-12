@@ -31,6 +31,8 @@ namespace Albion.Editor
         private static string _captureError = string.Empty;
         private static bool _qaTeleportDone;
         private static double _qaTeleportWaitUntil;
+        private static int _qaShopState;
+        private static double _qaShopWaitUntil;
 
         /// <summary>Точка входа для <c>-executeMethod</c>.</summary>
         public static void Run()
@@ -39,6 +41,8 @@ namespace Albion.Editor
             _contentChecksPassed = false;
             _qaTeleportDone = false;
             _qaTeleportWaitUntil = 0.0;
+            _qaShopState = 0;
+            _qaShopWaitUntil = 0.0;
             SessionState.SetInt(StateKey, 1);
             _started = EditorApplication.timeSinceStartup;
             if (Environment.GetEnvironmentVariable("ALBION_REBUILD_WORLD") == "1")
@@ -256,6 +260,13 @@ namespace Albion.Editor
                 return;
             }
 
+            // QA-only: buy the blue-zone staff and craft the starter bow before the screenshot,
+            // so the inventory panel is captured with real server-authoritative contents.
+            if (QaShopPending(pipeline))
+            {
+                return;
+            }
+
             try
             {
                 HudSmokeChecks.Verify();
@@ -290,6 +301,84 @@ namespace Albion.Editor
                 + " visuals=" + view.VisualEntityCount
                 + " mobs=" + mobs
                 + " corpses=" + view.CorpseVisualCount);
+        }
+
+        private static bool QaShopPending(ClientPipeline pipeline)
+        {
+            if (Environment.GetEnvironmentVariable("ALBION_QA_SHOP") != "1" || pipeline.Content == null)
+            {
+                return false;
+            }
+
+            var now = EditorApplication.timeSinceStartup;
+            if (_qaShopState == 0)
+            {
+                Simulation.Core.NpcTrader? trader = null;
+                foreach (var candidate in pipeline.Content.Config.Traders)
+                {
+                    if (candidate.Key == "blue_merchant")
+                    {
+                        trader = candidate;
+                        break;
+                    }
+                }
+
+                if (trader == null || !pipeline.SendTeleport(trader.Position.X + 2f, trader.Position.Z))
+                {
+                    _qaShopState = 5;
+                    return false;
+                }
+
+                _qaShopState = 1;
+                _qaShopWaitUntil = now + 1.2;
+                return true;
+            }
+
+            if (now < _qaShopWaitUntil)
+            {
+                return true;
+            }
+
+            switch (_qaShopState)
+            {
+                case 1:
+                    _qaShopState = 2;
+                    _qaShopWaitUntil = now + 0.7;
+                    pipeline.SendBuy(1, 15, 1);
+                    return true;
+
+                case 2:
+                    _qaShopState = 3;
+                    _qaShopWaitUntil = now + 0.7;
+                    pipeline.SendCraft(5);
+                    return true;
+
+                case 3:
+                    _qaShopState = 4;
+                    _qaShopWaitUntil = now + 0.5;
+                    var hud = UnityEngine.Object.FindFirstObjectByType<ClientHud>();
+                    if (hud != null)
+                    {
+                        hud.ToggleInventory();
+                        var contents = string.Empty;
+                        foreach (var stack in pipeline.Inventory)
+                        {
+                            if (contents.Length > 0)
+                            {
+                                contents += ", ";
+                            }
+
+                            contents += "#" + stack.ItemId + "x" + stack.Quantity;
+                        }
+
+                        Debug.Log("[agent-smoke] QA shop inventory: " + contents);
+                    }
+
+                    return true;
+
+                default:
+                    return false;
+            }
         }
 
         private static bool QaTeleportPending(ClientPipeline pipeline)

@@ -32,6 +32,9 @@ namespace Client.Network
         private readonly Dictionary<uint, SimulationSnapshot> _snapshotsByTick = new Dictionary<uint, SimulationSnapshot>();
         private readonly List<string> _log = new List<string>();
         private SimulationSnapshot? _lastSnapshot;
+        private InventoryMessage? _inventory;
+        private CommandResult? _lastCommandResult;
+        private uint _lastUiSequence;
         private float _tickAccumulator;
         private float _sinceHello;
         private float _sinceSnapshot;
@@ -84,6 +87,19 @@ namespace Client.Network
 
         /// <summary>Последний применённый снапшот (полный или восстановленный из дельты) — для UI и целей (M9).</summary>
         public SimulationSnapshot? LastSnapshot => _lastSnapshot;
+
+        /// <summary>Последний sequence, отправленный из UI; нужен для сопоставления с результатом.</summary>
+        public uint LastUiSequence => _lastUiSequence;
+
+        /// <summary>Последний результат UI-команды от сервера (Protocol v10).</summary>
+        public CommandResult? LastCommandResult => _lastCommandResult;
+
+        /// <summary>Есть ли уже авторитетный снимок инвентаря от сервера (Protocol v10).</summary>
+        public bool HasInventory => _inventory != null;
+
+        /// <summary>Авторитетный инвентарь игрока; пустой, пока сервер не прислал сообщение.</summary>
+        public IReadOnlyList<InventoryStack> Inventory =>
+            _inventory == null ? Array.Empty<InventoryStack>() : _inventory.Stacks;
 
         /// <summary>Сколько дельта-снапшотов применено (M8).</summary>
         public int DeltasApplied { get; private set; }
@@ -196,6 +212,7 @@ namespace Client.Network
             }
 
             _transport.Send(MessageFraming.Wrap(MessageType.Command, CommandCodec.Encode(command)), DeliveryMode.ReliableOrdered);
+            _lastUiSequence = command.Sequence;
             return true;
         }
 
@@ -325,6 +342,14 @@ namespace Client.Network
                     HandleServerAck(frame.Payload);
                     break;
 
+                case MessageType.CommandResult:
+                    HandleCommandResult(frame.Payload);
+                    break;
+
+                case MessageType.Inventory:
+                    HandleInventory(frame.Payload);
+                    break;
+
                 case MessageType.Snapshot:
                     HandleSnapshot(frame.Payload);
                     break;
@@ -373,6 +398,9 @@ namespace Client.Network
 
             HasSession = true;
             _acknowledgedByTick.Clear();
+            _inventory = null;
+            _lastCommandResult = null;
+            _lastUiSequence = 0;
             _log.Add("[hello] сущность " + EntityId + ", актор " + actorId + ", скорость " + moveSpeed.ToString("0.###")
                 + (_content == null ? string.Empty : ", config " + ShortHash(_content.Hash)));
             SessionReady?.Invoke(EntityId);
@@ -420,6 +448,35 @@ namespace Client.Network
                     _acknowledgedByTick.Remove(tick);
                 }
             }
+        }
+
+        private void HandleCommandResult(byte[] payload)
+        {
+            if (!CommandResultCodec.TryDecode(payload, out var result))
+            {
+                _log.Add("[command] некорректный результат (" + payload.Length + " байт)");
+                return;
+            }
+
+            _lastCommandResult = result;
+            _log.Add("[command] seq=" + result.Sequence + (result.Accepted ? " принята" : " отклонена: " + result.Detail));
+        }
+
+        private void HandleInventory(byte[] payload)
+        {
+            if (!InventoryCodec.TryDecode(payload, out var inventory) || inventory == null)
+            {
+                _log.Add("[inventory] некорректное сообщение (" + payload.Length + " байт)");
+                return;
+            }
+
+            if (EntityId != 0 && inventory.EntityId != EntityId)
+            {
+                _log.Add("[inventory] чужой entityId " + inventory.EntityId + ", ожидался " + EntityId);
+                return;
+            }
+
+            _inventory = inventory;
         }
 
         private void HandleSnapshot(byte[] payload)
@@ -650,6 +707,8 @@ namespace Client.Network
         private void OnTransportDisconnected(string reason)
         {
             HasSession = false;
+            _inventory = null;
+            _lastCommandResult = null;
             _log.Add("[disconnect] " + reason);
             Disconnected?.Invoke(reason);
         }

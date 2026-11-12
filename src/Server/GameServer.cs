@@ -194,6 +194,9 @@ namespace Server
                     AckCodec.Encode(session.EntityId, session.AcknowledgedSequence, ackTick));
                 _transport.Send(session.ConnectionId, ack, DeliveryMode.ReliableOrdered);
 
+                // Инвентарь мог измениться этим тиком (покупка, крафт, лут, экипировка).
+                MaybeSendInventory(session);
+
                 // Дельта уместна, только если у клиента гарантированно есть база (предыдущий тик).
                 // Иначе (первый снапшот, разрыв, запрос полного) отправляем полный — надёжно.
                 var hasBaseline = deltaPacket != null && session.LastSentTick == _previousSnapshot!.Tick;
@@ -368,6 +371,7 @@ namespace Server
             WriteUInt32(ack, 8, actor.Id);
             WriteSingle(ack, 12, actor.MoveSpeed);
             _transport.Send(connectionId, MessageFraming.Wrap(MessageType.HelloAck, ack), DeliveryMode.ReliableOrdered);
+            MaybeSendInventory(_sessions[connectionId]);
 
             Log("[t" + Simulation.State.Tick + "] conn " + connectionId + ": Hello принят, сущность " + entityId
                 + " (актор " + actor.Id + ") в точке " + spawn
@@ -398,11 +402,84 @@ namespace Server
 
             if (!result.IsValid)
             {
+                SendCommandResult(session, command, false, result.Detail);
                 Log("[t" + Simulation.State.Tick + "] conn " + connectionId + ": rejected (" + result.Reason + ") — " + result.Detail);
                 return;
             }
 
+            if (NeedsCommandResult(command))
+            {
+                SendCommandResult(session, command, true, string.Empty);
+            }
+
             _pendingCommands.Add(new PendingCommand(connectionId, envelope));
+        }
+
+        private static bool NeedsCommandResult(ICommand command)
+        {
+            return command is BuyCommand
+                || command is CraftCommand
+                || command is SellCommand
+                || command is GatherCommand
+                || command is LootCommand
+                || command is EquipCommand
+                || command is TeleportCommand;
+        }
+
+        private void SendCommandResult(ClientSession session, ICommand command, bool accepted, string detail)
+        {
+            var payload = CommandResultCodec.Encode(command.Sequence, accepted, detail);
+            _transport.Send(
+                session.ConnectionId,
+                MessageFraming.Wrap(MessageType.CommandResult, payload),
+                DeliveryMode.ReliableOrdered);
+        }
+
+        private void MaybeSendInventory(ClientSession session)
+        {
+            if (!Simulation.State.TryGetEntity(session.EntityId, out var entity))
+            {
+                return;
+            }
+
+            var fingerprint = InventoryFingerprint(entity.Inventory);
+            if (session.InventorySent && session.InventoryFingerprint == fingerprint)
+            {
+                return;
+            }
+
+            var payload = InventoryCodec.Encode(entity.Id, entity.Inventory.Stacks);
+            _transport.Send(
+                session.ConnectionId,
+                MessageFraming.Wrap(MessageType.Inventory, payload),
+                DeliveryMode.ReliableOrdered);
+            session.InventoryFingerprint = fingerprint;
+            session.InventorySent = true;
+        }
+
+        private static ulong InventoryFingerprint(Inventory inventory)
+        {
+            // FNV-1a: порядок стопок и количества входят в хеш, поэтому любое изменение
+            // (покупка, крафт, лут, экипировка, смерть) вызовет отправку нового сообщения.
+            var hash = 14695981039346656037UL;
+            hash = Mix(hash, (uint)inventory.Stacks.Count);
+            for (var i = 0; i < inventory.Stacks.Count; i++)
+            {
+                hash = Mix(hash, inventory.Stacks[i].ItemId);
+                hash = Mix(hash, (uint)inventory.Stacks[i].Quantity);
+            }
+
+            return hash;
+        }
+
+        private static ulong Mix(ulong hash, uint value)
+        {
+            unchecked
+            {
+                hash ^= value;
+                hash *= 1099511628211UL;
+                return hash;
+            }
         }
 
         private void SendSnapshot(int connectionId)
@@ -477,6 +554,12 @@ namespace Server
             public uint LastSentTick { get; set; }
 
             public int CommandsThisTick { get; set; }
+
+            /// <summary>Последний отправленный отпечаток инвентаря (Protocol v10).</summary>
+            public ulong InventoryFingerprint { get; set; }
+
+            /// <summary>Инвентарь уже отправлялся в этой сессии.</summary>
+            public bool InventorySent { get; set; }
 
             /// <summary>Сдвигает подтверждение только вперёд: команды приходят по порядку, а acks ретраятся.</summary>
             public void Acknowledge(uint sequence)

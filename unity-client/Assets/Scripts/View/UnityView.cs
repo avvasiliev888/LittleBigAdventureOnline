@@ -391,7 +391,7 @@ namespace Albion.Client
 
         /// <summary>
         /// Starts the one-shot attack animation on the closest mob when the local player takes
-        /// damage. Mob attacks are server-side; protocol v9 has no explicit attack event.
+        /// damage. Mob attacks are server-side; the current protocol has no explicit attack event.
         /// </summary>
         private void PlayMobAttackNear(Vector3 playerPosition)
         {

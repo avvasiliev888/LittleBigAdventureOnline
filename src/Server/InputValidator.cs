@@ -513,6 +513,11 @@ namespace Server
                     "жила '" + node.Key + "' на расстоянии " + distance.ToString("0.###") + " > " + node.Range.ToString("0.###"));
             }
 
+            if (!caster.Inventory.CanAdd(node.ItemId, node.Amount))
+            {
+                return ValidationResult.Reject(CommandRejectReason.InventoryFull, "нет места под добычу");
+            }
+
             return ValidationResult.Accept();
         }
     }

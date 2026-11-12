@@ -2,9 +2,23 @@
 setlocal
 cd /d "%~dp0"
 
+where dotnet >nul 2>nul
+if errorlevel 1 (
+    echo .NET SDK not found.
+    pause
+    exit /b 1
+)
+
+echo Building server...
+dotnet build src\Server\Server.csproj -c Release --nologo -v:q
+if errorlevel 1 (
+    echo Server build failed.
+    pause
+    exit /b 1
+)
+
 if not exist "src\Server\bin\Release\net10.0\Server.exe" (
     echo Server build not found.
-    echo Run: dotnet build Prototype.sln -c Release
     pause
     exit /b 1
 )

@@ -43,6 +43,35 @@ namespace Albion.Editor
             Debug.Log("[art] Prepared " + changed + " imported model(s).");
         }
 
+        [MenuItem("Albion/Art/Rebuild KayKit Character Prefabs")]
+        public static void RebuildKayKitCharacters()
+        {
+            var models = new[]
+            {
+                CharactersRoot + "/KayKit/Knight.fbx",
+                CharactersRoot + "/KayKit/Skeleton_Minion.fbx",
+                CharactersRoot + "/KayKit/Skeleton_Rogue.fbx",
+                CharactersRoot + "/KayKit/Skeleton_Warrior.fbx",
+            };
+            foreach (var path in models)
+            {
+                if (AssetDatabase.LoadAssetAtPath<GameObject>(path) == null)
+                {
+                    Debug.LogError("[art] KayKit model missing: " + path);
+                    continue;
+                }
+                var importer = AssetImporter.GetAtPath(path) as ModelImporter;
+                if (importer != null)
+                {
+                    ConfigureImporter(importer, path);
+                    importer.SaveAndReimport();
+                }
+                PrepareModel(path);
+            }
+            AssetDatabase.SaveAssets();
+            Debug.Log("[art] Rebuilt KayKit character prefabs and controllers.");
+        }
+
         [MenuItem("Albion/Art/Create Locomotion Controller From Selected Model")]
         public static void CreateControllerFromSelection()
         {
@@ -166,6 +195,32 @@ namespace Albion.Editor
                 importer.optimizeMeshPolygons = true;
                 importer.optimizeMeshVertices = true;
             }
+
+            if (isCharacter)
+            {
+                // KayKit takes are authored as one-shot clips by the FBX importer. Without an
+                // explicit loop flag Animator plays Walking_A/Running_A once (~1 s) and then
+                // holds the last pose while the root keeps moving: exactly the "steps then
+                // glide" bug. Idle/locomotion must loop; attack/hit/death must not.
+                var takes = importer.clipAnimations.Length > 0
+                    ? importer.clipAnimations
+                    : importer.defaultClipAnimations;
+                if (takes.Length > 0)
+                {
+                    var changed = false;
+                    foreach (var take in takes)
+                    {
+                        var canonical = CanonicalState(take.name);
+                        var loop = canonical == "Idle" || canonical == "Walk" || canonical == "Run";
+                        if (take.loopTime != loop)
+                        {
+                            take.loopTime = loop;
+                            changed = true;
+                        }
+                    }
+                    if (changed) importer.clipAnimations = takes;
+                }
+            }
         }
 
         internal static void Schedule(string path)
@@ -219,14 +274,16 @@ namespace Albion.Editor
                 TryExtractEmbeddedTextures(path, textureFolder);
                 ArtMaterialUtility.AssignFallbackAlbedo(instance, ArtRoot);
                 ArtMaterialUtility.ConvertRenderers(instance, materialFolder);
+                StripEmbeddedEquipment(instance);
 
                 var animator = instance.GetComponentInChildren<Animator>(true);
                 if (animator != null && category == CharactersRoot)
                 {
+                    AnimatorController controller = null;
                     if (animator.runtimeAnimatorController == null
                         || IsGeneratedController(animator.runtimeAnimatorController))
                     {
-                        var controller = CreateController(path);
+                        controller = CreateController(path);
                         if (controller != null) animator.runtimeAnimatorController = controller;
                     }
                     animator.applyRootMotion = false;
@@ -235,6 +292,7 @@ namespace Albion.Editor
                         ?? instance.GetComponentInChildren<CharacterVisuals>(true)
                         ?? instance.AddComponent<CharacterVisuals>();
                     visuals.BindSockets(animator);
+                    if (controller != null) ApplyStateNames(visuals, controller);
                 }
 
                 // InstantiatePrefab keeps a nested FBX prefab root. Unity 6 then stores the
@@ -256,6 +314,29 @@ namespace Albion.Editor
             {
                 Object.DestroyImmediate(instance);
             }
+        }
+
+        /// <summary>
+        /// KayKit bodies ship with several sword and shield meshes baked into the FBX. They are
+        /// not equipment slots: the runtime mounts authored weapon prefabs on hand sockets. Delete
+        /// the baked copies so one snapshot weapon can never render as three swords plus a shield.
+        /// </summary>
+        private static void StripEmbeddedEquipment(GameObject instance)
+        {
+            var removed = 0;
+            foreach (var transform in instance.GetComponentsInChildren<Transform>(true))
+            {
+                if (transform == null || transform == instance.transform
+                    || transform.GetComponent<Renderer>() == null) continue;
+                var name = transform.name.ToLowerInvariant();
+                if (!(name.Contains("sword") || name.Contains("shield") || name.Contains("axe")
+                      || name.Contains("staff") || name.Contains("crossbow") || name.Contains("dagger")))
+                    continue;
+                Object.DestroyImmediate(transform.gameObject);
+                removed++;
+            }
+            if (removed > 0)
+                Debug.Log("[art] Removed " + removed + " baked weapon/shield meshes from " + instance.name + ".");
         }
 
         private static void TryExtractEmbeddedTextures(string path, string textureFolder)
@@ -306,11 +387,17 @@ namespace Albion.Editor
             controller.AddParameter("Dead", AnimatorControllerParameterType.Bool);
             controller.AddParameter("Attack", AnimatorControllerParameterType.Trigger);
             controller.AddParameter("Hit", AnimatorControllerParameterType.Trigger);
+
+            // The base layer defaults to weight 0 when a controller is created through the API.
+            // At weight 0 Unity evaluates the state machine but writes no pose, which looks like
+            // a character gliding in bind pose. Force the authored layer weight to 1.
+            var layers = controller.layers;
+            layers[0].defaultWeight = 1f;
+            controller.layers = layers;
             var machine = controller.layers[0].stateMachine;
 
-            // One state per canonical slot. CharacterVisuals drives states directly with
-            // CrossFadeInFixedTime, so no transition graph is needed; a state with a good
-            // representative clip is enough for Idle/Walk/Run/Attack/Hit/Dead.
+            // One state per canonical slot. CharacterVisuals still drives one-shots directly;
+            // the graph below is the parameter-driven fallback (and documents exit timing).
             var order = new[] { "Idle", "Walk", "Run", "Attack", "Hit", "Dead" };
             var chosen = new Dictionary<string, AnimationClip>();
             foreach (var clip in clips)
@@ -324,17 +411,146 @@ namespace Albion.Editor
                 }
             }
 
-            AnimatorState idle = null;
+            var states = new Dictionary<string, AnimatorState>();
             foreach (var stateName in order)
             {
                 if (!chosen.TryGetValue(stateName, out var clip)) continue;
-                var state = machine.AddState(stateName);
+                // Name the state after the authored clip (Walking_A, 1H_Melee_Attack_Chop),
+                // not the internal canonical slot. This is what the acceptance test observes.
+                var state = machine.AddState(clip.name);
                 state.motion = clip;
-                if (stateName == "Idle") idle = state;
+                states[stateName] = state;
             }
-            if (idle != null) machine.defaultState = idle;
+            if (states.TryGetValue("Idle", out var idle)) machine.defaultState = idle;
+
+            AddLocomotion(machine, states, "Idle", "Walk", 0.1f, true);
+            AddLocomotion(machine, states, "Walk", "Idle", 0.1f, false);
+            AddLocomotion(machine, states, "Walk", "Run", 3.2f, true);
+            AddLocomotion(machine, states, "Run", "Walk", 3.2f, false);
+            AddLocomotion(machine, states, "Run", "Idle", 0.1f, false);
+            // CharacterVisuals starts Attack/Hit with a deterministic Animator.Play. Keeping
+            // AnyState -> Hit here lets a pending Hit trigger override a mob attack in the same
+            // server tick (observed as MOB ATTACK state=Hit_A), so the trigger graph is not
+            // used for those two one-shots. Dead stays parameter-driven.
+            AddAnyStateBool(machine, states, "Dead", "Dead");
+            AddExitToIdle(states, "Attack", 0.9f);
+            AddExitToIdle(states, "Hit", 0.8f);
+
+            // Extra one-shot states for the per-weapon attack variants. CharacterVisuals picks a
+            // clip with Animator.Play, so the states need no AnyState transition; the exit to
+            // Idle keeps the graph valid for manual preview and parameter-driven fallback.
+            var extraAttacks = new[]
+            {
+                "1H_Melee_Attack_Slice_Diagonal",
+                "1H_Melee_Attack_Slice_Horizontal",
+                "1H_Melee_Attack_Stab",
+                "2H_Melee_Attack_Spin",
+                "1H_Ranged_Shoot",
+                "1H_Ranged_Shooting",
+                "Spellcast_Shoot",
+                "Spellcast_Long",
+            };
+            foreach (var clip in clips)
+            {
+                if (Array.IndexOf(extraAttacks, clip.name) < 0) continue;
+                if (states.ContainsKey(clip.name)) continue;
+                var extra = machine.AddState(clip.name);
+                extra.motion = clip;
+                AddExitToIdle(machine, extra, 0.9f);
+            }
+
             AssetDatabase.SaveAssets();
             return controller;
+        }
+
+        private static void AddLocomotion(AnimatorStateMachine machine,
+            IReadOnlyDictionary<string, AnimatorState> states,
+            string from, string to, float threshold, bool greater)
+        {
+            if (!states.TryGetValue(from, out var source) || !states.TryGetValue(to, out var target)) return;
+            var transition = source.AddTransition(target);
+            transition.hasExitTime = false;
+            transition.exitTime = 0f;
+            transition.duration = 0.1f;
+            transition.hasFixedDuration = true;
+            transition.AddCondition(greater ? AnimatorConditionMode.Greater : AnimatorConditionMode.Less,
+                threshold, "Speed");
+        }
+
+        private static void AddAnyStateTrigger(AnimatorStateMachine machine,
+            IReadOnlyDictionary<string, AnimatorState> states, string state, string parameter, float duration)
+        {
+            if (!states.TryGetValue(state, out var target)) return;
+            var transition = machine.AddAnyStateTransition(target);
+            transition.hasExitTime = false;
+            transition.exitTime = 0f;
+            transition.duration = duration;
+            transition.hasFixedDuration = true;
+            transition.canTransitionToSelf = false;
+            transition.AddCondition(AnimatorConditionMode.If, 0f, parameter);
+        }
+
+        private static void AddAnyStateBool(AnimatorStateMachine machine,
+            IReadOnlyDictionary<string, AnimatorState> states, string state, string parameter)
+        {
+            if (!states.TryGetValue(state, out var target)) return;
+            var transition = machine.AddAnyStateTransition(target);
+            transition.hasExitTime = false;
+            transition.exitTime = 0f;
+            transition.duration = 0.08f;
+            transition.hasFixedDuration = true;
+            transition.canTransitionToSelf = false;
+            transition.AddCondition(AnimatorConditionMode.If, 0f, parameter);
+        }
+
+        private static void AddExitToIdle(IReadOnlyDictionary<string, AnimatorState> states,
+            string from, float exitTime)
+        {
+            if (!states.TryGetValue(from, out var source) || !states.TryGetValue("Idle", out var idle)) return;
+            AddExitToState(source, idle, exitTime);
+        }
+
+        private static void AddExitToIdle(AnimatorStateMachine machine, AnimatorState source, float exitTime)
+        {
+            AnimatorState idle = null;
+            foreach (var child in machine.states)
+            {
+                if (child.state.name == "Idle")
+                {
+                    idle = child.state;
+                    break;
+                }
+            }
+            if (idle != null) AddExitToState(source, idle, exitTime);
+        }
+
+        private static void AddExitToState(AnimatorState source, AnimatorState idle, float exitTime)
+        {
+            var transition = source.AddTransition(idle);
+            transition.hasExitTime = true;
+            transition.exitTime = exitTime;
+            transition.duration = 0.08f;
+            transition.hasFixedDuration = true;
+        }
+
+        private static void ApplyStateNames(CharacterVisuals visuals, AnimatorController controller)
+        {
+            var names = new Dictionary<string, string>();
+            foreach (var state in controller.layers[0].stateMachine.states)
+            {
+                var canonical = CanonicalState(state.state.name);
+                // Keep the primary Attack state (1H_Melee_Attack_Chop) as the default; the
+                // additional attack variants are selected by CharacterVisuals directly.
+                if (!string.IsNullOrEmpty(canonical) && !names.ContainsKey(canonical))
+                    names[canonical] = state.state.name;
+            }
+            visuals.SetStateNames(
+                names.TryGetValue("Idle", out var idle) ? idle : null,
+                names.TryGetValue("Walk", out var walk) ? walk : null,
+                names.TryGetValue("Run", out var run) ? run : null,
+                names.TryGetValue("Attack", out var attack) ? attack : null,
+                names.TryGetValue("Hit", out var hit) ? hit : null,
+                names.TryGetValue("Dead", out var dead) ? dead : null);
         }
 
         private static string CanonicalState(string clipName)

@@ -36,7 +36,7 @@ namespace Albion.Editor
             {
                 Bind(WeaponKind.Sword, "sword_1handed"),
                 Bind(WeaponKind.Axe, "axe_1handed"),
-                Bind(WeaponKind.Bow, "crossbow_1handed"),
+                Bind(WeaponKind.Bow, "bow"),
                 Bind(WeaponKind.Staff, "staff"),
                 Bind(WeaponKind.Dagger, "dagger"),
             };
@@ -171,7 +171,7 @@ namespace Albion.Editor
             {
                 "sword_1handed" => 0.85f,
                 "axe_1handed" => 0.90f,
-                "crossbow_1handed" => 0.90f,
+                "bow" => 0.90f,
                 "staff" => 1.0f,
                 "dagger" => 0.45f,
                 _ => 1.0f,

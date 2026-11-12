@@ -373,7 +373,7 @@ namespace Albion.Client
             GUI.Label(
                 new Rect(12f, Screen.height - 46f, Screen.width - 24f, 22f),
                 "WASD — ходьба, ЛКМ/ПКМ — бег к курсору, клик — метка и лут с трупа, Space — атака, "
-                + "I — инвентарь, F — сбор, C — крафт, K — навыки.");
+                + "I — инвентарь, F — сбор, C — крафт, K — навыки, 1–4 — оружие.");
         }
 
         private void DrawCraft()

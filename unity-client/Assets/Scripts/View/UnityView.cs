@@ -84,8 +84,17 @@ namespace Albion.Client
         /// <summary>Сколько визуальных трупов создано — для smoke-тестов.</summary>
         public int CorpseVisualCount => _corpses.Count;
 
+        /// <summary>Character adapter for a snapshot entity, or null for the legacy warrior.</summary>
+        public CharacterVisuals? GetCharacterVisual(uint entityId)
+        {
+            return _entities.TryGetValue(entityId, out var state) ? state.Character : null;
+        }
+
         /// <summary>Последний применённый снапшот — для smoke-тестов.</summary>
         public SimulationSnapshot? LatestSnapshot => _latestSnapshot;
+
+        /// <summary>Diagnostics for the last mob-attack presentation trigger.</summary>
+        public string LastMobAttackDebug { get; private set; } = string.Empty;
 
         /// <summary>Была ли последняя реконсиляция (диагностика для HUD).</summary>
         public bool LastReconciliationCorrected { get; private set; }
@@ -285,6 +294,13 @@ namespace Albion.Client
                 state.Character?.PlayHit();
             }
             ApplyWeapon(state, entity);
+            if (hpDelta > 0 && entity.Id == PlayerEntityId)
+            {
+                // The server snapshot carries HP but no mob-attack event. The authoritative
+                // damage on the local player is the signal that a nearby mob just swung;
+                // without this mobs dealt damage while standing in Idle.
+                PlayMobAttackNear(position);
+            }
             if (hpDelta > 0)
             {
                 // Snapshot HP is authoritative: the same delta the server applied is the number
@@ -345,6 +361,38 @@ namespace Albion.Client
                 state.Weapons?.Equip(kind);
                 state.Character?.Equip(kind);
             }
+        }
+
+        /// <summary>
+        /// Starts the one-shot attack animation on the closest mob when the local player takes
+        /// damage. Mob attacks are server-side; protocol v8 has no explicit attack event.
+        /// </summary>
+        private void PlayMobAttackNear(Vector3 playerPosition)
+        {
+            // Snapshot v8 has no attacker id. Play the swing on every mob that is close enough
+            // to have dealt the damage; picking only the closest could animate another mob and
+            // leave the actual attacker in Idle (observed in the 30 s bot run).
+            var candidates = 0;
+            var played = 0;
+            foreach (var pair in _entities)
+            {
+                var candidate = pair.Value;
+                if (!candidate.IsMob || candidate.Character == null || candidate.Root == null
+                    || !candidate.Root.gameObject.activeSelf)
+                {
+                    continue;
+                }
+
+                candidates++;
+                if (Vector3.Distance(candidate.Root.position, playerPosition) <= 3.5f)
+                {
+                    candidate.Character.PlayAttack();
+                    played++;
+                }
+            }
+
+            LastMobAttackDebug = "candidates=" + candidates + " played=" + played
+                + " player=" + playerPosition.ToString("F2");
         }
 
         private void ApplyWeapon(EntityVisual state, InterpolatedEntity entity)

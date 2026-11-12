@@ -49,6 +49,9 @@ namespace Albion.Client
         /// <summary>Представление мира после старта; <c>null</c> до загрузки конфига (для smoke-тестов).</summary>
         public UnityView? View => _view;
 
+        /// <summary>Input source used by the live pipeline; the playtest replaces its command provider.</summary>
+        public UnityInputSource? Input => _input;
+
         /// <summary>Автостарт без правки сцены: клиент поднимается после загрузки любой сцены.</summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoStart()

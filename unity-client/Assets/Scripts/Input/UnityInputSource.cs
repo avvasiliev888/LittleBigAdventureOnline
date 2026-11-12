@@ -33,6 +33,7 @@ namespace Albion.Client
         private bool _destinationActive;
         private UnityVector3 _destination;
         private uint _sequence;
+        private Func<uint, ICommand?>? _scriptedCommand;
 
         /// <summary>Создаёт источник ввода.</summary>
         /// <param name="abilityTarget">
@@ -67,7 +68,7 @@ namespace Albion.Client
         /// (0.5 м по умолчанию).
         /// </param>
         /// <param name="equipWeapon">
-        /// Клиентское переключение видимого оружия: 1 — меч, 2 — топор. Сервер не участвует,
+        /// Клиентское переключение видимого оружия: 1 — меч, 2 — топор, 3 — лук, 4 — посох. Сервер не участвует,
         /// поэтому команда способности и протокол не меняются (M10.11).
         /// </param>
         /// <param name="touchMove">
@@ -113,6 +114,15 @@ namespace Albion.Client
         /// нажатия в клиентский тик (20 Гц). Отпускание прекращает новые команды; уже
         /// зафиксированное нажатие доедет до ближайшего тика.
         /// </summary>
+        /// <summary>
+        /// Test/playtest seam: when set, supplies commands before the keyboard path. The live game
+        /// leaves it null, so this cannot affect a normal player.
+        /// </summary>
+        public void SetScriptedCommandProvider(Func<uint, ICommand?>? provider)
+        {
+            _scriptedCommand = provider;
+        }
+
         public void PollFrame()
         {
             var touchAttack = _touchAttack != null && _touchAttack();
@@ -138,11 +148,29 @@ namespace Albion.Client
             {
                 _equipWeapon?.Invoke(WeaponKind.Axe);
             }
+            else if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3))
+            {
+                _equipWeapon?.Invoke(WeaponKind.Bow);
+            }
+            else if (Input.GetKeyDown(KeyCode.Alpha4) || Input.GetKeyDown(KeyCode.Keypad4))
+            {
+                _equipWeapon?.Invoke(WeaponKind.Staff);
+            }
         }
 
         /// <inheritdoc />
         public bool TryReadCommand(uint clientTick, out ICommand command)
         {
+            if (_scriptedCommand != null)
+            {
+                var scripted = _scriptedCommand(clientTick);
+                if (scripted != null)
+                {
+                    command = scripted;
+                    return true;
+                }
+            }
+
             // Способность не зависит от движения: проверяется отдельно и в любом состоянии.
             // Пока Attack доигрывается ИЛИ кулдаун ещё идёт, не отправляем новую способность
             // и НЕ сбрасываем флаг. В это же время ниже вернётся MoveCommand, поэтому зажатые

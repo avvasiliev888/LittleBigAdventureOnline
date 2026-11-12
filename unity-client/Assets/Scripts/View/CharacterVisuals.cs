@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Albion.Client
@@ -14,7 +15,6 @@ namespace Albion.Client
     {
         private static readonly int SpeedParameter = Animator.StringToHash("Speed");
         private static readonly int DeadParameter = Animator.StringToHash("Dead");
-        private static readonly int AttackParameter = Animator.StringToHash("Attack");
         private static readonly int HitParameter = Animator.StringToHash("Hit");
 
         [Header("Rig")]
@@ -31,7 +31,9 @@ namespace Albion.Client
         [SerializeField] private string hitState = "Hit";
         [SerializeField] private string deathState = "Dead";
         [SerializeField] private float runSpeedThreshold = 3.2f;
-        [SerializeField] private float attackDuration = 0.45f;
+        // Must cover the authored 1H_Melee_Attack_Chop clip (~1.07 s); 0.45 s cut the swing
+        // almost immediately and looked like a twitch.
+        [SerializeField] private float attackDuration = 1.0f;
 
         [Header("Weapon mount calibration")]
         [SerializeField] private Vector3 weaponLocalPosition;
@@ -41,12 +43,50 @@ namespace Albion.Client
         [Header("Weapons (assign authored prefabs; pivot must be at the grip)")]
         [SerializeField] private WeaponBinding[] weapons = Array.Empty<WeaponBinding>();
 
-        private GameObject _weaponInstance;
+        private readonly Dictionary<WeaponKind, GameObject> _weaponSlots = new();
+        private bool _weaponSlotsBuilt;
+        private bool _embeddedEquipmentHidden;
         private WeaponKind _equipped;
         private float _attackUntil = -10f;
         private float _hitUntil = -10f;
         private bool _dead;
         private bool _attackQueuedHit;
+        private int _attackIndex;
+        private string _lastAttackState = string.Empty;
+
+        private static readonly string[] SwordCombo =
+        {
+            "1H_Melee_Attack_Chop",
+            "1H_Melee_Attack_Slice_Diagonal",
+            "1H_Melee_Attack_Slice_Horizontal",
+            "1H_Melee_Attack_Stab",
+        };
+
+        private static readonly string[] AxeCombo =
+        {
+            "1H_Melee_Attack_Chop",
+            "1H_Melee_Attack_Slice_Horizontal",
+            "1H_Melee_Attack_Slice_Diagonal",
+        };
+
+        private static readonly string[] DaggerCombo =
+        {
+            "1H_Melee_Attack_Stab",
+            "1H_Melee_Attack_Chop",
+            "1H_Melee_Attack_Slice_Diagonal",
+        };
+
+        private static readonly string[] BowCombo =
+        {
+            "1H_Ranged_Shoot",
+            "1H_Ranged_Shooting",
+        };
+
+        private static readonly string[] StaffCombo =
+        {
+            "Spellcast_Shoot",
+            "Spellcast_Long",
+        };
 
         [Serializable]
         public sealed class WeaponBinding
@@ -67,6 +107,61 @@ namespace Albion.Client
         /// <summary>Currently equipped presentation weapon, if any.</summary>
         public WeaponKind Equipped => _equipped;
 
+        /// <summary>Last horizontal speed passed by UnityView; diagnostics for the playtest.</summary>
+        public float LastMotionSpeed { get; private set; }
+
+        /// <summary>Last state requested by locomotion, and whether the controller has it.</summary>
+        public string LastRequestedState { get; private set; } = string.Empty;
+        public bool LastRequestedStateExists { get; private set; }
+
+        public string WalkStateName => walkState;
+        public string RunStateName => runState;
+        public string AttackStateName => string.IsNullOrEmpty(_lastAttackState) ? attackState : _lastAttackState;
+
+        /// <summary>Transform of the one active authored weapon slot, or null when unarmed.</summary>
+        public Transform EquippedTransform
+        {
+            get
+            {
+                foreach (var pair in _weaponSlots)
+                {
+                    if (pair.Key == _equipped && pair.Value != null && pair.Value.activeSelf)
+                        return pair.Value.transform;
+                }
+                return null;
+            }
+        }
+
+        /// <summary>Exactly one slot may be active; used by the playtest and setup validation.</summary>
+        public int ActiveWeaponSlotCount
+        {
+            get
+            {
+                var count = 0;
+                foreach (var pair in _weaponSlots)
+                {
+                    if (pair.Value != null && pair.Value.activeSelf) count++;
+                }
+                return count;
+            }
+        }
+
+        /// <summary>Default KayKit meshes that must never be visible next to a mounted weapon.</summary>
+        public int VisibleEmbeddedEquipmentCount
+        {
+            get
+            {
+                var count = 0;
+                foreach (var renderer in GetComponentsInChildren<Renderer>(true))
+                {
+                    if (renderer == null || !renderer.gameObject.activeInHierarchy) continue;
+                    if (IsMountedWeapon(renderer.transform)) continue;
+                    if (IsEmbeddedEquipmentName(renderer.gameObject.name)) count++;
+                }
+                return count;
+            }
+        }
+
         /// <summary>Resolved right-hand mount; humanoid bone fallback if no socket object exists.</summary>
         public Transform RightHandSocket
         {
@@ -84,6 +179,7 @@ namespace Albion.Client
         {
             if (animator == null) animator = GetComponentInChildren<Animator>(true);
             if (facing == null) facing = transform;
+            HideEmbeddedEquipment();
             ResolveSockets();
         }
 
@@ -91,6 +187,23 @@ namespace Albion.Client
         public void SetWeapons(WeaponBinding[] bindings)
         {
             weapons = bindings ?? Array.Empty<WeaponBinding>();
+            ClearWeaponSlots();
+        }
+
+        /// <summary>
+        /// Keeps the serialized state names in sync with the authored KayKit clip names. The
+        /// import pipeline calls this before saving the generated prefab; left null/empty for
+        /// legacy prefabs that still use the canonical Idle/Walk/Run names.
+        /// </summary>
+        public void SetStateNames(string idle, string walk, string run, string attack,
+            string hit, string death)
+        {
+            if (!string.IsNullOrEmpty(idle)) idleState = idle;
+            if (!string.IsNullOrEmpty(walk)) walkState = walk;
+            if (!string.IsNullOrEmpty(run)) runState = run;
+            if (!string.IsNullOrEmpty(attack)) attackState = attack;
+            if (!string.IsNullOrEmpty(hit)) hitState = hit;
+            if (!string.IsNullOrEmpty(death)) deathState = death;
         }
 
         /// <summary>Binds runtime-created prefabs and starts the idle pose.</summary>
@@ -109,6 +222,7 @@ namespace Albion.Client
                 animator.Rebind();
                 animator.Update(0f);
             }
+            HideEmbeddedEquipment();
             ResolveSockets();
             PlayState(idleState, 0f, true);
         }
@@ -127,6 +241,7 @@ namespace Albion.Client
             velocity.y = 0f;
             var speed = velocity.magnitude;
             if (!float.IsFinite(speed) || speed <= 0.1f) speed = 0f;
+            LastMotionSpeed = speed;
 
             if (!dead && speed > 0f && facing != null)
             {
@@ -149,13 +264,20 @@ namespace Albion.Client
                 return;
             }
 
-            if (wasDead) SetBool(DeadParameter, false);
-            if (wasDead || reset)
+            if (wasDead)
             {
+                // Respawn is the only reset that must cancel combat one-shots.
                 _attackUntil = -10f;
                 _attackQueuedHit = false;
-                PlayState(idleState, 0.08f, true);
+                SetBool(DeadParameter, false);
             }
+
+            // A teleport/respawn while already running must not queue Idle and Run in the
+            // same Animator update: Unity applies only one cross-fade per frame, and Idle
+            // wins, leaving the legs frozen while the root slides. Render catch-up also sets
+            // reset every snapshot; it must never cancel an active swing.
+            if ((wasDead || reset) && !IsAttackPlaying && speed <= 0.1f)
+                PlayState(idleState, 0.08f, true);
 
             SetFloat(SpeedParameter, speed);
             if (IsAttackPlaying) return;
@@ -181,10 +303,53 @@ namespace Albion.Client
         {
             if (_dead || animator == null || !animator.isActiveAndEnabled
                 || animator.runtimeAnimatorController == null || IsAttackPlaying) return;
-            _attackUntil = Time.time + Mathf.Max(0.1f, attackDuration);
+
+            var state = NextAttackState();
+            _lastAttackState = state;
+            _attackUntil = Time.time + Mathf.Max(0.35f, ClipLength(state));
             _attackQueuedHit = false;
-            SetTrigger(AttackParameter);
-            PlayState(attackState, 0.05f, true);
+            // A pending Hit trigger from the same server tick can override the direct Play via
+            // AnyState -> Hit_A. The mob must show its swing, not only the flinch.
+            ResetTrigger(HitParameter);
+            // Do NOT set the Attack trigger: AnyState -> 1H_Melee_Attack_Chop would fire next
+            // update from a combo state and cancel the selected variant. PlayState is the
+            // authoritative path; the parameter/AnyState graph remains a preview fallback.
+            PlayState(state, 0.05f, true);
+        }
+
+        /// <summary>
+        /// Picks the next authored attack clip for the equipped weapon. Swapping weapons resets
+        /// the combo, so every equip starts with its strongest opening swing.
+        /// </summary>
+        private string NextAttackState()
+        {
+            string[] combo;
+            switch (_equipped)
+            {
+                case WeaponKind.Bow: combo = BowCombo; break;
+                case WeaponKind.Staff: combo = StaffCombo; break;
+                case WeaponKind.Dagger: combo = DaggerCombo; break;
+                case WeaponKind.Axe: combo = AxeCombo; break;
+                default: combo = SwordCombo; break;
+            }
+
+            if (combo.Length == 0) return attackState;
+            var state = combo[_attackIndex % combo.Length];
+            _attackIndex++;
+            return state;
+        }
+
+        private float ClipLength(string stateName)
+        {
+            var controller = animator != null ? animator.runtimeAnimatorController : null;
+            if (controller != null)
+            {
+                foreach (var clip in controller.animationClips)
+                {
+                    if (clip != null && clip.name == stateName) return clip.length;
+                }
+            }
+            return attackDuration;
         }
 
         /// <summary>Stagger reaction. Queued behind an active attack to preserve the swing.</summary>
@@ -202,49 +367,114 @@ namespace Albion.Client
             PlayState(hitState, 0.06f, true);
         }
 
-        /// <summary>Equips one authored weapon prefab by kind.</summary>
+        /// <summary>
+        /// Builds one inactive slot per authored binding, then enables exactly the selected kind.
+        /// The imported KayKit body already contains sword/shield meshes inside the FBX; those are
+        /// hidden separately so a snapshot can never show three swords at once.
+        /// </summary>
         public void Equip(WeaponKind kind)
         {
-            var binding = FindBinding(kind);
-            if (_equipped == kind
-                && (_weaponInstance != null || binding == null || binding.Prefab == null))
-                return;
+            HideEmbeddedEquipment();
+            BuildWeaponSlots();
 
-            _equipped = kind;
-            if (_weaponInstance != null)
+            var hasBinding = FindBinding(kind) != null;
+            var target = hasBinding ? kind : (WeaponKind?)null;
+            foreach (var pair in _weaponSlots)
             {
-                Destroy(_weaponInstance);
-                _weaponInstance = null;
+                if (pair.Value == null) continue;
+                pair.Value.SetActive(target.HasValue && pair.Key == target.Value);
             }
+            _equipped = target ?? kind;
+            _attackIndex = 0;
+            _lastAttackState = string.Empty;
+            if (!target.HasValue)
+                Debug.LogWarning("CharacterVisuals: no authored binding for " + kind + "; character stays unarmed.", this);
+        }
 
-            if (binding == null || binding.Prefab == null)
-            {
-                return;
-            }
+        private void BuildWeaponSlots()
+        {
+            if (_weaponSlotsBuilt) return;
+            _weaponSlotsBuilt = true;
+            if (weapons == null || weapons.Length == 0) return;
 
             var socket = rightHandSocket != null ? rightHandSocket : ResolveRightHand();
             if (socket == null)
             {
-                Debug.LogWarning("CharacterVisuals: right hand socket not found; " + kind + " not attached.", this);
+                Debug.LogWarning("CharacterVisuals: right hand socket not found; weapons not attached.", this);
                 return;
             }
 
-            _weaponInstance = Instantiate(binding.Prefab, socket, false);
-            _weaponInstance.name = "Weapon " + kind;
-            var hasBindingCalibration = binding.LocalPosition != Vector3.zero
-                || binding.LocalEuler != Vector3.zero || binding.LocalScale != Vector3.one;
-            _weaponInstance.transform.localPosition = hasBindingCalibration
-                ? binding.LocalPosition : weaponLocalPosition;
-            _weaponInstance.transform.localRotation = Quaternion.Euler(
-                hasBindingCalibration ? binding.LocalEuler : weaponLocalEuler);
-            _weaponInstance.transform.localScale = hasBindingCalibration
-                ? binding.LocalScale : weaponLocalScale;
-            foreach (var collider in _weaponInstance.GetComponentsInChildren<Collider>(true)) collider.enabled = false;
-            foreach (var body in _weaponInstance.GetComponentsInChildren<Rigidbody>(true))
+            foreach (var binding in weapons)
             {
-                body.isKinematic = true;
-                body.detectCollisions = false;
+                if (binding == null || binding.Prefab == null || _weaponSlots.ContainsKey(binding.Kind)) continue;
+                var slot = Instantiate(binding.Prefab, socket, false);
+                slot.name = "Weapon " + binding.Kind;
+                var hasBindingCalibration = binding.LocalPosition != Vector3.zero
+                    || binding.LocalEuler != Vector3.zero || binding.LocalScale != Vector3.one;
+                slot.transform.localPosition = hasBindingCalibration
+                    ? binding.LocalPosition : weaponLocalPosition;
+                slot.transform.localRotation = Quaternion.Euler(
+                    hasBindingCalibration ? binding.LocalEuler : weaponLocalEuler);
+                slot.transform.localScale = hasBindingCalibration
+                    ? binding.LocalScale : weaponLocalScale;
+                foreach (var collider in slot.GetComponentsInChildren<Collider>(true)) collider.enabled = false;
+                foreach (var body in slot.GetComponentsInChildren<Rigidbody>(true))
+                {
+                    body.isKinematic = true;
+                    body.detectCollisions = false;
+                }
+                slot.SetActive(false);
+                _weaponSlots[binding.Kind] = slot;
             }
+        }
+
+        private void ClearWeaponSlots()
+        {
+            foreach (var pair in _weaponSlots)
+            {
+                if (pair.Value != null) Destroy(pair.Value);
+            }
+            _weaponSlots.Clear();
+            _weaponSlotsBuilt = false;
+        }
+
+        /// <summary>Hides the author's default swords/shields inside the imported body prefab.</summary>
+        private void HideEmbeddedEquipment()
+        {
+            if (_embeddedEquipmentHidden) return;
+            _embeddedEquipmentHidden = true;
+            var hidden = 0;
+            foreach (var renderer in GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer == null) continue;
+                var target = renderer.gameObject;
+                if (target == gameObject || IsMountedWeapon(renderer.transform)) continue;
+                if (!IsEmbeddedEquipmentName(target.name)) continue;
+                target.SetActive(false);
+                hidden++;
+            }
+            if (hidden > 0)
+                Debug.Log("[visuals] скрыто встроенное оружие/щит KayKit: " + hidden, this);
+        }
+
+        private static bool IsMountedWeapon(Transform transform)
+        {
+            for (var current = transform; current != null; current = current.parent)
+            {
+                if (current.name.StartsWith("Weapon ", StringComparison.Ordinal)
+                    || current.name.StartsWith("WeaponSlot_", StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool IsEmbeddedEquipmentName(string objectName)
+        {
+            var name = (objectName ?? string.Empty).ToLowerInvariant();
+            return name.Contains("sword") || name.Contains("shield")
+                || name.Contains("axe") || name.Contains("staff")
+                || name.Contains("crossbow") || name.Contains("dagger")
+                || name.Contains("weapon");
         }
 
         /// <summary>Maps the server item archetype to one of the authored weapon prefabs.</summary>
@@ -314,10 +544,14 @@ namespace Albion.Client
             if (animator == null || animator.runtimeAnimatorController == null || string.IsNullOrEmpty(state))
                 return;
             var hash = Animator.StringToHash(state);
-            if (!animator.HasState(0, hash)) return;
-            if (restart) animator.CrossFadeInFixedTime(hash, fade, 0, 0f);
-            else if (!animator.GetCurrentAnimatorStateInfo(0).IsName(state))
-                animator.CrossFadeInFixedTime(hash, fade, 0, 0f);
+            LastRequestedState = state;
+            LastRequestedStateExists = animator.HasState(0, hash);
+            if (!LastRequestedStateExists) return;
+            // Play is deterministic even when an Animator was just rebound or is being driven by
+            // a test the same frame; CrossFade could be ignored in those cases and leave the
+            // previous (Idle) pose while the root moved. The state graph still owns the clip.
+            if (restart || !animator.GetCurrentAnimatorStateInfo(0).IsName(state))
+                animator.Play(hash, 0, 0f);
         }
 
         private void SetFloat(int parameter, float value)
@@ -336,6 +570,12 @@ namespace Albion.Client
         {
             if (HasParameter(parameter, AnimatorControllerParameterType.Trigger))
                 animator.SetTrigger(parameter);
+        }
+
+        private void ResetTrigger(int parameter)
+        {
+            if (HasParameter(parameter, AnimatorControllerParameterType.Trigger))
+                animator.ResetTrigger(parameter);
         }
 
         private bool HasParameter(int hash, AnimatorControllerParameterType type)

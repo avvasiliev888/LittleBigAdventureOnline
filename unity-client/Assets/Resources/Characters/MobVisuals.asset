@@ -14,17 +14,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Albion.Client.MobVisualSettings
   Entries:
   - ZoneKey: blue
-    Prefab: {fileID: 8447322864339437246, guid: 846867281c3c8394a9552b107782a61d, type: 3}
+    Prefab: {fileID: 1456318023617347007, guid: 846867281c3c8394a9552b107782a61d, type: 3}
     Height: 1.55
     Yaw: 0
     GroundOffset: 0
   - ZoneKey: yellow
-    Prefab: {fileID: 6058961378609747255, guid: 12d192f8ee1ba40479c8a2e977d7065e, type: 3}
+    Prefab: {fileID: 7014205000545698338, guid: 12d192f8ee1ba40479c8a2e977d7065e, type: 3}
     Height: 1.95
     Yaw: 0
     GroundOffset: 0
   - ZoneKey: red
-    Prefab: {fileID: 771909566744879474, guid: f49eb94c38dbef54eb1cf59999d71f8b, type: 3}
+    Prefab: {fileID: 2767940049021525272, guid: f49eb94c38dbef54eb1cf59999d71f8b, type: 3}
     Height: 2.45
     Yaw: 0
     GroundOffset: 0

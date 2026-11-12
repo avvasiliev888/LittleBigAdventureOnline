@@ -164,6 +164,30 @@ namespace Client.Network
             return SendUiCommand(new GatherCommand(nodeId, _clientTick, ++_uiSequence));
         }
 
+        /// <summary>
+        /// Отправляет debug-телепорт к точке мировой карты (ADR-023). Локально применяет
+        /// команду сразу, чтобы камера не ждала снапшот; сервер остаётся авторитетным.
+        /// </summary>
+        /// <param name="x">Мировое X.</param>
+        /// <param name="z">Мировое Z.</param>
+        /// <returns><c>true</c>, если сессия есть и команда ушла в транспорт.</returns>
+        public bool SendTeleport(float x, float z)
+        {
+            if (!float.IsFinite(x) || !float.IsFinite(z))
+            {
+                return false;
+            }
+
+            var command = new TeleportCommand(new Vector2(x, z), _clientTick, ++_uiSequence);
+            if (!SendUiCommand(command))
+            {
+                return false;
+            }
+
+            Prediction?.ApplyLocalCommand(command);
+            return true;
+        }
+
         private bool SendUiCommand(ICommand command)
         {
             if (!HasSession)

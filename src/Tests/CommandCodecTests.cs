@@ -183,6 +183,26 @@ namespace Tests
             Assert.False(CommandCodec.TryDecode(bytes, out _));
         }
 
+        [Fact]
+        public void EncodeDecode_TeleportCommand()
+        {
+            var command = new TeleportCommand(new Vector2(320f, -45.5f), clientTick: 12, sequence: 4);
+
+            var decoded = Decode(CommandCodec.Encode(command));
+
+            var teleport = Assert.IsType<TeleportCommand>(decoded);
+            Assert.Equal(320f, teleport.Destination.X);
+            Assert.Equal(-45.5f, teleport.Destination.Y);
+            Assert.Equal(12u, teleport.ClientTick);
+            Assert.Equal(4u, teleport.Sequence);
+        }
+
+        [Fact]
+        public void Decode_TruncatedTeleport_ReturnsFalse()
+        {
+            Assert.False(CommandCodec.TryDecode(new byte[] { CommandCodec.TeleportTag, 0, 0 }, out _));
+        }
+
         private static ICommand Decode(byte[] payload)
         {
             Assert.True(CommandCodec.TryDecode(payload, out var command));

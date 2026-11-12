@@ -20,7 +20,7 @@ namespace Albion.Editor
             CheckOwnSnapshotSelection();
             CheckViewSnapshotUpdates();
             CheckRussianTextAndUiHitTest();
-            Debug.Log("[agent-smoke] HUD own snapshot/HP/mana/death/regen/mobile geometry/Russian UI/click-through checks PASS");
+            Debug.Log("[agent-smoke] HUD own snapshot/HP/mana/death/regen/mobile geometry/Russian UI/minimap/click-through checks PASS");
         }
 
         private static void CheckRatiosAndGeometry()
@@ -135,6 +135,25 @@ namespace Albion.Editor
                     true, false, false, false), "craft click is not captured by the UI");
                 Require(!ClientHud.IsPointOverPanel(new Vector2(craft.x - 80f, craft.y + 80f),
                     size.x, size.y, true, false, false, false), "world click left of craft was blocked");
+
+                var minimap = ClientHud.MinimapRect(size.x, size.y);
+                Require(minimap.xMax <= size.x - 8f && minimap.yMax <= size.y - 50f,
+                    "minimap is outside the safe right-bottom area");
+                Require(craft.yMax <= minimap.y, "craft window overlaps the minimap");
+                var map = ClientHud.MinimapMapRect(size.x, size.y, 960f, 320f);
+                Require(Math.Abs((map.width / map.height) - 3f) < 0.02f,
+                    "minimap distorts the 3:1 world aspect");
+                var mapCenter = new Vector2(map.x + (map.width * 0.5f), map.y + (map.height * 0.5f));
+                Require(ClientHud.IsPointOverPanel(mapCenter, size.x, size.y,
+                    false, false, false, false), "minimap click is not captured by the UI");
+                Require(!ClientHud.IsPointOverPanel(new Vector2(map.x - 12f, mapCenter.y),
+                    size.x, size.y, false, false, false, false), "world click left of minimap was blocked");
+                var worldCenter = ClientHud.MinimapToWorld(mapCenter, map, -160f, 800f, -160f, 160f);
+                Require(worldCenter.x > 300f && worldCenter.x < 340f && Math.Abs(worldCenter.y) < 2f,
+                    "minimap center does not map to the world centre");
+                var worldTop = ClientHud.WorldToMinimap(new Vector2(-160f, 160f), map, -160f, 800f, -160f, 160f);
+                Require(Math.Abs(worldTop.x - map.x) < 1f && Math.Abs(worldTop.y - map.y) < 1f,
+                    "minimap north-west corner is wrong");
             }
         }
 

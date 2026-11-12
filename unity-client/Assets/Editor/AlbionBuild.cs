@@ -16,8 +16,8 @@ namespace Albion.Editor
     {
         private const string DesktopDefines = "";
         private const string MobileDefines = "ALBION_MOBILE_DEFAULT";
-        private const string Version = "0.8.3";
-        private const int AndroidVersionCode = 9;
+        private const string Version = "0.8.4";
+        private const int AndroidVersionCode = 10;
 
         /// <summary>Сборка desktop-профиля (меню).</summary>
         [MenuItem("Albion/Build/Desktop")]

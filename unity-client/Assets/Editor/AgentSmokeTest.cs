@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using Albion.Client;
+using Client.Network;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -28,12 +29,16 @@ namespace Albion.Editor
         private static string _screenshotPath = string.Empty;
         private static double _captureDeadline;
         private static string _captureError = string.Empty;
+        private static bool _qaTeleportDone;
+        private static double _qaTeleportWaitUntil;
 
         /// <summary>Точка входа для <c>-executeMethod</c>.</summary>
         public static void Run()
         {
             _contentChecksStarted = false;
             _contentChecksPassed = false;
+            _qaTeleportDone = false;
+            _qaTeleportWaitUntil = 0.0;
             SessionState.SetInt(StateKey, 1);
             _started = EditorApplication.timeSinceStartup;
             if (Environment.GetEnvironmentVariable("ALBION_REBUILD_WORLD") == "1")
@@ -244,6 +249,13 @@ namespace Albion.Editor
                 return;
             }
 
+            // QA-only: move the local player next to a mob of the selected zone so the
+            // screenshot proves the albedo is no longer washed out by white emission.
+            if (QaTeleportPending(pipeline))
+            {
+                return;
+            }
+
             try
             {
                 HudSmokeChecks.Verify();
@@ -278,6 +290,49 @@ namespace Albion.Editor
                 + " visuals=" + view.VisualEntityCount
                 + " mobs=" + mobs
                 + " corpses=" + view.CorpseVisualCount);
+        }
+
+        private static bool QaTeleportPending(ClientPipeline pipeline)
+        {
+            var request = Environment.GetEnvironmentVariable("ALBION_QA_MOB_ZONE");
+            if (string.IsNullOrEmpty(request) || pipeline.Content == null)
+            {
+                return false;
+            }
+
+            if (_qaTeleportDone)
+            {
+                return EditorApplication.timeSinceStartup < _qaTeleportWaitUntil;
+            }
+
+            _qaTeleportDone = true;
+            var snapshot = pipeline.LastSnapshot;
+            if (snapshot != null)
+            {
+                foreach (var entity in snapshot.Entities)
+                {
+                    var mob = pipeline.Content.FindMobByActorId(entity.ActorId);
+                    if (mob == null || mob.ZoneKey != request)
+                    {
+                        continue;
+                    }
+
+                    // Seven metres south of the mob keeps it in front of the follow camera
+                    // while the mob's own albedo fills a readable part of the frame.
+                    var targetX = entity.Position.X;
+                    var targetZ = entity.Position.Z - 7f;
+                    if (pipeline.SendTeleport(targetX, targetZ))
+                    {
+                        Debug.Log("[agent-smoke] QA teleport to " + request + " mob: "
+                            + targetX.ToString("0.#") + "," + targetZ.ToString("0.#"));
+                        _qaTeleportWaitUntil = EditorApplication.timeSinceStartup + 2.2;
+                        return true;
+                    }
+                }
+            }
+
+            Debug.LogWarning("[agent-smoke] QA mob zone not found: " + request);
+            return false;
         }
 
         private static void Pass(string message)

@@ -393,6 +393,12 @@ namespace Client.Network
                     _entityId);
             }
 
+            if (command is TeleportCommand teleport)
+            {
+                // Debug-телепорт детерминирован: клиент и сервер одинаково ставят точку.
+                return new Vector3(teleport.Destination.X, position.Y, teleport.Destination.Y);
+            }
+
             return position;
         }
 

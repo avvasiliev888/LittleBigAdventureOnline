@@ -26,6 +26,14 @@ namespace Albion.Editor
                 }
             }
 
+            var mobVisuals = MobVisualSettings.Load();
+            if (mobVisuals == null)
+            {
+                throw new InvalidOperationException("Stage6 mob visual settings are missing.");
+            }
+
+            mobVisuals.ValidateMaterials();
+
             if (UnityEngine.Object.FindObjectsByType<InstancedMeadow>(FindObjectsSortMode.None).Length
                 != content.Config.Zones.Zones.Count)
             {

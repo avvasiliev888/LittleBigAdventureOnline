@@ -75,6 +75,32 @@ namespace Albion.Client
         /// <summary>Трансформ игрока (появляется после первого снапшота).</summary>
         public Transform Player { get; private set; }
 
+        /// <summary>
+        /// Facing of the local character in world space. The minimap uses it for the player
+        /// arrow; it is presentation-only and never changes the network root.
+        /// </summary>
+        public Vector3 PlayerForward
+        {
+            get
+            {
+                if (PlayerEntityId != 0 && _entities.TryGetValue(PlayerEntityId, out var state))
+                {
+                    var facing = state.Character != null ? state.Character.Facing : state.Root;
+                    if (facing != null)
+                    {
+                        var forward = facing.forward;
+                        forward.y = 0f;
+                        if (forward.sqrMagnitude > 0.0001f)
+                        {
+                            return forward.normalized;
+                        }
+                    }
+                }
+
+                return Vector3.forward;
+            }
+        }
+
         /// <summary>Сколько снапшотов принято (диагностика для HUD).</summary>
         public int SnapshotsApplied { get; private set; }
 
@@ -365,7 +391,7 @@ namespace Albion.Client
 
         /// <summary>
         /// Starts the one-shot attack animation on the closest mob when the local player takes
-        /// damage. Mob attacks are server-side; protocol v8 has no explicit attack event.
+        /// damage. Mob attacks are server-side; protocol v9 has no explicit attack event.
         /// </summary>
         private void PlayMobAttackNear(Vector3 playerPosition)
         {

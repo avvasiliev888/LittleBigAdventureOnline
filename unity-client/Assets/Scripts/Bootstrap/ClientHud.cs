@@ -17,6 +17,11 @@ namespace Albion.Client
     {
         private const float PanelWidth = 360f;
         private const float SmallPanelWidth = 330f;
+        private const float MinimapPanelWidth = 300f;
+        private const float MinimapPanelHeight = 150f;
+        private const float MinimapMargin = 12f;
+        private const float HintsBarHeight = 52f;
+        private static Texture2D? _minimapArrow;
 
         private ClientPipeline? _pipeline;
         private ClientContent? _content;
@@ -234,12 +239,85 @@ namespace Albion.Client
         }
 
         /// <summary>
-        /// Screen-space rectangle of the craft window. It is public so the input layer and
-        /// the regression checks use exactly the same geometry as the rendered window.
+        /// Screen-space rectangle of the world minimap. Public so the input guard and HUD
+        /// regression use exactly the same geometry as the rendered panel.
+        /// </summary>
+        public static Rect MinimapRect(float screenWidth, float screenHeight)
+        {
+            var scale = Mathf.Clamp(screenWidth / 1280f, 0.78f, 1.25f);
+            var width = Mathf.Round(MinimapPanelWidth * scale);
+            var height = Mathf.Round(MinimapPanelHeight * scale);
+            return new Rect(
+                screenWidth - width - MinimapMargin,
+                screenHeight - HintsBarHeight - MinimapMargin - height,
+                width,
+                height);
+        }
+
+        /// <summary>
+        /// Map content rectangle inside the minimap panel. World aspect ratio is preserved
+        /// (960x320) and the map is letterboxed inside the panel instead of stretched.
+        /// </summary>
+        public static Rect MinimapMapRect(float screenWidth, float screenHeight, float worldWidth, float worldDepth)
+        {
+            var panel = MinimapRect(screenWidth, screenHeight);
+            var content = new Rect(panel.x + 8f, panel.y + 25f, panel.width - 16f, panel.height - 45f);
+            if (!(worldWidth > 0f) || !(worldDepth > 0f))
+            {
+                return content;
+            }
+
+            var aspect = worldWidth / worldDepth;
+            var width = content.width;
+            var height = width / aspect;
+            if (height > content.height)
+            {
+                height = content.height;
+                width = height * aspect;
+            }
+
+            return new Rect(
+                content.x + ((content.width - width) * 0.5f),
+                content.y + ((content.height - height) * 0.5f),
+                width,
+                height);
+        }
+
+        /// <summary>Projects world XZ into the minimap; +Z is north (top of the map).</summary>
+        public static UnityVector2 WorldToMinimap(UnityVector2 world, Rect map,
+            float minX, float maxX, float minZ, float maxZ)
+        {
+            var fx = Mathf.InverseLerp(minX, maxX, world.x);
+            var fz = Mathf.InverseLerp(minZ, maxZ, world.y);
+            return new UnityVector2(map.x + (fx * map.width), map.y + ((1f - fz) * map.height));
+        }
+
+        /// <summary>Projects a minimap point back into world XZ; result is clamped to the world.</summary>
+        public static UnityVector2 MinimapToWorld(UnityVector2 point, Rect map,
+            float minX, float maxX, float minZ, float maxZ)
+        {
+            var fx = map.width <= 0f ? 0f : Mathf.Clamp01((point.x - map.x) / map.width);
+            var fz = map.height <= 0f ? 0f : Mathf.Clamp01(1f - ((point.y - map.y) / map.height));
+            return new UnityVector2(
+                Mathf.Lerp(minX, maxX, fx),
+                Mathf.Lerp(minZ, maxZ, fz));
+        }
+
+        /// <summary>
+        /// Screen-space rectangle of the craft window. It stops above the minimap so the
+        /// two HUD elements never overlap; the recipe list keeps its own scroll view.
         /// </summary>
         public static Rect CraftPanelRect(float screenWidth, float screenHeight)
         {
-            return new Rect(screenWidth - PanelWidth - 12f, 12f, PanelWidth, screenHeight - 96f);
+            if (Application.isMobilePlatform)
+            {
+                // The minimap is desktop-only, so mobile keeps the full-height craft window.
+                return new Rect(screenWidth - PanelWidth - 12f, 12f, PanelWidth, screenHeight - 96f);
+            }
+
+            var minimap = MinimapRect(screenWidth, screenHeight);
+            var height = Mathf.Max(180f, minimap.y - 12f - 12f);
+            return new Rect(screenWidth - PanelWidth - 12f, 12f, PanelWidth, height);
         }
 
         private static Rect InventoryPanelRect(float screenWidth, float screenHeight)
@@ -291,7 +369,8 @@ namespace Albion.Client
             bool craftOpen, bool skillsOpen, bool inventoryOpen, bool tradeOpen)
         {
             if (VitalsPanelRect(screenWidth, screenHeight, false).Contains(point)
-                || HintsPanelRect(screenWidth, screenHeight).Contains(point))
+                || HintsPanelRect(screenWidth, screenHeight).Contains(point)
+                || MinimapRect(screenWidth, screenHeight).Contains(point))
             {
                 return true;
             }
@@ -327,6 +406,7 @@ namespace Albion.Client
             DrawStats();
             DrawHints();
             DrawTrade();
+            DrawMinimap();
 
             if (_showCraft)
             {
@@ -464,6 +544,320 @@ namespace Albion.Client
                 new Rect(12f, Screen.height - 46f, Screen.width - 24f, 22f),
                 "WASD — ходьба, ЛКМ/ПКМ — бег к курсору, клик — метка и лут с трупа, Пробел — атака, "
                 + "I — инвентарь, F — сбор, C — крафт, K — навыки, 1–4 — оружие.");
+        }
+
+        /// <summary>
+        /// Compact world map: three zones, gates, traders, resource nodes, mobs, corpses and
+        /// the player arrow. ALT+LMB sends a debug teleport to the clicked world point.
+        /// </summary>
+        private void DrawMinimap()
+        {
+            if (_pipeline == null || _content == null || !_pipeline.HasSession || Application.isMobilePlatform)
+            {
+                return;
+            }
+
+            var zones = _content.Config.Zones;
+            var panel = MinimapRect(Screen.width, Screen.height);
+            if (panel.width < 120f || panel.height < 80f)
+            {
+                return;
+            }
+
+            var map = MinimapMapRect(Screen.width, Screen.height, zones.MaxX - zones.MinX, zones.MaxZ - zones.MinZ);
+            var scale = Mathf.Clamp(panel.width / MinimapPanelWidth, 0.8f, 1.3f);
+            var titleStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = Mathf.RoundToInt(11f * scale),
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft,
+                clipping = TextClipping.Clip,
+                normal = { textColor = new Color(0.96f, 0.91f, 0.76f) },
+            };
+            var hintStyle = new GUIStyle(titleStyle)
+            {
+                fontSize = Mathf.RoundToInt(9f * scale),
+                fontStyle = FontStyle.Normal,
+                alignment = TextAnchor.MiddleRight,
+                normal = { textColor = new Color(1f, 0.8f, 0.3f) },
+            };
+            var mapStyle = new GUIStyle(titleStyle)
+            {
+                fontSize = Mathf.RoundToInt(8.5f * scale),
+                fontStyle = FontStyle.Normal,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = new Color(1f, 1f, 1f, 0.72f) },
+            };
+
+            Backdrop(panel, 0.92f);
+            FillRect(new Rect(panel.x, panel.y, panel.width, 2f), new Color(0.72f, 0.58f, 0.28f, 1f));
+            OutlineRect(panel, new Color(0.55f, 0.47f, 0.3f, 0.65f));
+
+            GUI.Label(new Rect(panel.x + 8f, panel.y + 4f, panel.width - 120f, 18f * scale), "КАРТА МИРА", titleStyle);
+            GUI.Label(new Rect(panel.x + panel.width - 142f, panel.y + 4f, 134f, 18f * scale),
+                AltHeld() ? "ALT+ЛКМ: ТЕЛЕПОРТ" : "ALT+ЛКМ: телепорт", hintStyle);
+
+            FillRect(map, new Color(0.035f, 0.055f, 0.065f, 1f));
+            OutlineRect(map, new Color(0.5f, 0.46f, 0.35f, 0.8f));
+            GUI.Label(new Rect(map.x + map.width - 17f, map.y + 1f, 14f, 14f), "С", mapStyle);
+
+            foreach (var zone in zones.Zones)
+            {
+                var min = WorldToMinimap(new UnityVector2(zone.MinX, zone.MinZ), map,
+                    zones.MinX, zones.MaxX, zones.MinZ, zones.MaxZ);
+                var max = WorldToMinimap(new UnityVector2(zone.MaxX, zone.MaxZ), map,
+                    zones.MinX, zones.MaxX, zones.MinZ, zones.MaxZ);
+                var zoneRect = Rect.MinMaxRect(min.x, max.y, max.x, min.y);
+                FillRect(zoneRect, ZoneMapColor(zone.Key));
+                OutlineRect(zoneRect, new Color(0.72f, 0.6f, 0.34f, 0.28f));
+
+                var label = ClientText.Zone(zone.Key).ToUpperInvariant();
+                if (label.EndsWith(" ЗОНА", StringComparison.Ordinal))
+                {
+                    label = label.Substring(0, label.Length - 5);
+                }
+
+                if (zoneRect.width >= 62f)
+                {
+                    GUI.Label(new Rect(zoneRect.x, zoneRect.y + (zoneRect.height * 0.5f) - 8f,
+                        zoneRect.width, 16f), label, mapStyle);
+                }
+            }
+
+            // Light grid at 80 m: enough orientation without turning the map into graph paper.
+            for (var i = 1; i < 12; i++)
+            {
+                var x = map.x + (map.width * i / 12f);
+                FillRect(new Rect(x, map.y, 1f, map.height), new Color(1f, 1f, 1f, 0.045f));
+            }
+
+            for (var i = 1; i < 4; i++)
+            {
+                var y = map.y + (map.height * i / 4f);
+                FillRect(new Rect(map.x, y, map.width, 1f), new Color(1f, 1f, 1f, 0.045f));
+            }
+
+            // Gates are the only legal crossings, so they deserve a visible notch.
+            foreach (var zone in zones.Zones)
+            {
+                if (zone.Gates == null)
+                {
+                    continue;
+                }
+
+                foreach (var gate in zone.Gates)
+                {
+                    var gatePoint = WorldToMinimap(new UnityVector2(gate.X, gate.Z), map,
+                        zones.MinX, zones.MaxX, zones.MinZ, zones.MaxZ);
+                    FillRect(new Rect(gatePoint.x - 2f, gatePoint.y - 3f, 4f, 6f),
+                        new Color(0.95f, 0.78f, 0.34f, 0.9f));
+                }
+            }
+
+            if (_content.Config.ResourceNodes != null)
+            {
+                foreach (var node in _content.Config.ResourceNodes)
+                {
+                    var point = WorldToMinimap(new UnityVector2(node.Position.X, node.Position.Z), map,
+                        zones.MinX, zones.MaxX, zones.MinZ, zones.MaxZ);
+                    if (!map.Contains(point))
+                    {
+                        continue;
+                    }
+
+                    FillRect(new Rect(point.x - 1f, point.y - 1f, 2f, 2f), ResourceColor(node.ItemId));
+                }
+            }
+
+            if (_content.Config.Traders != null)
+            {
+                foreach (var trader in _content.Config.Traders)
+                {
+                    var point = WorldToMinimap(new UnityVector2(trader.Position.X, trader.Position.Z), map,
+                        zones.MinX, zones.MaxX, zones.MinZ, zones.MaxZ);
+                    DrawDiamond(point, 4f, new Color(1f, 0.8f, 0.28f, 1f));
+                }
+            }
+
+            var snapshot = _pipeline.LastSnapshot;
+            if (snapshot != null)
+            {
+                foreach (var entity in snapshot.Entities)
+                {
+                    if (entity.IsDead || _content.FindMobByActorId(entity.ActorId) == null)
+                    {
+                        continue;
+                    }
+
+                    var point = WorldToMinimap(new UnityVector2(entity.Position.X, entity.Position.Z), map,
+                        zones.MinX, zones.MaxX, zones.MinZ, zones.MaxZ);
+                    if (map.Contains(point))
+                    {
+                        FillRect(new Rect(point.x - 1.5f, point.y - 1.5f, 3f, 3f),
+                            new Color(0.96f, 0.26f, 0.2f, 0.95f));
+                    }
+                }
+
+                foreach (var corpse in snapshot.Corpses)
+                {
+                    var point = WorldToMinimap(new UnityVector2(corpse.Position.X, corpse.Position.Z), map,
+                        zones.MinX, zones.MaxX, zones.MinZ, zones.MaxZ);
+                    if (map.Contains(point))
+                    {
+                        FillRect(new Rect(point.x - 1.5f, point.y - 1.5f, 3f, 3f),
+                            new Color(0.95f, 0.72f, 0.2f, 0.95f));
+                    }
+                }
+            }
+
+            var own = OwnPosition();
+            var playerPoint = WorldToMinimap(new UnityVector2(own.x, own.z), map,
+                zones.MinX, zones.MaxX, zones.MinZ, zones.MaxZ);
+            if (map.Contains(playerPoint))
+            {
+                FillRect(new Rect(playerPoint.x - 6f, playerPoint.y - 6f, 12f, 12f), new Color(0f, 0f, 0f, 0.75f));
+                FillRect(new Rect(playerPoint.x - 4f, playerPoint.y - 4f, 8f, 8f), new Color(1f, 0.82f, 0.25f, 1f));
+                var forward = _view != null ? _view.PlayerForward : UnityVector3.forward;
+                var angle = Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg;
+                var oldMatrix = GUI.matrix;
+                GUIUtility.RotateAroundPivot(angle, playerPoint);
+                var previous = GUI.color;
+                GUI.color = new Color(0.06f, 0.06f, 0.05f, 1f);
+                GUI.DrawTexture(new Rect(playerPoint.x - 8f, playerPoint.y - 9f, 16f, 18f), MinimapArrowTexture());
+                GUI.color = previous;
+                GUI.matrix = oldMatrix;
+            }
+
+            var mouse = Event.current != null ? Event.current.mousePosition : UnityVector2.zero;
+            if (map.Contains(mouse))
+            {
+                var world = MinimapToWorld(mouse, map, zones.MinX, zones.MaxX, zones.MinZ, zones.MaxZ);
+                var zoneName = zones.TryGetZone(new System.Numerics.Vector3(world.x, 0f, world.y), out var hoveredZone)
+                    ? ClientText.Zone(hoveredZone.Key) : "вне зоны";
+                FillRect(new Rect(mouse.x - 0.5f, mouse.y - 0.5f, 1f, 1f), Color.white);
+                GUI.Label(new Rect(panel.x + 8f, panel.y + panel.height - 18f, panel.width - 16f, 14f),
+                    "X " + world.x.ToString("0") + "  Z " + world.y.ToString("0") + "  " + zoneName, hintStyle);
+
+                var current = Event.current;
+                if (current != null && current.type == EventType.MouseDown && current.button == 0
+                    && (current.alt || AltHeld()))
+                {
+                    _input?.CancelPointerDestination();
+                    if (_pipeline.SendTeleport(world.x, world.y))
+                    {
+                        ShowMessage("Телепорт: " + zoneName + ", X " + world.x.ToString("0") + ", Z " + world.y.ToString("0"));
+                    }
+                    else
+                    {
+                        ShowMessage("Телепорт недоступен: нет соединения с сервером.");
+                    }
+
+                    current.Use();
+                }
+            }
+            else
+            {
+                GUI.Label(new Rect(panel.x + 8f, panel.y + panel.height - 18f, panel.width - 16f, 14f),
+                    "▲ вы   ◆ торговец   ● моб   • жила", mapStyle);
+            }
+        }
+
+        private static Color ZoneMapColor(string key)
+        {
+            switch (key)
+            {
+                case "yellow": return new Color(0.42f, 0.33f, 0.14f, 0.9f);
+                case "red": return new Color(0.42f, 0.15f, 0.15f, 0.9f);
+                case "blue":
+                default: return new Color(0.12f, 0.29f, 0.43f, 0.9f);
+            }
+        }
+
+        private Color ResourceColor(uint itemId)
+        {
+            if (_content == null)
+            {
+                return new Color(0.6f, 0.8f, 0.5f, 1f);
+            }
+
+            var tier = _content.Config.GetItem(itemId).Tier;
+            switch (tier)
+            {
+                case 1: return new Color(0.64f, 0.72f, 0.56f, 1f);
+                case 2: return new Color(0.45f, 0.7f, 0.95f, 1f);
+                case 3: return new Color(0.95f, 0.72f, 0.3f, 1f);
+                default: return new Color(0.95f, 0.38f, 0.28f, 1f);
+            }
+        }
+
+        private static void FillRect(Rect rect, Color color)
+        {
+            var previous = GUI.color;
+            GUI.color = color;
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = previous;
+        }
+
+        private static void OutlineRect(Rect rect, Color color)
+        {
+            FillRect(new Rect(rect.x, rect.y, rect.width, 1f), color);
+            FillRect(new Rect(rect.x, rect.y + rect.height - 1f, rect.width, 1f), color);
+            FillRect(new Rect(rect.x, rect.y, 1f, rect.height), color);
+            FillRect(new Rect(rect.x + rect.width - 1f, rect.y, 1f, rect.height), color);
+        }
+
+        private static void DrawDiamond(UnityVector2 center, float radius, Color color)
+        {
+            var previous = GUI.color;
+            var matrix = GUI.matrix;
+            GUI.color = color;
+            GUIUtility.RotateAroundPivot(45f, center);
+            GUI.DrawTexture(new Rect(center.x - radius, center.y - radius, radius * 2f, radius * 2f),
+                Texture2D.whiteTexture);
+            GUI.matrix = matrix;
+            GUI.color = previous;
+        }
+
+        private static Texture2D MinimapArrowTexture()
+        {
+            if (_minimapArrow != null)
+            {
+                return _minimapArrow;
+            }
+
+            const int size = 16;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                name = "Minimap player arrow",
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+            var pixels = new Color32[size * size];
+            var clear = new Color32(0, 0, 0, 0);
+            for (var i = 0; i < pixels.Length; i++)
+            {
+                pixels[i] = clear;
+            }
+
+            for (var y = 2; y < 14; y++)
+            {
+                var halfWidth = (int)((y - 2) * 0.42f);
+                for (var x = (size / 2) - halfWidth; x <= (size / 2) + halfWidth; x++)
+                {
+                    pixels[(y * size) + x] = new Color32(255, 255, 255, 255);
+                }
+            }
+
+            texture.SetPixels32(pixels);
+            texture.Apply(false, true);
+            _minimapArrow = texture;
+            return _minimapArrow;
+        }
+
+        private static bool AltHeld()
+        {
+            return Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
         }
 
         private void DrawCraft()

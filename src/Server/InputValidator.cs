@@ -90,6 +90,12 @@ namespace Server
 
         /// <summary>Труп вне радиуса сбора лута.</summary>
         CorpseOutOfRange = 27,
+
+        /// <summary>Debug-телепорт выключен на этом сервере (ADR-023).</summary>
+        TeleportDisabled = 28,
+
+        /// <summary>Точка телепорта вне границ мира.</summary>
+        TeleportOutOfBounds = 29,
     }
 
     /// <summary>Результат валидации команды.</summary>
@@ -213,11 +219,36 @@ namespace Server
                 case LootCommand loot:
                     return ValidateLoot(state, caster, loot);
 
+                case TeleportCommand teleport:
+                    return ValidateTeleport(teleport);
+
                 default:
                     return ValidationResult.Reject(
                         CommandRejectReason.UnsupportedCommand,
                         envelope.Command.GetType().Name);
             }
+        }
+
+        private ValidationResult ValidateTeleport(TeleportCommand teleport)
+        {
+            if (!_options.AllowTeleport)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.TeleportDisabled,
+                    "debug-телепорт выключен");
+            }
+
+            var zones = _config.Zones;
+            var x = teleport.Destination.X;
+            var z = teleport.Destination.Y;
+            if (x < zones.MinX || x > zones.MaxX || z < zones.MinZ || z > zones.MaxZ)
+            {
+                return ValidationResult.Reject(
+                    CommandRejectReason.TeleportOutOfBounds,
+                    "точка (" + x.ToString("0.###") + ", " + z.ToString("0.###") + ") вне мира");
+            }
+
+            return ValidationResult.Accept();
         }
 
         private ValidationResult ValidateAbility(uint tick, EntityState caster, AbilityCommand ability)

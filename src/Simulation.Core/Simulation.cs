@@ -335,10 +335,37 @@ namespace Simulation.Core
 
                     return;
 
+                case TeleportCommand teleport:
+                    if (_state.TryGetEntity(envelope.EntityId, out var teleporter))
+                    {
+                        ApplyTeleport(teleporter, teleport);
+                    }
+
+                    return;
+
                 default:
                     throw new NotSupportedException(
                         "Тип команды " + envelope.Command.GetType().FullName + " не поддерживается симуляцией.");
             }
+        }
+
+        private void ApplyTeleport(EntityState entity, TeleportCommand command)
+        {
+            if (entity.IsDead || _config == null)
+            {
+                return;
+            }
+
+            // Телепорт — debug-инструмент, но границы мира остаются авторитетными:
+            // валидатор уже отклонил точку вне мира, здесь дополнительно зажимаем.
+            var target = _config.Zones.ClampToBounds(
+                new Vector3(command.Destination.X, entity.Position.Y, command.Destination.Y));
+            if (!_config.Zones.TryGetZone(target, out _))
+            {
+                return;
+            }
+
+            entity.Position = target;
         }
 
         private void ApplyMove(EntityState entity, MoveCommand command, float deltaTime)

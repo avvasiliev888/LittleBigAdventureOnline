@@ -255,6 +255,41 @@ namespace Tests
             Assert.Equal(CommandRejectReason.GatherOutOfRange, result.Reason);
         }
 
+        [Fact]
+        public void TeleportDisabled_IsRejected()
+        {
+            var (validator, state) = Create();
+
+            var result = validator.Validate(state, 0,
+                Envelope(1, new TeleportCommand(new Vector2(5f, 0f), 0, 0)), 0);
+
+            Assert.False(result.IsValid);
+            Assert.Equal(CommandRejectReason.TeleportDisabled, result.Reason);
+        }
+
+        [Fact]
+        public void ValidTeleport_IsAcceptedWhenEnabled()
+        {
+            var (validator, state) = Create(new ServerOptions { AllowTeleport = true });
+
+            var result = validator.Validate(state, 0,
+                Envelope(1, new TeleportCommand(new Vector2(5f, -7f), 0, 0)), 0);
+
+            Assert.True(result.IsValid);
+        }
+
+        [Fact]
+        public void TeleportOutsideWorld_IsRejected()
+        {
+            var (validator, state) = Create(new ServerOptions { AllowTeleport = true });
+
+            var result = validator.Validate(state, 0,
+                Envelope(1, new TeleportCommand(new Vector2(5000f, 0f), 0, 0)), 0);
+
+            Assert.False(result.IsValid);
+            Assert.Equal(CommandRejectReason.TeleportOutOfBounds, result.Reason);
+        }
+
         private static (InputValidator Validator, SimulationState State) Create(ServerOptions? options = null)
         {
             var config = TestWorld.Config();

@@ -34,6 +34,9 @@ namespace Shared
         /// <summary>Тег команды сбора лута из трупа.</summary>
         public const byte LootTag = 8;
 
+        /// <summary>Тег debug-команды телепорта к точке карты (ADR-023).</summary>
+        public const byte TeleportTag = 9;
+
         /// <summary>Кодирует команду в тело сообщения.</summary>
         /// <param name="command">Команда для кодирования.</param>
         /// <returns>Байты тела.</returns>
@@ -110,6 +113,14 @@ namespace Shared
                     writer.Write(loot.ClientTick);
                     writer.Write(loot.Sequence);
                     writer.Write(loot.CorpseId);
+                    break;
+
+                case TeleportCommand teleport:
+                    writer.Write(TeleportTag);
+                    writer.Write(teleport.ClientTick);
+                    writer.Write(teleport.Sequence);
+                    writer.Write(teleport.Destination.X);
+                    writer.Write(teleport.Destination.Y);
                     break;
 
                 default:
@@ -208,6 +219,18 @@ namespace Shared
 
                     var corpseId = reader.ReadUInt32();
                     command = new LootCommand(corpseId, clientTick, sequence);
+                    return true;
+
+                case TeleportTag:
+                    if (payload.Length != 17)
+                    {
+                        return false;
+                    }
+
+                    command = new TeleportCommand(
+                        new System.Numerics.Vector2(reader.ReadSingle(), reader.ReadSingle()),
+                        clientTick,
+                        sequence);
                     return true;
 
                 default:

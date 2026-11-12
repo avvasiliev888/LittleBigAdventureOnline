@@ -239,6 +239,9 @@ namespace Server
                 {
                     SpawnTrainingDummy = true,
                     LogTickMetricsEvery = metricsEvery,
+                    // ADR-023: ALT+ЛКМ по мировой карте — инструмент тестирования среза.
+                    // Обычные unit-тесты оставляют флаг выключенным и проверяют отказ.
+                    AllowTeleport = true,
                 },
                 Console.WriteLine);
             started = server;
@@ -247,6 +250,7 @@ namespace Server
             server.Start();
             Console.WriteLine("UDP-сервер слушает порт " + socket.LocalPort + " (protocol v" + Protocol.Version
                 + ", тик " + loop.TickRate + " Гц). Ctrl+C — остановка.");
+            Console.WriteLine("DEBUG: телепорт включён — ALT+ЛКМ по мировой карте в клиенте.");
             if (runSeconds.HasValue)
             {
                 Console.WriteLine("сервер остановится через " + runSeconds.Value + " с (нагрузочный тест)");

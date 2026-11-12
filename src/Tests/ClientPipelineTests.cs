@@ -572,6 +572,42 @@ namespace Tests
             Assert.Contains(pipeline.LogEntries, entry => entry.StartsWith("[hello]", StringComparison.Ordinal));
         }
 
+        [Fact]
+        public void Pipeline_SendTeleport_ReachesAuthoritativeSnapshot()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            using var server = new GameServer(
+                TestWorld.Config(), serverTransport, new ServerOptions { AllowTeleport = true });
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var view = new RecordingView();
+            using var pipeline = new ClientPipeline(transport, new ScriptedInputSource(Vector2.Zero), view);
+            pipeline.Start();
+
+            for (var i = 0; i < 8; i++)
+            {
+                pipeline.Update(ClientPipeline.TickIntervalSeconds);
+                server.Poll();
+                server.Tick();
+            }
+
+            Assert.True(pipeline.HasSession);
+            Assert.True(pipeline.SendTeleport(12f, -7f));
+
+            for (var i = 0; i < 40; i++)
+            {
+                pipeline.Update(ClientPipeline.TickIntervalSeconds);
+                server.Poll();
+                server.Tick();
+            }
+
+            var entity = Assert.Single(view.Buffer.Sample(view.Buffer.LatestTick));
+            Assert.InRange(entity.Position.X, 11.5f, 12.5f);
+            Assert.InRange(entity.Position.Z, -7.5f, -6.5f);
+        }
+
         private static void Step(ClientPipeline pipeline, GameServer server, ref uint tick)
         {
             pipeline.Update(ClientPipeline.TickIntervalSeconds);

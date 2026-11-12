@@ -47,13 +47,14 @@ Stage 8 с процедурными гуманоидами из сфер/куб�
 - Weapon mount: все 5 authored-оружий крепятся к правой руке; меч/топор/арбалет/посох/
   кинжал отмасштабированы под рост 1.95 м.
 - Runtime smoke с KayKit: `PASS snapshots=5 deltas=4 visuals=8 mobs=6 corpses=0`.
-- Скриншот: `artifacts/kaykit-assets-final.png` (временный stylized low-poly, не финальный арт).
+- Реальный Windows-клиент 0.8.0: подключён к локальному серверу, `сессия готова, сущность 8`;
+  скриншот `artifacts/release/desktop-play.png`.
+- Скриншот: `artifacts/kaykit-textured-final.png` (stylized low-poly, не финальный арт).
 
-## Релиз 0.7.1
+## Релиз 0.8.0
 
-Собран APK/Desktop/Server **0.7.1** до подключения KayKit: в нём ещё старый
-импортированный warrior и примитивные мобы. Это откат от 0.7.0, а не финальный арт.
-Рабочее дерево уже содержит KayKit-набор; для его включения нужен следующий релиз.
+Собран APK/Desktop/Server **0.8.0** (versionCode 6) уже с KayKit: Knight, три скелета,
+пять видов оружия и props окружения. 0.7.1 остаётся старым релизом со warrior-fallback.
 
 Следующий шаг — визуальная приёмка KayKit, затем при необходимости заменить его на
-Synty/Mixamo/собственные модели по `docs/art-requirements.md` и выпустить новый релиз.
+Synty/Mixamo/собственные модели по `docs/art-requirements.md` и выпустить новую итерацию.

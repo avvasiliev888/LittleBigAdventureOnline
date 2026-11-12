@@ -1,13 +1,13 @@
-# PLAYTEST — запуск Albion Online Prototype 0.7.1
+# PLAYTEST — запуск Albion Online Prototype 0.8.0
 
-> **Статус графики:** рабочее дерево перешло на CC0-набор **KayKit** (Knight + скелеты +
-> оружие). Релизные архивы **0.7.1** собраны до этого и содержат старый imported warrior;
-> для проверки KayKit запускайте проект из Unity или новую сборку. Это stylized low-poly,
-> а не финальный Albion-level арт.
+> **Статус графики:** в **0.8.0** уже включён CC0-набор **KayKit**: Knight, три скелета-
+> моба, пять видов оружия и props окружения. Это stylized low-poly, а не финальный
+> Albion-level арт; Synty/Mixamo остаются опцией для следующей итерации.
 
-Эта инструкция — для проверки собранной версии **0.7.1** на своём компьютере, в локальной
+Эта инструкция — для проверки собранной версии **0.8.0** на своём компьютере, в локальной
 сети и через интернет. Версия всегда написана в правом нижнем углу экрана игры:
-`LittleBigAdventureOnline v0.7.1`. Если там `0.7.0` или `0.6.0` — запущена старая сборка.
+`LittleBigAdventureOnline v0.8.0`. Если там `0.7.1` или `0.7.0` — запущена старая сборка,
+её нужно заменить новой.
 
 ## 1. Что распаковать
 
@@ -15,14 +15,22 @@
 
 | Файл | Что внутри |
 |---|---|
-| `AlbionPrototype-desktop-0.7.1-win-x64.zip` | Windows-клиент; распаковать целиком |
-| `AlbionPrototype-server-0.7.1-win-x64.zip` | сервер + `config/`; распаковать целиком |
-| `AlbionPrototype-0.7.1.apk` | Android-клиент (ARM64, Android 8.0+) |
+| `AlbionPrototype-desktop-0.8.0-win-x64.zip` | Windows-клиент с KayKit; распаковать целиком |
+| `AlbionPrototype-server-0.8.0-win-x64.zip` | сервер + `config/`; распаковать целиком |
+| `AlbionPrototype-0.8.0.apk` | Android-клиент с KayKit (ARM64, Android 8.0+) |
 | `server/` | уже распакованный сервер (для запуска с диска) |
 | `SHA256SUMS.txt` | контрольные суммы всех файлов |
 
 Не запускайте `.exe` из ZIP-архива: Windows распакует только его, а рядом не будет
 `AlbionPrototype_Data` (клиент) или `config` (сервер). Сначала полностью распакуйте архив.
+
+### Что нового в 0.8.0
+
+- Игрок — **KayKit Knight** с 75 анимациями, URP Lit-текстурами и оружием в правой руке.
+- Мобы — три **KayKit Skeleton** (Minion / Rogue / Warrior) вместо старых примитивов.
+- Пять видов оружия: меч, топор, посох, арбалет, кинжал.
+- Восемь props окружения KayKit (бочка, ящики, сундук, факел, стол, стул, колонна, флаг).
+- Версия в углу — `v0.8.0`, Android versionCode **6**.
 
 ## 2. Быстрый запуск на одном ПК
 
@@ -38,7 +46,7 @@
 2. Распакуйте Windows-клиент и запустите `AlbionPrototype.exe`. Без аргументов он
    подключается к `127.0.0.1:9050`.
 
-3. Проверьте правый нижний угол: `v0.7.1`. Если версия старая, скачайте APK/архив заново.
+3. Проверьте правый нижний угол: `v0.8.0`. Если версия старая, скачайте APK/архив заново.
 
 При первом запуске Windows Firewall может спросить разрешение для `Server.exe` —
 разрешите **частные сети** (для LAN) и, если нужен интернет, **общественные**.
@@ -84,7 +92,7 @@ $env:ALBION_SERVER_PORT = "9050"
 
 ### 3.4. Подключить Android
 
-1. Установите `AlbionPrototype-0.7.1.apk` (разрешите установку из неизвестных источников).
+1. Установите `AlbionPrototype-0.8.0.apk` (разрешите установку из неизвестных источников).
 2. На стартовом экране введите IP `192.168.1.50` и порт `9050`.
 3. Если APK собирался скриптом `build-android.ps1`, IP компьютера уже подставлен в
    `Resources/MobileServerHost.txt`; всё равно проверьте его на стартовом экране.
@@ -161,7 +169,7 @@ $env:ALBION_SERVER_PORT = "9050"
 
 | Симптом | Что проверить |
 |---|---|
-| В углу `v0.7.0` или `v0.6.0` | запущена старая сборка; распакуйте архив 0.7.1 заново |
+| В углу `v0.7.0` или `v0.6.0` | запущена старая сборка; распакуйте архив 0.8.0 заново |
 | `Address already in use` | порт занят; запустите `--udp 9051` и клиент с `-serverPort 9051` |
 | Клиент не подключается по LAN | IP из `ipconfig`, одна Wi-Fi-сеть, UDP 9050 в Firewall |
 | Подключается с телефона, но не с ПК | аргумент `-serverHost`/`-serverPort` или переменные окружения |
@@ -174,10 +182,11 @@ $env:ALBION_SERVER_PORT = "9050"
 Контрольные суммы:
 
 ```powershell
-Get-FileHash .\AlbionPrototype-0.7.1.apk -Algorithm SHA256
-Get-FileHash .\AlbionPrototype-desktop-0.7.1-win-x64.zip -Algorithm SHA256
-Get-FileHash .\AlbionPrototype-server-0.7.1-win-x64.zip -Algorithm SHA256
+Get-FileHash .\AlbionPrototype-0.8.0.apk -Algorithm SHA256
+Get-FileHash .\AlbionPrototype-desktop-0.8.0-win-x64.zip -Algorithm SHA256
+Get-FileHash .\AlbionPrototype-server-0.8.0-win-x64.zip -Algorithm SHA256
 ```
 
 Сравните с `SHA256SUMS.txt`. Хеши также продублированы в `artifacts/release/RELEASE.md`
 и `docs/stage8-validation.md`.
+

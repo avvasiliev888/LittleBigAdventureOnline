@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Client.Network;
+using Shared;
 using Simulation.Core;
 using UnityEngine;
 using UnityVector2 = UnityEngine.Vector2;
@@ -39,6 +40,7 @@ namespace Albion.Client
         private UnityVector3 _craftScroll;
         private UnityVector3 _skillScroll;
         private UnityVector3 _tradeScroll;
+        private UnityVector3 _inventoryScroll;
 
         /// <summary>Подключает HUD к конвейеру и контенту.</summary>
         /// <param name="pipeline">Клиентский конвейер.</param>
@@ -940,13 +942,82 @@ namespace Albion.Client
             }
             else
             {
+                _inventoryScroll = GUILayout.BeginScrollView(_inventoryScroll);
+                var ownedWeapon = own.HasValue ? own.Value.WeaponItemId : 0u;
                 foreach (var stack in _pipeline.Inventory)
                 {
-                    GUILayout.Label("• " + ItemKey(stack.ItemId) + " ×" + stack.Quantity);
+                    DrawInventoryRow(stack, ownedWeapon);
+                }
+
+                GUILayout.EndScrollView();
+            }
+
+            GUILayout.Space(6f);
+            GUILayout.Label("«Надеть» отправляет команду серверу: предмет меняется в руке, а старый возвращается в инвентарь.");
+
+            GUILayout.EndArea();
+        }
+
+        private void DrawInventoryRow(InventoryStack stack, uint ownedWeapon)
+        {
+            var item = FindItem(stack.ItemId);
+            if (item == null)
+            {
+                GUILayout.Label("• " + ItemKey(stack.ItemId) + " ×" + stack.Quantity);
+                return;
+            }
+
+            var canEquip = item.Slot.HasValue;
+            var equipped = item.Slot == EquipmentSlot.MainHand
+                ? ownedWeapon == stack.ItemId
+                : false;
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("• " + ClientText.Item(item.Key) + " ×" + stack.Quantity + SlotSuffix(item),
+                GUILayout.ExpandWidth(true));
+            if (equipped)
+            {
+                GUILayout.Label("надето", GUILayout.Width(64f));
+            }
+            else if (canEquip)
+            {
+                if (GUILayout.Button("Надеть", GUILayout.Width(72f)))
+                {
+                    RequestEquip(stack.ItemId, item);
                 }
             }
 
-            GUILayout.EndArea();
+            GUILayout.EndHorizontal();
+        }
+
+        private void RequestEquip(uint itemId, ItemDefinition item)
+        {
+            if (_pipeline == null || !_pipeline.SendEquip(itemId))
+            {
+                ShowMessage("Не удалось отправить экипировку: нет соединения.");
+                return;
+            }
+
+            BeginPendingCommand("Экипировка", ClientText.Item(item.Key));
+            ShowMessage("Экипировка запрошена: " + ClientText.Item(item.Key) + ".");
+        }
+
+        private ItemDefinition? FindItem(uint itemId)
+        {
+            return _content != null && _content.Config.Items.TryGetValue(itemId, out var item) ? item : null;
+        }
+
+        private static string SlotSuffix(ItemDefinition item)
+        {
+            if (!item.Slot.HasValue) return string.Empty;
+            switch (item.Slot.Value)
+            {
+                case EquipmentSlot.MainHand: return "  [оружие]";
+                case EquipmentSlot.Chest: return "  [нагрудник]";
+                case EquipmentSlot.Legs: return "  [штаны]";
+                case EquipmentSlot.Feet: return "  [сапоги]";
+                default: return string.Empty;
+            }
         }
 
         private void DrawEquipmentLine(string slot, uint itemId)

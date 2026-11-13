@@ -21,6 +21,7 @@ namespace Server
         private readonly BinarySnapshotSerializer _serializer = new BinarySnapshotSerializer();
         private readonly Dictionary<int, ClientSession> _sessions = new Dictionary<int, ClientSession>();
         private readonly List<PendingCommand> _pendingCommands = new List<PendingCommand>();
+        private readonly List<PendingAttack> _pendingAttacks = new List<PendingAttack>();
         private SimulationSnapshot? _previousSnapshot;
         private readonly List<string> _log = new List<string>();
         private readonly Action<string>? _logSink;
@@ -172,6 +173,8 @@ namespace Server
             Simulation.Tick(SimulationConstants.FixedDeltaTime, commands);
             ClampTrainingDummyToPatrolWindow();
 
+            BroadcastCombatEvents(Simulation.State.Tick);
+
             var current = Simulation.CreateSnapshot();
             var fullPayload = _serializer.Serialize(current);
             var fullPacket = MessageFraming.Wrap(MessageType.Snapshot, fullPayload);
@@ -222,6 +225,76 @@ namespace Server
                 Log("[t" + Simulation.State.Tick + "] tick: entities=" + Simulation.State.Entities.Count
                     + ", commands=" + commands.Count + ", sessions=" + _sessions.Count);
             }
+        }
+
+        private void BroadcastCombatEvents(uint tick)
+        {
+            if (_pendingAttacks.Count == 0 || _sessions.Count == 0)
+            {
+                _pendingAttacks.Clear();
+                return;
+            }
+
+            for (var i = 0; i < _pendingAttacks.Count; i++)
+            {
+                var attack = _pendingAttacks[i];
+                if (!Simulation.State.TryGetEntity(attack.AttackerEntityId, out var attacker))
+                {
+                    continue;
+                }
+
+                var abilityId = attacker.AbilityId;
+                var style = CombatStyleFor(attacker);
+                var evt = new CombatEvent(attack.AttackerEntityId, attack.TargetEntityId, abilityId, tick, style);
+                var packet = MessageFraming.Wrap(MessageType.CombatEvent, CombatEventCodec.Encode(evt));
+
+                foreach (var session in _sessions.Values)
+                {
+                    // Своя атака уже проигрывается локально: дублировать её не нужно.
+                    if (session.EntityId == attack.AttackerEntityId)
+                    {
+                        continue;
+                    }
+
+                    _transport.Send(session.ConnectionId, packet, DeliveryMode.ReliableOrdered);
+                }
+            }
+
+            _pendingAttacks.Clear();
+        }
+
+        /// <summary>Визуальный стиль атаки по архетипу оружия в руке атакующего.</summary>
+        private CombatStyle CombatStyleFor(EntityState attacker)
+        {
+            var archetype = attacker.Equipment.Weapon?.Definition.Archetype;
+            if (archetype != null)
+            {
+                if (string.Equals(archetype, "archer", StringComparison.OrdinalIgnoreCase))
+                {
+                    return CombatStyle.Arrow;
+                }
+
+                if (string.Equals(archetype, "mage", StringComparison.OrdinalIgnoreCase))
+                {
+                    return CombatStyle.Magic;
+                }
+            }
+
+            return CombatStyle.Melee;
+        }
+
+        /// <summary>Отложенная атака, ожидающая рассылки события после тика.</summary>
+        private readonly struct PendingAttack
+        {
+            public PendingAttack(uint attackerEntityId, uint targetEntityId)
+            {
+                AttackerEntityId = attackerEntityId;
+                TargetEntityId = targetEntityId;
+            }
+
+            public uint AttackerEntityId { get; }
+
+            public uint TargetEntityId { get; }
         }
 
         private void ClampTrainingDummyToPatrolWindow()
@@ -410,6 +483,13 @@ namespace Server
             if (NeedsCommandResult(command))
             {
                 SendCommandResult(session, command, true, string.Empty);
+            }
+
+            if (command is AbilityCommand ability)
+            {
+                // Событие атаки уйдёт всем после тика: клиентам нужны замах и снаряд
+                // у чужих сущностей, а снапшот содержит только результат (Protocol v11).
+                _pendingAttacks.Add(new PendingAttack(session.EntityId, ability.TargetId));
             }
 
             _pendingCommands.Add(new PendingCommand(connectionId, envelope));

@@ -23,7 +23,6 @@ namespace Albion.Client
         private readonly Func<bool>? _isAbilityReady;
         private readonly Func<UnityVector3>? _playerPosition;
         private readonly Func<UnityCamera?>? _camera;
-        private readonly Action<WeaponKind>? _equipWeapon;
         private readonly Func<System.Numerics.Vector2>? _touchMove;
         private readonly Func<bool>? _touchAttack;
         private readonly Action<UnityVector3>? _groundClick;
@@ -68,10 +67,6 @@ namespace Albion.Client
         /// Минимальное расстояние до точки под курсором, ниже которого движение не отправляется
         /// (0.5 м по умолчанию).
         /// </param>
-        /// <param name="equipWeapon">
-        /// Клиентское переключение видимого оружия: 1 — меч, 2 — топор, 3 — лук, 4 — посох. Сервер не участвует,
-        /// поэтому команда способности и протокол не меняются (M10.11).
-        /// </param>
         /// <param name="touchMove">
         /// Направление экранного стика для мобильной сборки; <c>null</c> на desktop.
         /// </param>
@@ -94,7 +89,6 @@ namespace Albion.Client
             Func<UnityVector3>? playerPosition = null,
             Func<UnityCamera?>? camera = null,
             float mouseMoveThreshold = 0.5f,
-            Action<WeaponKind>? equipWeapon = null,
             Func<System.Numerics.Vector2>? touchMove = null,
             Func<bool>? touchAttack = null,
             Action<UnityVector3>? groundClick = null,
@@ -106,7 +100,6 @@ namespace Albion.Client
             _isAbilityReady = isAbilityReady;
             _playerPosition = playerPosition;
             _camera = camera;
-            _equipWeapon = equipWeapon;
             _touchMove = touchMove;
             _touchAttack = touchAttack;
             _groundClick = groundClick;
@@ -162,24 +155,6 @@ namespace Albion.Client
                 {
                     PollMouseDestination();
                 }
-            }
-
-            // M10.11: client-side weapon visuals only. The server ability is unchanged.
-            if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
-            {
-                _equipWeapon?.Invoke(WeaponKind.Sword);
-            }
-            else if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2))
-            {
-                _equipWeapon?.Invoke(WeaponKind.Axe);
-            }
-            else if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3))
-            {
-                _equipWeapon?.Invoke(WeaponKind.Bow);
-            }
-            else if (Input.GetKeyDown(KeyCode.Alpha4) || Input.GetKeyDown(KeyCode.Keypad4))
-            {
-                _equipWeapon?.Invoke(WeaponKind.Staff);
             }
         }
 

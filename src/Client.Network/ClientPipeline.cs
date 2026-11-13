@@ -34,6 +34,7 @@ namespace Client.Network
         private SimulationSnapshot? _lastSnapshot;
         private InventoryMessage? _inventory;
         private CommandResult? _lastCommandResult;
+        private CombatEvent? _lastCombatEvent;
         private uint _lastUiSequence;
         private float _tickAccumulator;
         private float _sinceHello;
@@ -94,6 +95,9 @@ namespace Client.Network
         /// <summary>Последний результат UI-команды от сервера (Protocol v10).</summary>
         public CommandResult? LastCommandResult => _lastCommandResult;
 
+        /// <summary>Последнее презентационное событие атаки (Protocol v11).</summary>
+        public CombatEvent? LastCombatEvent => _lastCombatEvent;
+
         /// <summary>Есть ли уже авторитетный снимок инвентаря от сервера (Protocol v10).</summary>
         public bool HasInventory => _inventory != null;
 
@@ -109,6 +113,9 @@ namespace Client.Network
 
         /// <summary>Сессия готова: пришёл HelloAck с идентификатором сущности.</summary>
         public event Action<uint>? SessionReady;
+
+        /// <summary>Сервер прислал событие атаки для показа замаха и снаряда (Protocol v11).</summary>
+        public event Action<CombatEvent>? CombatEventReceived;
 
         /// <summary>Контент из JSON-конфига (M9), если передан в конструктор.</summary>
         public ClientContent? Content => _content;
@@ -350,6 +357,10 @@ namespace Client.Network
                     HandleInventory(frame.Payload);
                     break;
 
+                case MessageType.CombatEvent:
+                    HandleCombatEvent(frame.Payload);
+                    break;
+
                 case MessageType.Snapshot:
                     HandleSnapshot(frame.Payload);
                     break;
@@ -400,6 +411,7 @@ namespace Client.Network
             _acknowledgedByTick.Clear();
             _inventory = null;
             _lastCommandResult = null;
+            _lastCombatEvent = null;
             _lastUiSequence = 0;
             _log.Add("[hello] сущность " + EntityId + ", актор " + actorId + ", скорость " + moveSpeed.ToString("0.###")
                 + (_content == null ? string.Empty : ", config " + ShortHash(_content.Hash)));
@@ -462,9 +474,27 @@ namespace Client.Network
             _log.Add("[command] seq=" + result.Sequence + (result.Accepted ? " принята" : " отклонена: " + result.Detail));
         }
 
-        private void HandleInventory(byte[] payload)
+        private void HandleCombatEvent(byte[] payload)
         {
-            if (!InventoryCodec.TryDecode(payload, out var inventory) || inventory == null)
+            if (!CombatEventCodec.TryDecode(payload, out var evt))
+            {
+                _log.Add("[combat] некорректное событие (" + payload.Length + " байт)");
+                return;
+            }
+
+            if (evt.AttackerEntityId == EntityId)
+            {
+                // Своя атака уже проигрывается локальным предсказанием: событие нужно только
+                // как подтверждение конца каста, поэтому не дублируем анимацию и снаряд.
+                return;
+            }
+
+            _lastCombatEvent = evt;
+            CombatEventReceived?.Invoke(evt);
+        }
+
+        private void HandleInventory(byte[] payload)
+        {            if (!InventoryCodec.TryDecode(payload, out var inventory) || inventory == null)
             {
                 _log.Add("[inventory] некорректное сообщение (" + payload.Length + " байт)");
                 return;
@@ -709,6 +739,7 @@ namespace Client.Network
             HasSession = false;
             _inventory = null;
             _lastCommandResult = null;
+            _lastCombatEvent = null;
             _log.Add("[disconnect] " + reason);
             Disconnected?.Invoke(reason);
         }

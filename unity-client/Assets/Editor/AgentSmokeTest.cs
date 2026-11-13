@@ -33,6 +33,10 @@ namespace Albion.Editor
         private static double _qaTeleportWaitUntil;
         private static int _qaShopState;
         private static double _qaShopWaitUntil;
+        private static int _qaEquipState;
+        private static double _qaEquipWaitUntil;
+        private static double _qaEquipBuyDeadline;
+        private static string _qaEquipResult = string.Empty;
 
         /// <summary>Точка входа для <c>-executeMethod</c>.</summary>
         public static void Run()
@@ -43,6 +47,10 @@ namespace Albion.Editor
             _qaTeleportWaitUntil = 0.0;
             _qaShopState = 0;
             _qaShopWaitUntil = 0.0;
+            _qaEquipState = 0;
+            _qaEquipWaitUntil = 0.0;
+            _qaEquipBuyDeadline = 0.0;
+            _qaEquipResult = string.Empty;
             SessionState.SetInt(StateKey, 1);
             _started = EditorApplication.timeSinceStartup;
             if (Environment.GetEnvironmentVariable("ALBION_REBUILD_WORLD") == "1")
@@ -267,6 +275,12 @@ namespace Albion.Editor
                 return;
             }
 
+            // QA-only: equip a weapon through the server command path and verify the mount.
+            if (QaEquipPending(pipeline))
+            {
+                return;
+            }
+
             try
             {
                 HudSmokeChecks.Verify();
@@ -374,6 +388,263 @@ namespace Albion.Editor
                         Debug.Log("[agent-smoke] QA shop inventory: " + contents);
                     }
 
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// QA seam для главной жалобы на качество боя: удар мечом обязан проигрывать
+        /// состояние с клипом клинка. Проверяем именно это, а не факт "что-то проигралось".
+        /// </summary>
+        private static bool QaSwordPending(ClientPipeline pipeline, double now)
+        {
+            if (_qaEquipState == 0)
+            {
+                _qaEquipState = 1;
+                _qaEquipWaitUntil = now + 1.0;
+                return true;
+            }
+
+            if (now < _qaEquipWaitUntil)
+            {
+                return true;
+            }
+
+            if (_qaEquipState == 1)
+            {
+                _qaEquipState = 2;
+                var view = UnityEngine.Object.FindFirstObjectByType<ClientRuntime>()?.View;
+                var target = pipeline.FindNearestEntity(pipeline.EntityId);
+                if (target == 0)
+                {
+                    Fail("QA sword: рядом нет цели для удара");
+                    return false;
+                }
+
+                view?.TriggerAttack(target);
+                var character = view?.GetCharacterVisual(pipeline.EntityId);
+                if (character == null)
+                {
+                    Fail("QA sword: у игрока нет CharacterVisuals");
+                    return false;
+                }
+
+                var state = character.LastRequestedState;
+                if (!character.LastRequestedStateExists)
+                {
+                    Fail("QA sword: состояния '" + state + "' нет в контроллере — удар не проиграется");
+                    return false;
+                }
+
+                if (state.IndexOf("Melee_Attack", StringComparison.Ordinal) < 0)
+                {
+                    Fail("QA sword: удар выбрал '" + state + "', а не клип атаки клинком");
+                    return false;
+                }
+
+                if (view.IsPlayerAttackPlaying != true)
+                {
+                    Fail("QA sword: замах не отмечен как активный");
+                    return false;
+                }
+
+                Debug.Log("[agent-smoke] QA sword: удар проигрывает '" + state + "'");
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>Есть ли предмет в авторитетном инвентаре клиента.</summary>
+        private static bool InventoryHas(ClientPipeline pipeline, uint itemId)
+        {
+            foreach (var stack in pipeline.Inventory)
+            {
+                if (stack.ItemId == itemId && stack.Quantity > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// QA seam: buys and equips the bow/staff through the real server command path, then
+        /// checks that the weapon is mounted on the correct hand and that a shot spawns a
+        /// projectile. This is the automated regression for "bought but cannot equip".
+        /// </summary>
+        private static bool QaEquipPending(ClientPipeline pipeline)
+        {
+            var request = Environment.GetEnvironmentVariable("ALBION_QA_EQUIP");
+            if (string.IsNullOrEmpty(request) || pipeline.Content == null)
+            {
+                return false;
+            }
+
+            var now = EditorApplication.timeSinceStartup;
+            if (request == "sword")
+            {
+                return QaSwordPending(pipeline, now);
+            }
+
+            if (_qaEquipState == 0)
+            {
+                Simulation.Core.NpcTrader? trader = null;
+                foreach (var candidate in pipeline.Content.Config.Traders)
+                {
+                    if (candidate.Key == "blue_merchant")
+                    {
+                        trader = candidate;
+                        break;
+                    }
+                }
+
+                if (trader == null || !pipeline.SendTeleport(trader.Position.X + 2f, trader.Position.Z))
+                {
+                    _qaEquipState = 9;
+                    Fail("QA equip: не удалось подойти к торговцу");
+                    return false;
+                }
+
+                _qaEquipState = 1;
+                _qaEquipWaitUntil = now + 1.2;
+                _qaEquipBuyDeadline = now + 12.0;
+                return true;
+            }
+
+            if (now < _qaEquipWaitUntil)
+            {
+                return true;
+            }
+
+            switch (_qaEquipState)
+            {
+                case 1:
+                    _qaEquipState = 2;
+                    _qaEquipWaitUntil = now + 0.6;
+                    pipeline.SendBuy(1, 15, 1);
+                    return true;
+
+                case 2:
+                    _qaEquipState = 3;
+                    _qaEquipWaitUntil = now + 0.6;
+                    pipeline.SendBuy(1, 14, 1);
+                    return true;
+
+                case 3:
+                    // Ждём, пока авторитетный инвентарь действительно получит купленное
+                    // оружие: экипировка раньше покупки была бы отклонена сервером и
+                    // замаскировала бы регрессию "купил, но надеть нельзя".
+                    if (!InventoryHas(pipeline, 15) || !InventoryHas(pipeline, 14))
+                    {
+                        if (now > _qaEquipBuyDeadline)
+                        {
+                            Fail("QA equip: покупки не дошли до инвентаря за 6 с");
+                            _qaEquipState = 9;
+                            return false;
+                        }
+
+                        return true;
+                    }
+
+                    _qaEquipState = 4;
+                    _qaEquipWaitUntil = now + 0.4;
+                    var itemToEquip = request == "staff" ? 15u : 14u;
+                    if (!pipeline.SendEquip(itemToEquip))
+                    {
+                        Fail("QA equip: SendEquip вернул false");
+                    }
+
+                    return true;
+
+                case 4:
+                    _qaEquipState = 6;
+                    _qaEquipWaitUntil = now + 0.3;
+                    var hud = UnityEngine.Object.FindFirstObjectByType<ClientHud>();
+                    hud?.ToggleInventory();
+                    var snapshot = pipeline.LastSnapshot;
+                    if (snapshot == null)
+                    {
+                        Fail("QA equip: нет снапшота");
+                        return false;
+                    }
+
+                    var expected = request == "staff" ? 15u : 14u;
+                    var equipped = 0u;
+                    foreach (var entity in snapshot.Entities)
+                    {
+                        if (entity.Id == pipeline.EntityId) equipped = entity.WeaponItemId;
+                    }
+
+                    if (equipped != expected)
+                    {
+                        Fail("QA equip: в снапшоте оружие #" + equipped + ", ожидалось #" + expected
+                            + "; результат: " + pipeline.LastCommandResult?.Detail);
+                        return false;
+                    }
+
+                    var view = UnityEngine.Object.FindFirstObjectByType<ClientRuntime>()?.View;
+                    var character = view?.GetCharacterVisual(pipeline.EntityId);
+                    if (character == null)
+                    {
+                        Fail("QA equip: у игрока нет CharacterVisuals");
+                        return false;
+                    }
+
+                    var weapon = character.EquippedTransform;
+                    if (weapon == null)
+                    {
+                        Fail("QA equip: оружие не смонтировано в руку");
+                        return false;
+                    }
+
+                    var socket = expected == 14u ? character.LeftHandSocket : character.RightHandSocket;
+                    if (socket == null)
+                    {
+                        Fail("QA equip: сокет руки не найден");
+                        return false;
+                    }
+
+                    var handDistance = UnityEngine.Vector3.Distance(weapon.position, socket.position);
+                    if (handDistance > 0.45f)
+                    {
+                        Fail("QA equip: оружие далеко от руки (" + handDistance.ToString("0.00") + " м)");
+                        return false;
+                    }
+
+                    _qaEquipResult = "weapon=" + weapon.name + " equipped=" + equipped
+                        + " hand=" + socket.name + " dist=" + handDistance.ToString("0.00")
+                        + " active=" + character.ActiveWeaponSlotCount;
+                    Debug.Log("[agent-smoke] QA equip: " + _qaEquipResult);
+
+                    // Лук и посох обязаны стрелять снарядом. Проверяем в том же кадре:
+                    // стрела живёт доли секунды и к следующему шагу уже уничтожится.
+                    var rangedView = UnityEngine.Object.FindFirstObjectByType<ClientRuntime>()?.View;
+                    rangedView?.TriggerAttack(pipeline.FindNearestEntity(pipeline.EntityId));
+                    var spawned = UnityEngine.Object.FindObjectsByType<ProjectileVfx>(
+                        UnityEngine.FindObjectsSortMode.None);
+                    if (spawned.Length == 0)
+                    {
+                        Fail("QA equip: атака #" + expected + " не создала снаряд");
+                        return false;
+                    }
+
+                    Debug.Log("[agent-smoke] QA equip: снаряд создан (" + spawned.Length + ")");
+
+                    // Клип должен существовать в контроллере: иначе аниматор остаётся в Idle,
+                    // и удар выглядит как рывок корпусом, а не как замах оружием.
+                    if (!character.LastRequestedStateExists)
+                    {
+                        Fail("QA equip: состояния '" + character.LastRequestedState + "' нет в контроллере");
+                        return false;
+                    }
+
+                    Debug.Log("[agent-smoke] QA equip: состояние '" + character.LastRequestedState + "' найдено");
+                    _qaEquipState = 6;
                     return true;
 
                 default:

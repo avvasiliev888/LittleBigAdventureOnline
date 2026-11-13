@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Client.Network;
+using Shared;
 using Simulation.Core;
 using UnityEngine;
 
@@ -344,13 +345,114 @@ namespace Albion.Client
             state.LastHp = entity.Hp;
         }
 
-        /// <summary>Local ability feedback: plays one attack swing when the prediction starts it.</summary>
-        public void TriggerAttack()
+        /// <summary>
+        /// Local ability feedback: turns the player to the target and plays the swing or shot.
+        /// The projectile is spawned here (not from the server event) so the shot leaves the
+        /// bow/staff on the same frame as the animation, without waiting a full round trip.
+        /// </summary>
+        public void TriggerAttack(uint targetEntityId)
         {
-            if (PlayerEntityId != 0 && _entities.TryGetValue(PlayerEntityId, out var state))
+            if (PlayerEntityId == 0 || !_entities.TryGetValue(PlayerEntityId, out var state))
             {
-                state.Visual?.PlayAttack();
-                state.Character?.PlayAttack();
+                return;
+            }
+
+            var targetPosition = FaceAttackTarget(state, targetEntityId);
+            state.Visual?.PlayAttack();
+            state.Character?.PlayAttack();
+            var kind = state.Character != null ? state.Character.Equipped : WeaponKind.Sword;
+            if (kind == WeaponKind.Bow || kind == WeaponKind.Staff)
+            {
+                SpawnProjectile(state, targetPosition);
+            }
+            else
+            {
+                // Ближний бой: дуга читается лучше, если подчеркнуть её вспышкой у клинка,
+                // а не только позой персонажа.
+                var origin = AttackOrigin(state);
+                var forward = state.Character != null ? state.Character.Facing.forward : state.Root.forward;
+                CombatVfx.AttackFlash(origin + (forward * 0.55f), Quaternion.LookRotation(forward, Vector3.up),
+                    new Color(1f, 0.93f, 0.7f));
+            }
+        }
+
+        /// <summary>Remote attack from <see cref="MessageType.CombatEvent"/> (Protocol v11).</summary>
+        public void PlayCombatEvent(CombatEvent evt)
+        {
+            if (evt.AttackerEntityId == PlayerEntityId || evt.AttackerEntityId == 0) return;
+            if (!_entities.TryGetValue(evt.AttackerEntityId, out var attacker) || attacker.Root == null) return;
+            if (!attacker.Root.gameObject.activeSelf) return;
+
+            var targetPosition = FaceAttackTarget(attacker, evt.TargetEntityId);
+            attacker.Character?.PlayAttack();
+            attacker.Visual?.PlayAttack();
+
+            if (evt.Style == CombatStyle.Arrow || evt.Style == CombatStyle.Magic)
+            {
+                SpawnProjectile(attacker, targetPosition);
+            }
+            else
+            {
+                // Melee feedback: a short flash at the blade so a remote swing reads even at
+                // the edge of the screen where the clip itself is small.
+                var origin = AttackOrigin(attacker);
+                var forward = attacker.Character != null ? attacker.Character.Facing.forward : attacker.Root.forward;
+                CombatVfx.AttackFlash(origin + (forward * 0.55f), Quaternion.LookRotation(forward, Vector3.up),
+                    new Color(1f, 0.9f, 0.6f));
+            }
+        }
+
+        /// <summary>Rotates the visual toward the attack target; returns the world aim point.</summary>
+        private Vector3 FaceAttackTarget(EntityVisual attacker, uint targetEntityId)
+        {
+            var origin = attacker.Root != null ? attacker.Root.position : Vector3.zero;
+            var aim = origin + (attacker.Root != null ? attacker.Root.forward : Vector3.forward) * 4f;
+
+            if (targetEntityId != 0 && _entities.TryGetValue(targetEntityId, out var target) && target.Root != null)
+            {
+                aim = target.Root.position + (Vector3.up * 1.05f);
+            }
+            else
+            {
+                // Без цели стреляем/бьём туда, куда повёрнут персонаж.
+                var forward = attacker.Character != null ? attacker.Character.Facing.forward : attacker.Root.forward;
+                aim = origin + (Vector3.up * 1.05f) + (forward * 6f);
+            }
+
+            var direction = aim - origin;
+            direction.y = 0f;
+            if (direction.sqrMagnitude > 0.0004f && attacker.Character != null)
+            {
+                attacker.Character.Face(direction.normalized);
+            }
+
+            return aim;
+        }
+
+        /// <summary>World position the projectile leaves from (weapon hand, else chest height).</summary>
+        private static Vector3 AttackOrigin(EntityVisual state)
+        {
+            var weapon = state.Character != null ? state.Character.EquippedTransform : null;
+            if (weapon != null)
+            {
+                return weapon.position + (weapon.forward * 0.15f) + (Vector3.up * 0.1f);
+            }
+
+            return state.Root != null ? state.Root.position + (Vector3.up * 1.2f) : Vector3.zero;
+        }
+
+        private static void SpawnProjectile(EntityVisual state, Vector3 targetPosition)
+        {
+            var kind = state.Character != null ? state.Character.Equipped : WeaponKind.Sword;
+            var origin = AttackOrigin(state);
+            switch (kind)
+            {
+                case WeaponKind.Bow:
+                    ProjectileVfx.Arrow(origin, targetPosition, 0.08f);
+                    break;
+                case WeaponKind.Staff:
+                    ProjectileVfx.Orb(origin, targetPosition, 0.12f);
+                    break;
             }
         }
 

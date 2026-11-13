@@ -42,6 +42,7 @@ namespace Albion.Client
         private string _connectError = string.Empty;
         private TouchScreenKeyboard? _keyboard;
         private bool _mobileSkinConfigured;
+        private uint _lastAbilityTarget;
 
         /// <summary>Клиентский конвейер после старта; <c>null</c> до загрузки конфига (для smoke-тестов).</summary>
         public ClientPipeline? Pipeline => _pipeline;
@@ -154,7 +155,6 @@ namespace Albion.Client
                 () => _pipeline != null && _pipeline.Prediction != null && _pipeline.Prediction.IsAbilityReady,
                 PlayerPosition,
                 () => _cameraFollow != null ? _cameraFollow.GetComponent<Camera>() : Camera.main,
-                equipWeapon: _view.EquipWeapon,
                 touchMove: () => _mobile != null ? _mobile.Move : System.Numerics.Vector2.Zero,
                 touchAttack: () => _mobile != null && _mobile.AttackHeld,
                 groundClick: OnGroundClick,
@@ -164,6 +164,9 @@ namespace Albion.Client
             gameObject.AddComponent<CooldownHud>().Initialize(_pipeline);
             _hud = gameObject.AddComponent<ClientHud>();
             _hud.Initialize(_pipeline, _content, _view, _input);
+
+            // Protocol v11: чужие атаки приходят событием и показываются замахом + снарядом.
+            _pipeline.CombatEventReceived += _view.PlayCombatEvent;
 
             if (Application.isMobilePlatform)
             {
@@ -209,7 +212,8 @@ namespace Albion.Client
             // Живая цель имеет приоритет; если живых нет, берём ближайшую мёртвую. Удар по
             // мёртвой цели — легальный miss с кулдауном, а стабильный id переживает респавн.
             // target 0 остаётся только для пустого мира.
-            return _pipeline.FindNearestEntity(_pipeline.EntityId);
+            _lastAbilityTarget = _pipeline.FindNearestEntity(_pipeline.EntityId);
+            return _lastAbilityTarget;
         }
 
         private Vector3 PlayerPosition()
@@ -243,7 +247,8 @@ namespace Albion.Client
             // The pipeline owns ability acceptance; readiness before the update plus a jump in
             // cooldown is the "attack actually started" signal. Requiring readiness avoids
             // restarting the swing on reconciliation jitter in the middle of a cooldown.
-            if (cooldownBefore <= 1 && cooldownAfter > cooldownBefore + 1) _view.TriggerAttack();
+            if (cooldownBefore <= 1 && cooldownAfter > cooldownBefore + 1)
+                _view.TriggerAttack(_lastAbilityTarget);
             UpdateFps();
 
             if (_cameraFollow != null && _cameraFollow.Target == null && _view.Player != null)

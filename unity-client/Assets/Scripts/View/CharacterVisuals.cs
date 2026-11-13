@@ -56,8 +56,10 @@ namespace Albion.Client
 
         private static readonly string[] SwordCombo =
         {
-            "1H_Melee_Attack_Chop",
+            // Диагональный разрез читается как удар клинком: рубящий Chop первым кадром
+            // уводил корпус вперёд и выглядел как удар головой.
             "1H_Melee_Attack_Slice_Diagonal",
+            "1H_Melee_Attack_Chop",
             "1H_Melee_Attack_Slice_Horizontal",
             "1H_Melee_Attack_Stab",
         };
@@ -169,6 +171,16 @@ namespace Albion.Client
             {
                 if (rightHandSocket == null) ResolveSockets();
                 return rightHandSocket;
+            }
+        }
+
+        /// <summary>Resolved left-hand mount used by the two-handed bow.</summary>
+        public Transform LeftHandSocket
+        {
+            get
+            {
+                if (leftHandSocket == null) ResolveSockets();
+                return leftHandSocket;
             }
         }
 
@@ -298,6 +310,17 @@ namespace Albion.Client
             else PlayState(speed >= runSpeedThreshold ? runState : walkState, 0.12f, false);
         }
 
+        /// <summary>Immediately turns the visual to a horizontal direction (combat facing).</summary>
+        public void Face(Vector3 direction)
+        {
+            direction.y = 0f;
+            if (!float.IsFinite(direction.x) || !float.IsFinite(direction.z)) return;
+            if (direction.sqrMagnitude <= 0.0001f) return;
+            if (facing == null) facing = transform;
+            // Поворот якорем, а не телом: сетевой корень позиции не меняется.
+            facing.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
+        }
+
         /// <summary>One-shot swing; a hit received during it is queued, not allowed to cancel it.</summary>
         public void PlayAttack()
         {
@@ -397,8 +420,13 @@ namespace Albion.Client
             _weaponSlotsBuilt = true;
             if (weapons == null || weapons.Length == 0) return;
 
-            var socket = rightHandSocket != null ? rightHandSocket : ResolveRightHand();
-            if (socket == null)
+            var right = rightHandSocket != null ? rightHandSocket : ResolveRightHand();
+            if (leftHandSocket == null)
+            {
+                leftHandSocket = animator != null ? animator.GetBoneTransform(HumanBodyBones.LeftHand) : null;
+            }
+
+            if (right == null)
             {
                 Debug.LogWarning("CharacterVisuals: right hand socket not found; weapons not attached.", this);
                 return;
@@ -407,6 +435,8 @@ namespace Albion.Client
             foreach (var binding in weapons)
             {
                 if (binding == null || binding.Prefab == null || _weaponSlots.ContainsKey(binding.Kind)) continue;
+                // Лук держится левой рукой (как в 2H_Ranged-анимациях), посох и клинки — правой.
+                var socket = binding.Kind == WeaponKind.Bow && leftHandSocket != null ? leftHandSocket : right;
                 var slot = Instantiate(binding.Prefab, socket, false);
                 slot.name = "Weapon " + binding.Kind;
                 var hasBindingCalibration = binding.LocalPosition != Vector3.zero
@@ -417,6 +447,12 @@ namespace Albion.Client
                     hasBindingCalibration ? binding.LocalEuler : weaponLocalEuler);
                 slot.transform.localScale = hasBindingCalibration
                     ? binding.LocalScale : weaponLocalScale;
+                if (binding.Kind == WeaponKind.Bow)
+                {
+                    // Лук в левой руке развёрнут тетивой к стрелку: ствол смотрит вперёд по -Z.
+                    slot.transform.localRotation *= Quaternion.Euler(0f, 90f, 0f);
+                }
+
                 foreach (var collider in slot.GetComponentsInChildren<Collider>(true)) collider.enabled = false;
                 foreach (var body in slot.GetComponentsInChildren<Rigidbody>(true))
                 {

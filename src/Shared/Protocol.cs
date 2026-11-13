@@ -30,8 +30,10 @@ namespace Shared
         /// Версия 10 (M18): добавлены сообщения <see cref="MessageType.CommandResult"/> и
         /// <see cref="MessageType.Inventory"/>; клиент показывает авторитетный инвентарь и причину
         /// отказа команды, а не только факт отправки. Формат снапшота не менялся.
+        /// Версия 11 (M19): добавлено событие <see cref="MessageType.CombatEvent"/> для анимаций
+        /// и снарядов у чужих игроков. Снапшот не менялся; старый клиент несовместим.
         /// </remarks>
-        public const ushort Version = 10;
+        public const ushort Version = 11;
     }
 
     /// <summary>
@@ -73,5 +75,11 @@ namespace Shared
         /// Полное содержимое инвентаря игрока при его изменении (Protocol v10).
         /// </summary>
         Inventory = 9,
+
+        /// <summary>
+        /// Презентационное событие атаки: кто, по кому, какой способностью и в каком стиле
+        /// (Protocol v11). Рассылается всем сессиям после применения способности.
+        /// </summary>
+        CombatEvent = 10,
     }
 }

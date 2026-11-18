@@ -22,3 +22,8 @@ _probe/
 .idea/
 .DS_Store
 Thumbs.db
+
+# ---- Python (tools/tokens) ----
+__pycache__/
+*.pyc
+

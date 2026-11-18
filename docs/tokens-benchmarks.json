@@ -1,0 +1,17 @@
+[
+  {
+    "label": "база: разбор gif-атаки",
+    "marker": "Я обратился к Дипсику",
+    "session": "session-6d18c573-2b24-44fd-8c9c-1c1f3f279ed1",
+    "turn": 2,
+    "steps": 9,
+    "inputTokens": 190952,
+    "outputTokens": 7920,
+    "cacheReadTokens": 50082,
+    "totalTokens": 248954,
+    "avgContext": 26782,
+    "toolTokens": {
+      "?": 10970
+    }
+  }
+]

@@ -34,6 +34,10 @@ CARDS = os.path.join(ROOT, "docs", "cards")
 AGENTS = os.path.join(ROOT, "AGENTS.md")
 LEDGER = os.path.join(ROOT, "docs", "warrior-animation-ledger.md")
 BENCH = os.path.join(ROOT, "docs", "tokens-benchmarks.json")
+RULES = os.path.join(ROOT, "docs", "rules.md")
+# Файл, который DSH НЕ загружает: кандидаты загрузчика — AGENTS.md, CLAUDE.md
+# (и .local-оверлеи). Всё, что написано в AGENT.md, для агента не существует.
+DEAD_RULES = os.path.join(ROOT, "AGENT.md")
 
 # Пути, которые обязаны быть исключены из любого поиска и вывода. Появление
 # любого из них в команде — прямой путь к 12,5 тыс. токенов мусора в контексте.
@@ -48,6 +52,17 @@ REQUIRED_RULES = [
     "Select-Object -First",
     "grep",
     "offset",
+    # Запреты проверяются скриптом, а не памятью агента: директива обязана
+    # присутствовать в правилах, иначе про скрипт никто не узнает.
+    "tools/check-rules.ps1",
+    "docs/rules.md",
+]
+
+# Что обязано быть в docs/rules.md — файле, который читается по требованию.
+REQUIRED_IN_RULES = [
+    "Definition of Done",
+    "Работа с тестами",
+    "Работа с сетью",
 ]
 
 problems: list[str] = []
@@ -133,6 +148,29 @@ def check_rules() -> None:
     ends = text.count("<!-- trail:end -->")
     if starts != ends:
         problems.append(f"Маркеры trail непарные: start={starts}, end={ends}.")
+
+    # ЗАЩИТА ОТ ВОЗВРАТА МЁРТВОГО ФАЙЛА ПРАВИЛ.
+    # В репозитории когда-то жил AGENT.md (11 КБ правил). DSH читает только
+    # AGENTS.md и CLAUDE.md, поэтому все правила из AGENT.md молча не работали.
+    # Файл удалён; если он появится снова — правила снова станут мёртвыми, и
+    # заметить это будет невозможно. Падаем явно.
+    if os.path.exists(DEAD_RULES):
+        problems.append(
+            "В корне снова появился AGENT.md — DSH его НЕ загружает (кандидаты: "
+            "AGENTS.md, CLAUDE.md). Правила из него не работают. Переносите "
+            "в AGENTS.md или docs/rules.md и удалите файл."
+        )
+
+    # docs/rules.md читается по требованию — он обязан существовать и содержать
+    # разделы, ради которых его вообще открывают.
+    if not os.path.exists(RULES):
+        problems.append("Нет docs/rules.md — процессные правила проекта потеряны.")
+    else:
+        with open(RULES, encoding="utf-8") as fh:
+            rules_text = fh.read()
+        for section in REQUIRED_IN_RULES:
+            if section not in rules_text:
+                problems.append(f"В docs/rules.md нет раздела «{section}».")
 
     if not os.path.exists(LEDGER):
         problems.append("Нет docs/warrior-animation-ledger.md — "

@@ -1,7 +1,7 @@
 # UnityInputSource
 
 **Файл:** `unity-client/Assets/Scripts/Input/UnityInputSource.cs`  
-**Размер:** 357 строк ≈ 4 342 токенов — читать целиком дорого, пользуйтесь этой карточкой.
+**Размер:** 424 строк ≈ 5 144 токенов — читать целиком дорого, пользуйтесь этой карточкой.
 
 **Назначение:** Ввод: WASD, клик-к-цели, способность, сброс при смерти/респавне.
 
@@ -10,19 +10,20 @@
 ## API (детерминированно из графа trail)
 
 ```
-- L19-L356  class UnityInputSource  public sealed class UnityInputSource : IInputSource
-- L84-L110  method UnityInputSource  public UnityInputSource(
-- L122-L125  method SetScriptedCommandProvider  public void SetScriptedCommandProvider(Func<uint, ICommand?>? provider)
-- L131-L134  method CancelPointerDestination  public void CancelPointerDestination()
-- L150-L155  method ResetHeldInput  public void ResetHeldInput()
-- L157-L180  method PollFrame  public void PollFrame()
-- L183-L237  method TryReadCommand  public bool TryReadCommand(uint clientTick, out ICommand command)
-- L239-L280  method ReadMovementDirection  private System.Numerics.Vector2 ReadMovementDirection()
-- L282-L303  method PollMouseDestination  private void PollMouseDestination()
-- L305-L325  method TryReadMouseDirection  private bool TryReadMouseDirection(out System.Numerics.Vector2 direction)
-- L327-L351  method TryGroundPoint  private bool TryGroundPoint(out UnityVector3 point)
-- L353-L353  method IsAttackPlaying  private bool IsAttackPlaying() => _isAttackPlaying != null && _isAttackPlaying();
-- L355-L355  method IsAbilityReady  private bool IsAbilityReady() => _isAbilityReady == null || _isAbilityReady();
+- L19-L423  class UnityInputSource  public sealed class UnityInputSource : IInputSource
+- L88-L120  method UnityInputSource  public UnityInputSource(
+- L132-L135  method SetScriptedCommandProvider  public void SetScriptedCommandProvider(Func<uint, ICommand?>? provider)
+- L141-L144  method CancelPointerDestination  public void CancelPointerDestination()
+- L160-L165  method ResetHeldInput  public void ResetHeldInput()
+- L167-L190  method PollFrame  public void PollFrame()
+- L193-L258  method TryReadCommand  public bool TryReadCommand(uint clientTick, out ICommand command)
+- L260-L301  method ReadMovementDirection  private System.Numerics.Vector2 ReadMovementDirection()
+- L312-L347  method TryApproachStep  private bool TryApproachStep(uint clientTick, out ICommand command)
+- L349-L370  method PollMouseDestination  private void PollMouseDestination()
+- L372-L392  method TryReadMouseDirection  private bool TryReadMouseDirection(out System.Numerics.Vector2 direction)
+- L394-L418  method TryGroundPoint  private bool TryGroundPoint(out UnityVector3 point)
+- L420-L420  method IsAttackPlaying  private bool IsAttackPlaying() => _isAttackPlaying != null && _isAttackPlaying();
+- L422-L422  method IsAbilityReady  private bool IsAbilityReady() => _isAbilityReady == null || _isAbilityReady();
 ```
 
 ## Как пользоваться

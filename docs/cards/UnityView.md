@@ -1,7 +1,7 @@
 # UnityView
 
 **Файл:** `unity-client/Assets/Scripts/View/UnityView.cs`  
-**Размер:** 688 строк ≈ 8 270 токенов — читать целиком дорого, пользуйтесь этой карточкой.
+**Размер:** 726 строк ≈ 8 747 токенов — читать целиком дорого, пользуйтесь этой карточкой.
 
 **Назначение:** Отрисовка: интерполяция снапшотов, скорость для анимации, оружие.
 
@@ -10,7 +10,7 @@
 ## API (детерминированно из графа trail)
 
 ```
-- L15-L687  class UnityView  public sealed class UnityView : IPredictedView
+- L15-L725  class UnityView  public sealed class UnityView : IPredictedView
 - L37-L57  class EntityVisual  private sealed class EntityVisual
 - L85-L92  method UnityView  public UnityView(Transform root, ClientContent? content = null)
 - L95-L95  variable PlayerEntityId  public uint PlayerEntityId { get; set; }
@@ -20,34 +20,36 @@
 - L130-L130  variable VisualEntityCount  public int VisualEntityCount => _entities.Count;
 - L133-L133  variable CorpseVisualCount  public int CorpseVisualCount => _corpses.Count;
 - L136-L139  method GetCharacterVisual  public CharacterVisuals? GetCharacterVisual(uint entityId)
-- L142-L142  variable LatestSnapshot  public SimulationSnapshot? LatestSnapshot => _latestSnapshot;
-- L145-L145  variable LastMobAttackDebug  public string LastMobAttackDebug { get; private set; } = string.Empty;
-- L148-L148  variable LastReconciliationCorrected  public bool LastReconciliationCorrected { get; private set; }
-- L151-L151  variable PredictedPosition  public Vector3 PredictedPosition => _predictedPosition;
-- L154-L163  method SetPredictedPlayerPosition  public void SetPredictedPlayerPosition(uint tick, System.Numerics.Vector3 position, System.Numerics.Vector3 velocity, bool reconciled)
-- L166-L176  method ApplySnapshot  public void ApplySnapshot(SimulationSnapshot snapshot)
-- L179-L228  method Render  public void Render(float frameDeltaTime)
-- L242-L268  method RetireMissingEntities  private void RetireMissingEntities()
-- L271-L309  method ApplyCorpses  private void ApplyCorpses()
-- L311-L314  method CreateCorpse  private GameObject CreateCorpse(uint corpseId)
-- L316-L428  method ApplyEntity  private void ApplyEntity(InterpolatedEntity entity, float deltaTime, bool renderCatchUp)
-- L435-L459  method TriggerAttack  public void TriggerAttack(uint targetEntityId)
-- L462-L485  method PlayCombatEvent  public void PlayCombatEvent(CombatEvent evt)
-- L488-L512  method FaceAttackTarget  private Vector3 FaceAttackTarget(EntityVisual attacker, uint targetEntityId)
-- L515-L524  method AttackOrigin  private static Vector3 AttackOrigin(EntityVisual state)
-- L526-L539  method SpawnProjectile  private static void SpawnProjectile(EntityVisual state, Vector3 targetPosition)
-- L542-L545  method ShowClickMarker  public void ShowClickMarker(Vector3 position)
-- L548-L551  method TriggerGather  public void TriggerGather(Vector3 position)
-- L554-L561  method PlayDamage  public void PlayDamage(uint entityId)
-- L567-L574  method EquipWeapon  public void EquipWeapon(WeaponKind kind)
-- L580-L606  method PlayMobAttackNear  private void PlayMobAttackNear(Vector3 playerPosition)
-- L608-L620  method ApplyWeapon  private void ApplyWeapon(EntityVisual state, InterpolatedEntity entity)
-- L632-L644  method ConsumePlayerRespawnEdge  public bool ConsumePlayerRespawnEdge()
-- L646-L655  method IsPlayerDeadInLatestSnapshot  private bool IsPlayerDeadInLatestSnapshot()
-- L661-L670  variable IsPlayerAttackPlaying  public bool IsPlayerAttackPlaying
-- L672-L673  method IsFinite  private static bool IsFinite(Vector3 value) =>
-- L675-L675  method CreateCharacter  private Transform CreateCharacter(uint entityId) => _visualSettings.Create(_root, entityId);
-- L677-L685  method CreateMob  private Transform CreateMob(uint actorId)
+- L145-L150  method GetEntityPosition  public Vector3? GetEntityPosition(uint entityId)
+- L153-L153  variable LatestSnapshot  public SimulationSnapshot? LatestSnapshot => _latestSnapshot;
+- L156-L156  variable LastMobAttackDebug  public string LastMobAttackDebug { get; private set; } = string.Empty;
+- L159-L159  variable LastReconciliationCorrected  public bool LastReconciliationCorrected { get; private set; }
+- L162-L162  variable PredictedPosition  public Vector3 PredictedPosition => _predictedPosition;
+- L165-L174  method SetPredictedPlayerPosition  public void SetPredictedPlayerPosition(uint tick, System.Numerics.Vector3 position, System.Numerics.Vector3 velocity, bool reconciled)
+- L177-L187  method ApplySnapshot  public void ApplySnapshot(SimulationSnapshot snapshot)
+- L190-L239  method Render  public void Render(float frameDeltaTime)
+- L253-L279  method RetireMissingEntities  private void RetireMissingEntities()
+- L282-L320  method ApplyCorpses  private void ApplyCorpses()
+- L322-L325  method CreateCorpse  private GameObject CreateCorpse(uint corpseId)
+- L327-L439  method ApplyEntity  private void ApplyEntity(InterpolatedEntity entity, float deltaTime, bool renderCatchUp)
+- L446-L470  method TriggerAttack  public void TriggerAttack(uint targetEntityId)
+- L473-L496  method PlayCombatEvent  public void PlayCombatEvent(CombatEvent evt)
+- L499-L529  method FaceAttackTarget  private Vector3 FaceAttackTarget(EntityVisual attacker, uint targetEntityId)
+- L536-L545  method AttackOrigin  private static Vector3 AttackOrigin(EntityVisual state)
+- L551-L562  method ProjectileOrigin  private static Vector3 ProjectileOrigin(EntityVisual state, Vector3 targetPosition)
+- L564-L577  method SpawnProjectile  private static void SpawnProjectile(EntityVisual state, Vector3 targetPosition)
+- L580-L583  method ShowClickMarker  public void ShowClickMarker(Vector3 position)
+- L586-L589  method TriggerGather  public void TriggerGather(Vector3 position)
+- L592-L599  method PlayDamage  public void PlayDamage(uint entityId)
+- L605-L612  method EquipWeapon  public void EquipWeapon(WeaponKind kind)
+- L618-L644  method PlayMobAttackNear  private void PlayMobAttackNear(Vector3 playerPosition)
+- L646-L658  method ApplyWeapon  private void ApplyWeapon(EntityVisual state, InterpolatedEntity entity)
+- L670-L682  method ConsumePlayerRespawnEdge  public bool ConsumePlayerRespawnEdge()
+- L684-L693  method IsPlayerDeadInLatestSnapshot  private bool IsPlayerDeadInLatestSnapshot()
+- L699-L708  variable IsPlayerAttackPlaying  public bool IsPlayerAttackPlaying
+- L710-L711  method IsFinite  private static bool IsFinite(Vector3 value) =>
+- L713-L713  method CreateCharacter  private Transform CreateCharacter(uint entityId) => _visualSettings.Create(_root, entityId);
+- L715-L723  method CreateMob  private Transform CreateMob(uint actorId)
 ```
 
 ## Как пользоваться

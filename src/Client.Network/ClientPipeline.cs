@@ -676,6 +676,46 @@ namespace Client.Network
             return livingId != 0 ? livingId : deadId;
         }
 
+        /// <summary>
+        /// Nearest entity to an arbitrary world point (the mouse cursor), living first, then dead.
+        ///
+        /// The player presses attack while pointing AT something, so "nearest to the body" picked a
+        /// mob standing behind the character while the one under the cursor stayed untouched. Falls
+        /// back to the body-centred search when the cursor point is not usable.
+        /// </summary>
+        public uint FindNearestEntityTo(Vector3 point, uint excludeEntityId)
+        {
+            if (_lastSnapshot == null) return 0;
+
+            var livingId = 0u;
+            var livingDistance = float.MaxValue;
+            var deadId = 0u;
+            var deadDistance = float.MaxValue;
+
+            foreach (var entity in _lastSnapshot.Entities)
+            {
+                if (entity.Id == excludeEntityId) continue;
+
+                var distance = Vector3.Distance(point, entity.Position);
+                if (!entity.IsDead)
+                {
+                    if (distance < livingDistance)
+                    {
+                        livingDistance = distance;
+                        livingId = entity.Id;
+                    }
+                }
+                else if (distance < deadDistance)
+                {
+                    deadDistance = distance;
+                    deadId = entity.Id;
+                }
+            }
+
+            if (livingId != 0 || deadId != 0) return livingId != 0 ? livingId : deadId;
+            return FindNearestEntity(excludeEntityId);
+        }
+
         private void RequestFullSnapshot(bool force = false)
         {
             if (!force && _sinceFullRequest < FullRequestCooldownSeconds)

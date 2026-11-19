@@ -63,7 +63,7 @@ namespace Albion.Client
         private float _turnSeconds = 0.2f;
         private float _turnFromYaw;
         private float _turnToYaw;
-        private float _turnOffsetDeg;
+        private bool _holdYaw;
         private float _yawOffsetDeg;
         private float _baseYaw;
         private float _bowYawOffsetDeg = 90f;
@@ -218,6 +218,9 @@ namespace Albion.Client
         /// <summary>True while an explicit combat turn is still settling.</summary>
         public bool IsTurning => _turning;
 
+        /// <summary>True when the adapter last measured a real stride, not animation noise.</summary>
+        public bool IsMoving => LastMotionSpeed > StartSpeed;
+
         /// <summary>
         /// Extra yaw applied on top of every facing rotation. The bow is held in the left hand,
         /// so a character facing its target chest-first points the bow sideways; this offset lets
@@ -324,6 +327,11 @@ namespace Albion.Client
             if (!float.IsFinite(speed) || speed <= 0.1f) speed = 0f;
             LastMotionSpeed = speed;
 
+            var speedForHoldRelease = speed;
+            // A deliberate move releases the aim hold; otherwise the warrior would keep staring at
+            // a target he walked away from long ago.
+            if (!IsAttackPlaying && speedForHoldRelease > StartSpeed) _holdYaw = false;
+
             // A pending combat turn owns the facing root while it settles: velocity facing would
             // otherwise rewrite the rotation every frame and the target-facing would never appear.
             if (_turning && !dead)
@@ -332,9 +340,16 @@ namespace Albion.Client
                 var t = _turnSeconds <= 0f ? 1f : Mathf.Clamp01(1f - _turnRemaining / _turnSeconds);
                 // Ease-out: fast at the start, settles without overshoot.
                 t = 1f - (1f - t) * (1f - t);
-                var yaw = Mathf.LerpAngle(_turnFromYaw, _turnToYaw, t) + _turnOffsetDeg;
+                var yaw = Mathf.LerpAngle(_turnFromYaw, _turnToYaw, t);
                 ApplyFacingQuaternion(yaw, true);
                 if (_turnRemaining <= 0f) _turning = false;
+            }
+            // Inside melee reach the body stays aimed at the target until the action ends. Without
+            // this the 0.2 s turn expires while the swing is still playing, velocity facing takes
+            // the root back and the warrior finishes the strike facing away from the target.
+            else if (!dead && _holdYaw && (speed <= StopSpeed || IsAttackPlaying))
+            {
+                ApplyFacingQuaternion(_turnToYaw);
             }
             else if (!dead && speed > 0f && facing != null)
             {
@@ -466,13 +481,16 @@ namespace Albion.Client
             if (facing == null) facing = transform;
             if (!float.IsFinite(yawOffsetDeg)) yawOffsetDeg = 0f;
             _turnFromYaw = _baseYaw;
-            _turnToYaw = Quaternion.LookRotation(direction.normalized, Vector3.up).eulerAngles.y;
-            _turnOffsetDeg = yawOffsetDeg;
+            // The offset is folded into the destination once, so holding the aim later replays
+            // exactly the same angle instead of stacking the offset on every frame.
+            _turnToYaw = Quaternion.LookRotation(direction.normalized, Vector3.up).eulerAngles.y
+                + yawOffsetDeg;
             // A turn already in flight is restarted from the current pose: retargeting mid-turn is
             // cheaper than finishing a turn toward a target that has already moved.
             _turnSeconds = Mathf.Clamp(_turnSeconds, 0.01f, 2f);
             _turnRemaining = _turnSeconds;
             _turning = true;
+            _holdYaw = true;
         }
 
         /// <summary>Writes the facing root from a base yaw, adding the calibration offset.</summary>

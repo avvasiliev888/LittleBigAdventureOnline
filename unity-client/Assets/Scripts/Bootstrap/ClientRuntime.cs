@@ -161,7 +161,8 @@ namespace Albion.Client
                 isPointerCapturedByUi: () => _hud != null && _hud.IsPointerOverUi,
                 targetPosition: TargetPosition,
                 abilityRange: AbilityRange,
-                approachSlack: ApproachSlack());
+                approachSlack: ApproachSlack(),
+                isStopped: IsPlayerStopped);
             _transport = new LiteNetLibTransport(host, port);
             _pipeline = new ClientPipeline(_transport, _input, _view, content: _content);
             gameObject.AddComponent<CooldownHud>().Initialize(_pipeline);
@@ -215,6 +216,19 @@ namespace Albion.Client
             // Живая цель имеет приоритет; если живых нет, берём ближайшую мёртвую. Удар по
             // мёртвой цели — легальный miss с кулдауном, а стабильный id переживает респавн.
             // target 0 остаётся только для пустого мира.
+            // The player aims with the cursor, so the target is the entity closest to the ground
+            // point under the mouse — not the one closest to the body.
+            if (_input != null && _input.TryGetCursorPoint(out var cursor))
+            {
+                var point = new System.Numerics.Vector3(cursor.x, cursor.y, cursor.z);
+                var byCursor = _pipeline.FindNearestEntityTo(point, _pipeline.EntityId);
+                if (byCursor != 0)
+                {
+                    _lastAbilityTarget = byCursor;
+                    return _lastAbilityTarget;
+                }
+            }
+
             _lastAbilityTarget = _pipeline.FindNearestEntity(_pipeline.EntityId);
             return _lastAbilityTarget;
         }
@@ -248,6 +262,18 @@ namespace Albion.Client
         private float AbilityRange()
         {
             return _pipeline != null && _pipeline.Prediction != null ? _pipeline.Prediction.AbilityRange : 0f;
+        }
+
+        /// <summary>
+        /// True when the rendered character has come to rest. The strike is held until then so the
+        /// swing never starts over a running stride, where velocity facing still owns the model.
+        /// </summary>
+        private bool IsPlayerStopped()
+        {
+            var character = _view != null && _view.PlayerEntityId != 0
+                ? _view.GetCharacterVisual(_view.PlayerEntityId)
+                : null;
+            return character == null || !character.IsMoving;
         }
 
         /// <summary>

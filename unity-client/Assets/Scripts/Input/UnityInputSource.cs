@@ -29,12 +29,16 @@ namespace Albion.Client
         private readonly Func<bool>? _isPointerCapturedByUi;
         private readonly Func<uint, UnityVector3?>? _targetPosition;
         private readonly Func<float>? _abilityRange;
+        private readonly Func<bool>? _isStopped;
         private readonly float _approachSlack;
         private readonly float _walkScale;
         private readonly float _mouseMoveThreshold;
         private bool _abilityPressed;
         private bool _destinationActive;
         private bool _approachActive;
+        private int _stoppedTicks;
+        private UnityVector3 _cursorPoint;
+        private bool _cursorPointValid;
         private UnityVector3 _destination;
         private uint _sequence;
         private Func<uint, ICommand?>? _scriptedCommand;
@@ -99,11 +103,13 @@ namespace Albion.Client
             Func<bool>? isPointerCapturedByUi = null,
             Func<uint, UnityVector3?>? targetPosition = null,
             Func<float>? abilityRange = null,
-            float approachSlack = 0.6f)
+            float approachSlack = 0.6f,
+            Func<bool>? isStopped = null)
         {
             _abilityTarget = abilityTarget;
             _targetPosition = targetPosition;
             _abilityRange = abilityRange;
+            _isStopped = isStopped;
             _approachSlack = float.IsFinite(approachSlack) && approachSlack >= 0f ? approachSlack : 0.6f;
             _walkScale = float.IsFinite(walkScale) && walkScale > 0f ? Mathf.Min(walkScale, 1f) : 1f;
             _isAttackPlaying = isAttackPlaying;
@@ -181,9 +187,13 @@ namespace Albion.Client
                 {
                     // A click on a HUD window is UI input, never a world move command.
                     _destinationActive = false;
+                    _cursorPointValid = false;
                 }
                 else
                 {
+                    // The cursor point is tracked every frame, not only while a button is held:
+                    // the attack key must know what the player is pointing at.
+                    _cursorPointValid = TryGroundPoint(out _cursorPoint);
                     PollMouseDestination();
                 }
             }
@@ -220,8 +230,22 @@ namespace Albion.Client
                     return true;
                 }
 
+                // Arrived, but the body is still sliding: the server needs a stop tick before the
+                // strike, otherwise the swing starts while the legs are mid-stride and the facing
+                // is still owned by the velocity vector — the reported "turns his back and hits
+                // the air, yet the damage lands".
+                if (!IsStopped())
+                {
+                    ++_stoppedTicks;
+                    _sequence++;
+                    command = new MoveCommand(System.Numerics.Vector2.Zero, clientTick, _sequence);
+                    return true;
+                }
+
+                _stoppedTicks = 0;
                 _abilityPressed = false;
                 _approachActive = false;
+                _destinationActive = false;
                 _sequence++;
                 command = new AbilityCommand(_abilityTarget(), clientTick, _sequence);
                 return true;
@@ -346,6 +370,26 @@ namespace Albion.Client
             return true;
         }
 
+        /// <summary>
+        /// True once the body has actually come to rest. The server strike must not be sent while
+        /// the character still slides: the swing clip plays over a run and the visible facing is
+        /// still driven by the velocity vector.
+        /// </summary>
+        private bool IsStopped()
+        {
+            return _isStopped == null || _isStopped();
+        }
+
+        /// <summary>
+        /// World point under the mouse cursor, refreshed every frame. The ability target is chosen
+        /// by this point, not by the character's own position: the player aims with the cursor.
+        /// </summary>
+        public bool TryGetCursorPoint(out UnityVector3 point)
+        {
+            point = _cursorPoint;
+            return _cursorPointValid;
+        }
+
         private void PollMouseDestination()
         {
             var left = Input.GetMouseButton(0);
@@ -361,6 +405,16 @@ namespace Albion.Client
             }
 
             var clicked = Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1);
+            var released = Input.GetMouseButtonUp(0) || Input.GetMouseButtonUp(1);
+            if (released && !left && !right)
+            {
+                // A one-shot click must not stay live after the button is gone. The destination
+                // used to survive until the character actually arrived, so an old click resumed
+                // pulling the body right after a shot — the reported "runs backwards after firing".
+                _destinationActive = false;
+                return;
+            }
+
             _destination = point;
             _destinationActive = true;
             if (clicked)

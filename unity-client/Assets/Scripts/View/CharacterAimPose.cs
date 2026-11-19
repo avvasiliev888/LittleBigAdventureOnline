@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace Albion.Client
@@ -32,6 +33,9 @@ namespace Albion.Client
         [Tooltip("Disable to keep the clip's own head direction.")]
         [SerializeField] private bool applyHeadTurn = true;
 
+        [Tooltip("Seconds to ease the head into and out of the aim stance.")]
+        [SerializeField] private float headTurnSeconds = 0.15f;
+
         private Transform _leftHand;
         private Transform _leftForearm;
         private Transform _head;
@@ -45,6 +49,7 @@ namespace Albion.Client
         private bool _headWritten;
         private Quaternion _headDelta = Quaternion.identity;
         private Quaternion _headResult = Quaternion.identity;
+        private float _headWeight;
 
         public void Configure(Animator target, Transform bowSlot, float wristRoll, float turn)
         {
@@ -112,6 +117,23 @@ namespace Albion.Client
         }
 
         /// <summary>
+        /// True while the character is actually aiming or loosing a shot.
+        ///
+        /// The head used to be turned whenever a bow was merely equipped, so the warrior ran and
+        /// walked with his face twisted toward the weapon — the reported "looks sideways while
+        /// running" defect. Aiming is a STATE, not an inventory fact.
+        /// </summary>
+        private bool IsAiming()
+        {
+            ResolveVisuals();
+            if (_visuals == null) return false;
+            if (_visuals.IsAttackPlaying) return true;
+            var state = _visuals.LastRequestedState;
+            return !string.IsNullOrEmpty(state)
+                && state.IndexOf("BowAim", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        /// <summary>
         /// Rolls the wrist about the forearm axis — pronation, the motion that lays the palm flat
         /// under a bow grip.
         ///
@@ -163,12 +185,25 @@ namespace Albion.Client
         /// <summary>
         /// Turns the head about world up. A head turn is a yaw; the bone's local axes would tilt
         /// the head on rigs whose head bone is rolled.
+        ///
+        /// The angle is eased in and out instead of snapping: entering the aim stance used to
+        /// rotate the head -82 degrees in the first frame of a run.
         /// </summary>
         private void ApplyHeadTurn()
         {
+            var wanted = IsAiming() ? 1f : 0f;
+            _headWeight = Mathf.MoveTowards(_headWeight, wanted, Time.deltaTime / Mathf.Max(0.01f, headTurnSeconds));
+
+            if (_headWeight <= 0.001f)
+            {
+                // Nothing to correct: leaving a stale delta would spin the head on the next entry.
+                _headWritten = false;
+                return;
+            }
+
             if (Mathf.Abs(headTurn) < 0.01f) return;
             if (_head == null) return;
-            var delta = Quaternion.AngleAxis(headTurn, Vector3.up);
+            var delta = Quaternion.AngleAxis(headTurn * _headWeight, Vector3.up);
             _head.rotation = delta * WithoutPreviousWrite(_head, delta, ref _headWritten,
                 ref _headDelta, ref _headResult);
         }

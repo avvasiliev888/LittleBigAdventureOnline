@@ -138,6 +138,17 @@ namespace Albion.Client
             return _entities.TryGetValue(entityId, out var state) ? state.Character : null;
         }
 
+        /// <summary>
+        /// World position of a visible entity, or null when it is not rendered here. Used by the
+        /// input source to decide whether the player must run closer before striking.
+        /// </summary>
+        public Vector3? GetEntityPosition(uint entityId)
+        {
+            if (entityId == 0 || !_entities.TryGetValue(entityId, out var state)) return null;
+            if (state.Root == null || !state.Root.gameObject.activeSelf) return null;
+            return state.Root.position;
+        }
+
         /// <summary>Последний применённый снапшот — для smoke-тестов.</summary>
         public SimulationSnapshot? LatestSnapshot => _latestSnapshot;
 
@@ -505,28 +516,55 @@ namespace Albion.Client
             direction.y = 0f;
             if (direction.sqrMagnitude > 0.0004f && attacker.Character != null)
             {
-                attacker.Character.Face(direction.normalized);
+                // TurnTo, not Face: an instant rotation is overwritten by velocity facing on the
+                // next SetMotion, so the model was never actually aimed when the swing began.
+                // A bow needs the left shoulder toward the target, so the arrow clears the body.
+                var offset = attacker.Character.Equipped == WeaponKind.Bow
+                    ? attacker.Character.BowYawOffsetDeg
+                    : 0f;
+                attacker.Character.TurnTo(direction.normalized, offset);
             }
 
             return aim;
         }
 
-        /// <summary>World position the projectile leaves from (weapon hand, else chest height).</summary>
+        /// <summary>
+        /// World position a projectile leaves from. The bow hangs in the left hand and points
+        /// sideways from the body, so "weapon forward" sends the arrow across the chest — the
+        /// flight line must be built from the shooter toward the target instead.
+        /// </summary>
         private static Vector3 AttackOrigin(EntityVisual state)
         {
             var weapon = state.Character != null ? state.Character.EquippedTransform : null;
             if (weapon != null)
             {
-                return weapon.position + (weapon.forward * 0.15f) + (Vector3.up * 0.1f);
+                return weapon.position + (Vector3.up * 0.1f);
             }
 
             return state.Root != null ? state.Root.position + (Vector3.up * 1.2f) : Vector3.zero;
         }
 
+        /// <summary>
+        /// Launch point on the bow string, pushed along the real flight line so the arrow starts
+        /// in front of the shooter rather than inside the body.
+        /// </summary>
+        private static Vector3 ProjectileOrigin(EntityVisual state, Vector3 targetPosition)
+        {
+            var anchor = AttackOrigin(state);
+            var direction = targetPosition - anchor;
+            direction.y = 0f;
+            if (direction.sqrMagnitude <= 0.0004f)
+            {
+                direction = state.Root != null ? state.Root.forward : Vector3.forward;
+            }
+
+            return anchor + (direction.normalized * 0.35f);
+        }
+
         private static void SpawnProjectile(EntityVisual state, Vector3 targetPosition)
         {
             var kind = state.Character != null ? state.Character.Equipped : WeaponKind.Sword;
-            var origin = AttackOrigin(state);
+            var origin = ProjectileOrigin(state, targetPosition);
             switch (kind)
             {
                 case WeaponKind.Bow:

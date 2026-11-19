@@ -158,7 +158,10 @@ namespace Albion.Client
                 touchMove: () => _mobile != null ? _mobile.Move : System.Numerics.Vector2.Zero,
                 touchAttack: () => _mobile != null && _mobile.AttackHeld,
                 groundClick: OnGroundClick,
-                isPointerCapturedByUi: () => _hud != null && _hud.IsPointerOverUi);
+                isPointerCapturedByUi: () => _hud != null && _hud.IsPointerOverUi,
+                targetPosition: TargetPosition,
+                abilityRange: AbilityRange,
+                approachSlack: ApproachSlack());
             _transport = new LiteNetLibTransport(host, port);
             _pipeline = new ClientPipeline(_transport, _input, _view, content: _content);
             gameObject.AddComponent<CooldownHud>().Initialize(_pipeline);
@@ -225,6 +228,37 @@ namespace Albion.Client
             }
 
             return _view != null && _view.Player != null ? _view.Player.position : Vector3.zero;
+        }
+
+        /// <summary>
+        /// Where an ability target currently stands, as the renderer knows it. Null hides the
+        /// target from the approach logic, so the strike still fires instead of a character
+        /// running toward an entity that was never drawn.
+        /// </summary>
+        private Vector3? TargetPosition(uint entityId)
+        {
+            return _view != null ? _view.GetEntityPosition(entityId) : null;
+        }
+
+        /// <summary>
+        /// Ability range from the same config the server validates with. Prediction holds it once
+        /// the session is up; before that a zero is returned and the approach step stands down
+        /// rather than auto-running on a guessed number.
+        /// </summary>
+        private float AbilityRange()
+        {
+            return _pipeline != null && _pipeline.Prediction != null ? _pipeline.Prediction.AbilityRange : 0f;
+        }
+
+        /// <summary>
+        /// How far inside the ability radius the approach stops, so a drifting target cannot
+        /// leave range between the last step and the strike. Authored in the character visual
+        /// settings asset; the fallback only covers a missing asset.
+        /// </summary>
+        private float ApproachSlack()
+        {
+            var settings = Resources.Load<CharacterVisualSettings>(CharacterVisualSettings.ResourcePath);
+            return settings != null ? settings.ApproachSlack : 0f;
         }
 
         private void OnGroundClick(Vector3 point)

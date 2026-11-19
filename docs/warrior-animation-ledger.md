@@ -372,3 +372,51 @@ $c[($s-1)..($e-1)] | Select-Object -First 60
 **Что делать при подтверждении** — вернуть `internalIDToNameTable`
 (или перезалить `.meta` из `HEAD~1` и повторить импорт), затем перегенерировать
 контроллер. На 19.11.2026 подтверждения нет: всё разрешилось.
+
+---
+
+## 10. Сделано 19.11.2026: поворот к цели, автоподход, лук
+
+Задача — `docs/combat-facing-plan.md`. Здесь только результат и то, что нельзя
+сломать позже.
+
+### Что изменено
+
+| Файл | Изменение | Зачем |
+|---|---|---|
+| `CharacterVisuals.cs` | `TurnTo(direction, yawOffset)`, `IsTurning`, `TurnSeconds`, `YawOffsetDeg`, `BowYawOffsetDeg`, `ApplyFacingQuaternion` | доворот переживает кадр |
+| `CharacterVisuals.cs` | `SetMotion` больше не пишет `facing.rotation` напрямую | поворот по скорости затирал коррекцию |
+| `UnityView.cs` | `FaceAttackTarget` → `TurnTo`; `AttackOrigin` без `weapon.forward`; новый `ProjectileOrigin`; `GetEntityPosition` | стрела летит на цель, а не поперёк тела |
+| `CharacterAimPose.cs` | `IsAiming()` по состоянию `BowAim`/выстрела; плавный вес `_headWeight` | голова вперёд при беге |
+| `UnityInputSource.cs` | `TryApproachStep`, параметры `targetPosition`/`abilityRange`/`approachSlack` | добежать до радиуса до удара |
+| `ClientRuntime.cs` | `TargetPosition`, `AbilityRange`, `ApproachSlack` | проброс конфига в ввод |
+| `CharacterVisualSettings.cs` | `BowFacingOffsetDeg=90`, `TurnSeconds=0.2`, `ApproachSlack=0.6` | калибровка без правки кода |
+
+### Три числа, доказанные замером
+
+1. **Копия проекта — 919 файлов.** `Probe` на `F:\dsh-tmp\combat1` идёт
+   **~4 минуты** (два прогона подряд), возвращает `EXIT=0`, все 13 клипов
+   `human=True empty=False`.
+2. **В луке нет наконечника.** Дочерние объекты префаба ровно три:
+   `Bow Limbs`, `Grip` (`z=0.025`), `Bow String` (`z=0.18`). Плечи в
+   `BowPrefabBuilder.cs:81` — по оси **Y** (±0,72), изгиб по `Z`. Отдельной
+   точки вылета нет, поэтому она считается от позиции лука по линии к цели,
+   а не по оси оружия.
+3. **Клиент Unity не входит в `Prototype.sln`.** `dotnet build` его **не
+   проверяет** — только `Probe`. Две ошибки (`StringComparison` без `using System`,
+   `HeadTurnSeconds` вместо поля `headTurnSeconds`) прошли `dotnet build`
+   незамеченными и упали только на `Probe`.
+
+### Что нельзя ломать
+
+- **`TurnTo` обязан оставаться единственным писателем `facing.rotation`**
+  во время доворота. Вернуть прямой `facing.rotation = ...` в `SetMotion` —
+  значит снова получить «поворачивается через раз».
+- **`weapon.forward` нельзя возвращать в точку вылета.** Лук в левой руке,
+  его ось смотрит вбок от корпуса.
+- **Сдвиг `BowFacingOffsetDeg` действует только на время доворота.** Сделать
+  его постоянным при луке — персонаж будет бежать боком.
+- **Голова включается по состоянию, а не по факту экипировки.** Иначе бег
+  снова будет с повёрнутым лицом.
+- **Радиус берётся из конфига сервера.** Своё число на клиенте разойдётся
+  с валидацией.

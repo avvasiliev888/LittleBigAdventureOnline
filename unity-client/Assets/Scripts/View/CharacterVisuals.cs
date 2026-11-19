@@ -54,6 +54,20 @@ namespace Albion.Client
         private bool _locomotionMoving;
         private float _locomotionChangedAt = -1f;
 
+        // Combat turn. The facing root is normally rewritten from the velocity vector every
+        // frame (see SetMotion), which silently undoes any instant correction made by Face().
+        // A turn therefore has to be an explicit, timed task that blocks the velocity-facing
+        // until it settles, otherwise "turn to the target" works only while standing still.
+        private bool _turning;
+        private float _turnRemaining;
+        private float _turnSeconds = 0.2f;
+        private float _turnFromYaw;
+        private float _turnToYaw;
+        private float _turnOffsetDeg;
+        private float _yawOffsetDeg;
+        private float _baseYaw;
+        private float _bowYawOffsetDeg = 90f;
+
         [Header("Weapon mount calibration")]
         [SerializeField] private Vector3 weaponLocalPosition;
         [SerializeField] private Vector3 weaponLocalEuler;
@@ -201,6 +215,47 @@ namespace Albion.Client
         /// <summary>True while the attack one-shot is still in its active phase.</summary>
         public bool IsAttackPlaying => Time.time < _attackUntil;
 
+        /// <summary>True while an explicit combat turn is still settling.</summary>
+        public bool IsTurning => _turning;
+
+        /// <summary>
+        /// Extra yaw applied on top of every facing rotation. The bow is held in the left hand,
+        /// so a character facing its target chest-first points the bow sideways; this offset lets
+        /// the model be rotated to a left-shoulder stance without touching the network root.
+        /// </summary>
+        public float YawOffsetDeg
+        {
+            get => _yawOffsetDeg;
+            set
+            {
+                if (!float.IsFinite(value)) return;
+                if (Mathf.Approximately(_yawOffsetDeg, value)) return;
+                _yawOffsetDeg = value;
+                // The offset changes the meaning of the current rotation, so re-derive it from
+                // the stored base yaw instead of leaving the model visibly rotated by the delta.
+                ApplyFacingQuaternion(_baseYaw);
+            }
+        }
+
+        /// <summary>Seconds an explicit combat turn takes. Clamped to a sane range.</summary>
+        public float TurnSeconds
+        {
+            get => _turnSeconds;
+            set => _turnSeconds = Mathf.Clamp(float.IsFinite(value) ? value : 0.2f, 0.01f, 2f);
+        }
+
+        /// <summary>Yaw applied when a bow is equipped; calibrated in the preview.</summary>
+        public float BowYawOffsetDeg
+        {
+            get => _bowYawOffsetDeg;
+            set
+            {
+                if (!float.IsFinite(value)) return;
+                _bowYawOffsetDeg = value;
+                YawOffsetDeg = _equipped == WeaponKind.Bow ? value : 0f;
+            }
+        }
+
         private void Awake()
         {
             if (animator == null) animator = GetComponentInChildren<Animator>(true);
@@ -269,15 +324,27 @@ namespace Albion.Client
             if (!float.IsFinite(speed) || speed <= 0.1f) speed = 0f;
             LastMotionSpeed = speed;
 
-            if (!dead && speed > 0f && facing != null)
+            // A pending combat turn owns the facing root while it settles: velocity facing would
+            // otherwise rewrite the rotation every frame and the target-facing would never appear.
+            if (_turning && !dead)
             {
-                facing.rotation = Quaternion.Slerp(facing.rotation,
-                    Quaternion.LookRotation(velocity / speed, Vector3.up),
-                    1f - Mathf.Exp(-18f * deltaTime));
+                _turnRemaining -= deltaTime;
+                var t = _turnSeconds <= 0f ? 1f : Mathf.Clamp01(1f - _turnRemaining / _turnSeconds);
+                // Ease-out: fast at the start, settles without overshoot.
+                t = 1f - (1f - t) * (1f - t);
+                var yaw = Mathf.LerpAngle(_turnFromYaw, _turnToYaw, t) + _turnOffsetDeg;
+                ApplyFacingQuaternion(yaw, true);
+                if (_turnRemaining <= 0f) _turning = false;
+            }
+            else if (!dead && speed > 0f && facing != null)
+            {
+                var yaw = Quaternion.LookRotation(velocity / speed, Vector3.up).eulerAngles.y;
+                ApplyFacingQuaternion(yaw, true);
             }
 
             var wasDead = _dead;
             _dead = dead;
+            if (dead) _turning = false;
             if (animator == null || animator.runtimeAnimatorController == null) return;
 
             if (dead)
@@ -297,6 +364,7 @@ namespace Albion.Client
                 // Respawn is the only reset that must cancel combat one-shots.
                 _attackUntil = -10f;
                 _attackQueuedHit = false;
+                _turning = false;
                 SetBool(DeadParameter, false);
             }
 
@@ -376,8 +444,43 @@ namespace Albion.Client
             if (!float.IsFinite(direction.x) || !float.IsFinite(direction.z)) return;
             if (direction.sqrMagnitude <= 0.0001f) return;
             if (facing == null) facing = transform;
+            _turning = false;
             // Поворот якорем, а не телом: сетевой корень позиции не меняется.
-            facing.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
+            ApplyFacingQuaternion(Quaternion.LookRotation(direction.normalized, Vector3.up).eulerAngles.y, true);
+        }
+
+        /// <summary>
+        /// Starts a smooth turn toward a horizontal direction. Blocks velocity facing until it
+        /// settles, so the model actually arrives at the target before the swing is played.
+        /// </summary>
+        /// <param name="yawOffsetDeg">
+        /// Extra yaw added only while this turn holds. The bow is held in the left hand, so a
+        /// chest-first stance points it sideways; the shot therefore turns the model to a
+        /// left-shoulder stance. Running and walking pass 0 and stay forward-facing.
+        /// </param>
+        public void TurnTo(Vector3 direction, float yawOffsetDeg = 0f)
+        {
+            direction.y = 0f;
+            if (!float.IsFinite(direction.x) || !float.IsFinite(direction.z)) return;
+            if (direction.sqrMagnitude <= 0.0001f) return;
+            if (facing == null) facing = transform;
+            if (!float.IsFinite(yawOffsetDeg)) yawOffsetDeg = 0f;
+            _turnFromYaw = _baseYaw;
+            _turnToYaw = Quaternion.LookRotation(direction.normalized, Vector3.up).eulerAngles.y;
+            _turnOffsetDeg = yawOffsetDeg;
+            // A turn already in flight is restarted from the current pose: retargeting mid-turn is
+            // cheaper than finishing a turn toward a target that has already moved.
+            _turnSeconds = Mathf.Clamp(_turnSeconds, 0.01f, 2f);
+            _turnRemaining = _turnSeconds;
+            _turning = true;
+        }
+
+        /// <summary>Writes the facing root from a base yaw, adding the calibration offset.</summary>
+        private void ApplyFacingQuaternion(float baseYaw, bool remember = false)
+        {
+            if (facing == null) facing = transform;
+            if (remember) _baseYaw = baseYaw;
+            facing.rotation = Quaternion.Euler(0f, baseYaw + _yawOffsetDeg, 0f);
         }
 
         /// <summary>One-shot swing; a hit received during it is queued, not allowed to cancel it.</summary>

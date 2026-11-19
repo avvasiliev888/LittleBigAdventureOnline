@@ -20,6 +20,12 @@ namespace Albion.Client
         public float BowHandRoll = 90f;
         [Tooltip("Degrees the head is turned toward the bow (preview-calibrated).")]
         public float BowHeadTurn = -82.16f;
+        [Tooltip("Extra yaw applied when a bow is equipped, so the left shoulder faces the target and the arrow leaves the bow, not the back.")]
+        public float BowFacingOffsetDeg = 90f;
+        [Tooltip("Seconds a combat turn toward the target takes. 0.2 reads as deliberate, not teleporting.")]
+        [Min(0.01f)] public float TurnSeconds = 0.2f;
+        [Tooltip("Metres kept inside the ability radius before striking, so a moving target stays in range.")]
+        [Min(0f)] public float ApproachSlack = 0.6f;
         [Tooltip("Authored weapon prefabs, one entry per WeaponKind. Pivots must be at the grip.")]
         public CharacterVisuals.WeaponBinding[] Weapons = Array.Empty<CharacterVisuals.WeaponBinding>();
 
@@ -117,6 +123,8 @@ namespace Albion.Client
                 ?? visual.AddComponent<CharacterVisuals>();
             character.Initialize(facing, animator, animator.runtimeAnimatorController);
             character.SetWeapons(Weapons);
+            character.TurnSeconds = TurnSeconds;
+            character.BowYawOffsetDeg = BowFacingOffsetDeg;
             AttachAimPose(visual, animator, character);
             AttachDiagnostics(visual, animator, calibration);
             HealthBar.Attach(root, Height + GroundOffset);

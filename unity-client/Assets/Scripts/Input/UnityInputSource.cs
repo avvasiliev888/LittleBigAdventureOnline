@@ -27,10 +27,14 @@ namespace Albion.Client
         private readonly Func<bool>? _touchAttack;
         private readonly Action<UnityVector3>? _groundClick;
         private readonly Func<bool>? _isPointerCapturedByUi;
+        private readonly Func<uint, UnityVector3?>? _targetPosition;
+        private readonly Func<float>? _abilityRange;
+        private readonly float _approachSlack;
         private readonly float _walkScale;
         private readonly float _mouseMoveThreshold;
         private bool _abilityPressed;
         private bool _destinationActive;
+        private bool _approachActive;
         private UnityVector3 _destination;
         private uint _sequence;
         private Func<uint, ICommand?>? _scriptedCommand;
@@ -92,9 +96,15 @@ namespace Albion.Client
             Func<System.Numerics.Vector2>? touchMove = null,
             Func<bool>? touchAttack = null,
             Action<UnityVector3>? groundClick = null,
-            Func<bool>? isPointerCapturedByUi = null)
+            Func<bool>? isPointerCapturedByUi = null,
+            Func<uint, UnityVector3?>? targetPosition = null,
+            Func<float>? abilityRange = null,
+            float approachSlack = 0.6f)
         {
             _abilityTarget = abilityTarget;
+            _targetPosition = targetPosition;
+            _abilityRange = abilityRange;
+            _approachSlack = float.IsFinite(approachSlack) && approachSlack >= 0f ? approachSlack : 0.6f;
             _walkScale = float.IsFinite(walkScale) && walkScale > 0f ? Mathf.Min(walkScale, 1f) : 1f;
             _isAttackPlaying = isAttackPlaying;
             _isAbilityReady = isAbilityReady;
@@ -200,7 +210,18 @@ namespace Albion.Client
             {
                 // A missing/dead/out-of-range target is a legal miss. target 0 means "swing into
                 // the void"; the server still charges cooldown/resource but deals no damage.
+                // One press is one strike, so the approach must settle BEFORE the command is sent:
+                // otherwise the swing fires from out of range, costs the cooldown and deals no
+                // damage — the reported "I press, he misses from far away".
+                if (TryApproachStep(clientTick, out var approach))
+                {
+                    _sequence++;
+                    command = approach;
+                    return true;
+                }
+
                 _abilityPressed = false;
+                _approachActive = false;
                 _sequence++;
                 command = new AbilityCommand(_abilityTarget(), clientTick, _sequence);
                 return true;
@@ -277,6 +298,52 @@ namespace Albion.Client
             // Мышь и клавиатура комбинируются: W + ЛКМ/ПКМ дают диагональ, а противоположные
             // направления взаимно гасятся (персонаж останавливается).
             return keyboard + mouse + touch;
+        }
+
+        /// <summary>
+        /// One approach step toward the ability target, or false when already inside range.
+        ///
+        /// Distance is measured horizontally and compared against the server's own ability range
+        /// minus a slack, so a target that drifts cannot step out of range between the last move
+        /// command and the strike. The radius source is the same config the server validates
+        /// against; when it is not known yet the step assumes "already in range" rather than
+        /// stranding the player in an auto-run that never ends.
+        /// </summary>
+        private bool TryApproachStep(uint clientTick, out ICommand command)
+        {
+            command = null;
+            if (_targetPosition == null || _abilityTarget == null || _playerPosition == null)
+            {
+                return false;
+            }
+
+            var targetId = _abilityTarget();
+            if (targetId == 0) return false;
+            var target = _targetPosition(targetId);
+            if (!target.HasValue) return false;
+
+            var range = _abilityRange != null ? _abilityRange() : 0f;
+            if (!float.IsFinite(range) || range <= 0f) return false;
+
+            var player = _playerPosition();
+            var dx = target.Value.x - player.x;
+            var dz = target.Value.z - player.z;
+            var distance = MathF.Sqrt((dx * dx) + (dz * dz));
+            if (!float.IsFinite(distance)) return false;
+
+            var reach = MathF.Max(0.1f, range - _approachSlack);
+            if (distance <= reach)
+            {
+                // Inside range: the caller sends the strike on the same tick, so there is no
+                // one-frame window where the character stands still before swinging.
+                return false;
+            }
+
+            _approachActive = true;
+            _sequence++;
+            command = new MoveCommand(System.Numerics.Vector2.Normalize(
+                new System.Numerics.Vector2(dx / distance, dz / distance)), clientTick, _sequence);
+            return true;
         }
 
         private void PollMouseDestination()

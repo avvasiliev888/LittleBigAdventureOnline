@@ -27,3 +27,10 @@ Thumbs.db
 __pycache__/
 *.pyc
 
+# ---- мусор Unity, который не коммитим никогда ----
+# Кеш сборки Gradle/ninja (2,1 МБ), автовосстановление Unity,
+# карты зон в unity-client/1/ (8 МБ PNG, код их не использует).
+/unity-client/.utmp/
+/unity-client/Assets/_Recovery/
+/unity-client/1/
+

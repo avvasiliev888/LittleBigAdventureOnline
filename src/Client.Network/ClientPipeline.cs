@@ -716,6 +716,33 @@ namespace Client.Network
             return FindNearestEntity(excludeEntityId);
         }
 
+        /// <summary>
+        /// Looks up an entity by id in the last applied snapshot.
+        ///
+        /// The difference between "target died" and "target left the snapshot" cannot be told
+        /// apart from an id alone, and those two cases need different client reactions: a dead
+        /// target is a finished fight, a missing target may come back a tick later. Callers that
+        /// hold an engagement (see UnityInputSource) need to distinguish them, so this returns
+        /// <c>false</c> only when the entity is genuinely absent from the snapshot.
+        /// </summary>
+        /// <param name="entityId">Entity to look up; 0 is never present.</param>
+        /// <param name="entity">The entity as last seen in a snapshot; default when absent.</param>
+        /// <returns><c>true</c> when the snapshot contains the entity.</returns>
+        public bool TryGetEntity(uint entityId, out EntitySnapshot entity)
+        {
+            entity = default;
+            if (entityId == 0 || _lastSnapshot == null) return false;
+
+            foreach (var candidate in _lastSnapshot.Entities)
+            {
+                if (candidate.Id != entityId) continue;
+                entity = candidate;
+                return true;
+            }
+
+            return false;
+        }
+
         private void RequestFullSnapshot(bool force = false)
         {
             if (!force && _sinceFullRequest < FullRequestCooldownSeconds)

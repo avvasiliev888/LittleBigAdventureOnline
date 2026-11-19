@@ -182,8 +182,11 @@
 
 ## 6. Чек-лист исполнения
 
-- [ ] **0.** `pwsh tools/check-rules.ps1` + `python tools/tokens/check.py --guard`.
-- [ ] **1.** `ClientPipeline.TryGetEntity` + карточка `make_cards.py ClientPipeline`.
+- [x] **0.** `pwsh tools/check-rules.ps1` + `python tools/tokens/check.py --guard`.
+      Проверено: `OK Запреты не нарушены`, `EXIT=0` у обоих.
+- [x] **1.** `ClientPipeline.TryGetEntity` + карточка `make_cards.py ClientPipeline`.
+      Проверено: сборка `netstandard2.1` и `net10.0` — **0 ошибок, 0 предупреждений**;
+      карточка пересобрана, `TryGetEntity` в ней на L55.
 - [ ] **2.** `UnityInputSource`: точка переживает отпускание кнопки (пункт 1 заказчика).
 - [ ] **3.** `UnityInputSource`: `_engagedTarget` вместо `_abilityPressed`, повторные удары по кулдауну.
 - [ ] **4.** `UnityInputSource`: погоня без ограничения, отмена по команде движения.

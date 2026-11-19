@@ -1,7 +1,7 @@
 # ClientPipeline
 
 **Файл:** `src/Client.Network/ClientPipeline.cs`  
-**Размер:** 757 строк ≈ 8 705 токенов — читать целиком дорого, пользуйтесь этой карточкой.
+**Размер:** 824 строк ≈ 9 432 токенов — читать целиком дорого, пользуйтесь этой карточкой.
 
 **Назначение:** Клиентский конвейер: 20 Гц тик, ввод, предсказание, рендер.
 
@@ -10,7 +10,7 @@
 ## API (детерминированно из графа trail)
 
 ```
-- L14-L756  class ClientPipeline  public sealed class ClientPipeline : IDisposable
+- L14-L823  class ClientPipeline  public sealed class ClientPipeline : IDisposable
 - L54-L69  method ClientPipeline  public ClientPipeline(
 - L72-L72  variable EntityId  public uint EntityId { get; private set; }
 - L75-L75  variable HasSession  public bool HasSession { get; private set; }
@@ -51,13 +51,15 @@
 - L574-L594  method ApplyReceivedSnapshot  private void ApplyReceivedSnapshot(SimulationSnapshot snapshot)
 - L596-L630  method SyncPredictionFromSnapshot  private void SyncPredictionFromSnapshot(SimulationSnapshot snapshot)
 - L640-L677  method FindNearestEntity  public uint FindNearestEntity(uint excludeEntityId)
-- L679-L689  method RequestFullSnapshot  private void RequestFullSnapshot(bool force = false)
-- L691-L712  method TrimSnapshots  private void TrimSnapshots(uint currentTick)
-- L714-L727  method Reconcile  private void Reconcile(SimulationSnapshot snapshot, uint acknowledgedSequence)
-- L729-L735  method OnReconciled  private void OnReconciled(PredictionReconciliation reconciliation)
-- L737-L745  method OnTransportDisconnected  private void OnTransportDisconnected(string reason)
-- L747-L750  method ReadUInt32  private static uint ReadUInt32(byte[] buffer, int offset)
-- L752-L755  method ReadSingle  private static float ReadSingle(byte[] buffer, int offset)
+- L686-L717  method FindNearestEntityTo  public uint FindNearestEntityTo(Vector3 point, uint excludeEntityId)
+- L731-L744  method TryGetEntity  public bool TryGetEntity(uint entityId, out EntitySnapshot entity)
+- L746-L756  method RequestFullSnapshot  private void RequestFullSnapshot(bool force = false)
+- L758-L779  method TrimSnapshots  private void TrimSnapshots(uint currentTick)
+- L781-L794  method Reconcile  private void Reconcile(SimulationSnapshot snapshot, uint acknowledgedSequence)
+- L796-L802  method OnReconciled  private void OnReconciled(PredictionReconciliation reconciliation)
+- L804-L812  method OnTransportDisconnected  private void OnTransportDisconnected(string reason)
+- L814-L817  method ReadUInt32  private static uint ReadUInt32(byte[] buffer, int offset)
+- L819-L822  method ReadSingle  private static float ReadSingle(byte[] buffer, int offset)
 ```
 
 ## Как пользоваться

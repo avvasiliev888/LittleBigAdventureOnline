@@ -1,33 +1,39 @@
 # UnityInputSource
 
 **Файл:** `unity-client/Assets/Scripts/Input/UnityInputSource.cs`  
-**Размер:** 561 строк ≈ 6 959 токенов — читать целиком дорого, пользуйтесь этой карточкой.
+**Размер:** 754 строк ≈ 9 359 токенов — читать целиком дорого, пользуйтесь этой карточкой.
 
 **Назначение:** Ввод: WASD, клик-к-цели, способность, сброс при смерти/респавне.
 
-**Из кода:** Ввод: WASD + ПКМ (движение к курсору) → <see cref="MoveCommand"/>; Space/ЛКМ → <see cref="AbilityCommand"/> (M9/M10.10). Атака работает как авто-атака: пока клавиша/кнопка удерживается, на каждом кадре выставляется флаг, а клиентский тик отправляет способность, как только кулдаун равен 0 и текущий удар уже доиграл. Отпускание прекращает новые команды; короткий тап не теряется между тиками. Движение и атака не блокируют друг друга.
+**Из кода:** What the client knows about a locked target right now. /// Three different situations used to collapse into "not found", and they need three different reactions: a corpse ends the fight, a target that vanished from a delta tick must be ridden out, and a missing dependency must change nothing at all.
 
 ## API (детерминированно из графа trail)
 
 ```
-- L19-L560  class UnityInputSource  public sealed class UnityInputSource : IInputSource
-- L101-L135  method UnityInputSource  public UnityInputSource(
-- L147-L150  method SetScriptedCommandProvider  public void SetScriptedCommandProvider(Func<uint, ICommand?>? provider)
-- L156-L159  method CancelPointerDestination  public void CancelPointerDestination()
-- L175-L186  method ResetHeldInput  public void ResetHeldInput()
-- L188-L258  method PollFrame  public void PollFrame()
-- L261-L341  method TryReadCommand  public bool TryReadCommand(uint clientTick, out ICommand command)
-- L348-L374  method KeyboardDirection  private System.Numerics.Vector2 KeyboardDirection()
-- L381-L386  method CancelAttack  private void CancelAttack()
-- L388-L406  method ReadMovementDirection  private System.Numerics.Vector2 ReadMovementDirection()
-- L417-L453  method TryApproachStep  private bool TryApproachStep(uint clientTick, out ICommand command)
-- L460-L463  method IsStopped  private bool IsStopped()
-- L469-L473  method TryGetCursorPoint  public bool TryGetCursorPoint(out UnityVector3 point)
-- L480-L507  method PollMouseDestination  private bool PollMouseDestination()
-- L509-L529  method TryReadMouseDirection  private bool TryReadMouseDirection(out System.Numerics.Vector2 direction)
-- L531-L555  method TryGroundPoint  private bool TryGroundPoint(out UnityVector3 point)
-- L557-L557  method IsAttackPlaying  private bool IsAttackPlaying() => _isAttackPlaying != null && _isAttackPlaying();
-- L559-L559  method IsAbilityReady  private bool IsAbilityReady() => _isAbilityReady == null || _isAbilityReady();
+- L19-L29  enum AbilityTargetStatus  public enum AbilityTargetStatus
+- L38-L753  class UnityInputSource  public sealed class UnityInputSource : IInputSource
+- L149-L185  method UnityInputSource  public UnityInputSource(
+- L197-L200  method SetScriptedCommandProvider  public void SetScriptedCommandProvider(Func<uint, ICommand?>? provider)
+- L206-L209  method CancelPointerDestination  public void CancelPointerDestination()
+- L225-L232  method ResetHeldInput  public void ResetHeldInput()
+- L234-L314  method PollFrame  public void PollFrame()
+- L317-L436  method TryReadCommand  public bool TryReadCommand(uint clientTick, out ICommand command)
+- L443-L474  method ReadPlainMovement  private bool ReadPlainMovement(uint clientTick, out ICommand command)
+- L481-L507  method KeyboardDirection  private System.Numerics.Vector2 KeyboardDirection()
+- L517-L520  method CancelChase  private void CancelChase()
+- L527-L539  method ReleaseEngagement  private void ReleaseEngagement(bool clearDestination)
+- L546-L549  method TargetStatus  private AbilityTargetStatus TargetStatus(uint targetId)
+- L556-L573  method IsWithinReach  private bool IsWithinReach(uint targetId)
+- L575-L593  method ReadMovementDirection  private System.Numerics.Vector2 ReadMovementDirection()
+- L604-L631  method TryApproachStep  private bool TryApproachStep(uint clientTick, out ICommand command)
+- L638-L641  method IsStopped  private bool IsStopped()
+- L651-L651  variable EngagedTarget  public uint EngagedTarget => _engagedTarget;
+- L657-L661  method TryGetCursorPoint  public bool TryGetCursorPoint(out UnityVector3 point)
+- L677-L700  method PollMouseDestination  private bool PollMouseDestination()
+- L702-L722  method TryReadMouseDirection  private bool TryReadMouseDirection(out System.Numerics.Vector2 direction)
+- L724-L748  method TryGroundPoint  private bool TryGroundPoint(out UnityVector3 point)
+- L750-L750  method IsAttackPlaying  private bool IsAttackPlaying() => _isAttackPlaying != null && _isAttackPlaying();
+- L752-L752  method IsAbilityReady  private bool IsAbilityReady() => _isAbilityReady == null || _isAbilityReady();
 ```
 
 ## Как пользоваться

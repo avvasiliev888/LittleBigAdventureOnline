@@ -162,7 +162,8 @@ namespace Albion.Client
                 targetPosition: TargetPosition,
                 abilityRange: AbilityRange,
                 approachSlack: ApproachSlack(),
-                isStopped: IsPlayerStopped);
+                isStopped: IsPlayerStopped,
+                targetStatus: TargetStatus);
             _transport = new LiteNetLibTransport(host, port);
             _pipeline = new ClientPipeline(_transport, _input, _view, content: _content);
             gameObject.AddComponent<CooldownHud>().Initialize(_pipeline);
@@ -287,6 +288,23 @@ namespace Albion.Client
             return settings != null ? settings.ApproachSlack : 0f;
         }
 
+        /// <summary>
+        /// What the client knows about a target it holds an engagement against.
+        ///
+        /// Three cases have to be told apart, and only the snapshot can do it:
+        /// <c>Dead</c> — the enemy is out of Hp, so the fight is over and the character stands;
+        /// <c>Gone</c> — it is not in the snapshot at all, which a delta tick can cause for a
+        /// moment, so the engagement rides it out; <c>Unknown</c> — no pipeline yet, change
+        /// nothing. Collapsing these into a bool made the client either strike a corpse or drop a
+        /// live target on one dropped delta.
+        /// </summary>
+        private AbilityTargetStatus TargetStatus(uint entityId)
+        {
+            if (_pipeline == null) return AbilityTargetStatus.Unknown;
+            if (!_pipeline.TryGetEntity(entityId, out var entity)) return AbilityTargetStatus.Gone;
+            return entity.IsDead ? AbilityTargetStatus.Dead : AbilityTargetStatus.Alive;
+        }
+
         private void OnGroundClick(Vector3 point)
         {
             _view?.ShowClickMarker(point);
@@ -316,7 +334,7 @@ namespace Albion.Client
             // cooldown is the "attack actually started" signal. Requiring readiness avoids
             // restarting the swing on reconciliation jitter in the middle of a cooldown.
             if (cooldownBefore <= 1 && cooldownAfter > cooldownBefore + 1)
-                _view.TriggerAttack(_lastAbilityTarget);
+                _view.TriggerAttack(_input.EngagedTarget);
             UpdateFps();
 
             if (_cameraFollow != null && _cameraFollow.Target == null && _view.Player != null)

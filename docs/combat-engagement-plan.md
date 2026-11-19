@@ -187,14 +187,21 @@
 - [x] **1.** `ClientPipeline.TryGetEntity` + карточка `make_cards.py ClientPipeline`.
       Проверено: сборка `netstandard2.1` и `net10.0` — **0 ошибок, 0 предупреждений**;
       карточка пересобрана, `TryGetEntity` в ней на L55.
-- [ ] **2.** `UnityInputSource`: точка переживает отпускание кнопки (пункт 1 заказчика).
-- [ ] **3.** `UnityInputSource`: `_engagedTarget` вместо `_abilityPressed`, повторные удары по кулдауну.
-- [ ] **4.** `UnityInputSource`: погоня без ограничения, отмена по команде движения.
-- [ ] **5.** `UnityInputSource`: `ReleaseEngagement` — смерть цели, исчезновение, выход из радиуса.
-- [ ] **6.** `ClientRuntime.Update` → `_input.EngagedTarget`.
-- [ ] **7.** `Probe` на копии в `F:\dsh-tmp\` — `EXIT=0`, `error CS` нет.
+- [x] **2.** `UnityInputSource`: точка переживает отпускание кнопки (пункт 1 заказчика).
+      Сброс `_destinationActive` при отпускании убран; точка живёт до прибытия или
+      новой команды.
+- [x] **3.** `UnityInputSource`: `_engagedTarget` вместо `_abilityPressed`, повторные удары по кулдауну.
+      `AbilityCommand(_engagedTarget)` отправляется на каждом готовом тике.
+- [x] **4.** `UnityInputSource`: погоня без ограничения, отмена по команде движения.
+      `_chaseActive`, снимается `CancelChase()` по клику в мир и новому нажатию WASD.
+- [x] **5.** `UnityInputSource`: `ReleaseEngagement` — смерть цели, исчезновение, выход из радиуса.
+      `AbilityTargetStatus` (Dead/Gone/Unknown), `MissingTicksLimit = 20`.
+- [x] **6.** `ClientRuntime.Update` → `_input.EngagedTarget`.
+- [x] **7.** `Probe` на копии в `F:\dsh-tmp\` — `EXIT=0`, `error CS` нет.
+      **Пройдено:** `F:\dsh-tmp\engage1` (917 файлов), **EXIT=0**, `error CS` — **0**.
 - [ ] **8.** Сборка клиента — **только по прямой просьбе заказчика**.
-- [ ] **9.** Итог в `docs/warrior-animation-ledger.md` § 12 + обновить `AGENTS.md`.
+- [x] **9.** Итог в `docs/warrior-animation-ledger.md` § 12 + обновить `AGENTS.md`.
+      Журнал § 12 записан, `AGENTS.md` обновлён. Ручная проверка — за заказчиком.
 
 ---
 

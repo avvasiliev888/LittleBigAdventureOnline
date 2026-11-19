@@ -45,7 +45,10 @@ git cat-file -s ":путь/к/файлу.fbx"                      # ~131 бай
 виден лишь по `[diag]`-логу: bind pose `head=0,535 anchorY=0,793
 hipsRot=0,0,0,0,0,0` и `changes=1` у всех состояний.
 
-Актуальная тревога по этому поводу — `docs/warrior-animation-ledger.md` § 9.
+Бывшая тревога по этому поводу **закрыта замером 19.11.2026**
+(`docs/warrior-animation-ledger.md` § 9): после потери `internalID` в шести
+`BaseMale*.fbx.meta` все клипы разрешились — `isHuman=True empty=False`.
+Позиционное `7400000` работает и без таблицы. Не перепроверять.
 
 ## 3. `.meta` обязателен у каждого файла в `Assets`, включая скрипты
 

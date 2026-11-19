@@ -217,15 +217,23 @@ head=0,535  anchorY=0,793  hipsRot=0,0,0,0,0,0  meshMinY=-0,740
 
 | Инструмент | Что делает | Стоимость |
 |---|---|---|
-| `Albion/Characters/Probe Warrior Animation` | Печатает моушены всех состояний, импортёр, префаб, сокеты, настройки | ~11 мин, **без** пересборки клиента |
-| `Albion/Characters/Audit Animation Clips` | Метрики каждого клипа: длина, человеческий ли, диапазоны ключевых мышц | ~11 мин, без пересборки |
-| `Albion/Characters/Fix Warrior Animation Graph` | Пересобирает переходы и привязывает моушены | ~11 мин |
+| `Albion/Characters/Probe Warrior Animation` | Печатает моушены всех состояний, импортёр, префаб, сокеты, настройки | **замерено 19.11.2026: ~150 с** на чистой копии, без пересборки клиента |
+| `Albion/Characters/Audit Animation Clips` | Метрики каждого клипа: длина, человеческий ли, диапазоны ключевых мышц | ≈ `Probe` |
+| `Albion/Characters/Fix Warrior Animation Graph` | Пересобирает переходы и привязывает моушены | ≈ `Probe`, но **проверен плохо** — см. ниже |
 
-Все три — Editor-only, работают на копии в `%TEMP%` (живой проект нельзя,
-пока открыт редактор). Пересборка клиента нужна только для изменений
-в `Assets/Scripts/`.
+Все три — Editor-only, работают на **копии проекта** (живой нельзя, пока открыт
+редактор). Копию делать **на `F:`** (`F:\dsh-tmp\...`), не в `%TEMP%`: на `C:`
+свободно ~18 ГБ, и это уже давало оборванные и вводящие в заблуждение прогоны.
+Пересборка клиента нужна только для изменений в `Assets/Scripts/`.
 
-**Экономия:** проверять гипотезу через `Probe` (11 мин, только редактор)
+⚠ **`Fix` рапортует об успехе, не имея что писать.** Дважды подряд
+(`[warrior-graph] Rebuilt.`) он отрабатывал на копии **без папки `Assets`**
+и «пересобирал» несуществующий контроллер; один прогон закончился
+крахом Unity (`1073741845` = `0xC0000409`). Проверка: после любого `Fix`
+**перечитать ассет или прогнать `Probe`** — файл на диске должен измениться.
+Смотреть на `mtime` контроллера, а не на строку в логе.
+
+**Экономия:** проверять гипотезу через `Probe` (≈3 мин, только редактор)
 вместо `build-windows.ps1` (11 мин, полный клиент) — и обязательно **до** билда.
 
 ---
@@ -243,22 +251,61 @@ head=0,535  anchorY=0,793  hipsRot=0,0,0,0,0,0  meshMinY=-0,740
 
 ## 8. Что осталось открытым
 
-- `Dead` имеет клип, но `transitions=0` — по задумке держит последний кадр;
+Замер `Probe` 19.11.2026 подтвердил: граф собран верно, `transitions` ровно как
+описано ниже (`Dead`/`BowAim`/`BowIdle` — **0**, остальные — 1), все моушены
+живые (`isHuman=True empty=False`). То есть это **осознанный дизайн**, а не поломка.
+
+- `Dead` имеет клип `len=1,8`, `transitions=0` — держит последний кадр;
   проверить, что Animator действительно доходит до состояния.
-- `BowAim`/`BowIdle` тоже без переходов — их выбирает код, не граф.
-- Слой верхней части тела (`MaleUpperBody.mask`) для стрельбы на бегу не сделан.
+- `BowAim` (`len=3,767`) и `BowIdle` (`len=5,1`) тоже без переходов — их выбирает код, не граф.
+- Слой верхней части тела (`MaleUpperBody.mask`) для стрельбы на бегу не сделан
+  (`layer 'Base Layer' weight=1 mask=none` — единственный слой).
 - `WeaponKind.Shield` отсутствует.
 - Мобы — chibi-заглушки.
+- Ресурс `WarriorAnimatorSettings`: `Probe` показывает `prefab=NULL` в разделе
+  «SETTINGS ASSET» — либо не назначен, либо не нужен; выяснить при следующей правке.
 
 ---
 
-## 9. НЕ ПРОВЕРЕНО: потеря `internalID` в шести `.fbx.meta`
+## 9. ПРОВЕРЕНО 19.11.2026: потеря `internalID` БЕЗОБИДНА
 
-⚠ **Открытая тревога. Проверить `Probe` при следующей правке анимации.**
+✅ **Тревога закрыта замером, не рассуждением.** Итог: ссылки разрешаются.
 
-Зафиксировано в коммите `0e5caab`. Состояние на момент записи — **не проверено
-на практике**, это наблюдение по файлам, а не измеренный факт. Не считать
-доказанным ни в одну сторону.
+Зафиксировано в коммите `0e5caab`. Тогда это было наблюдение по файлам,
+а не измеренный факт. Ниже — результат `Probe` на копии проекта.
+
+**Как проверено.** Копия `unity-client` → `F:\dsh-tmp\probe9` (`robocopy`,
+без `Library`/`Temp`/`Logs`/`_Recovery`/`.utmp`; **917** файлов в `Assets`),
+затем `-executeMethod Albion.Editor.WarriorAnimationProbe.Probe`.
+Unity `6000.3.28f1`. Импорт с нуля — **~150 с**, лог **791 КБ**,
+`Exiting batchmode successfully`, return code 0.
+
+**Результат (раздел 1 «CLIPS INSIDE EACH FBX» и раздел 3 «CONTROLLER»).**
+Все пять «пострадавших» клипов разрешились — не `null`, не пустые:
+
+| Клип | Длина | `human` | `empty` | `motion` в графе |
+|---|---|---|---|---|
+| `1HWalkF` | 1,1 | True | False | — |
+| `1HAttack` | 0,7 | True | False | `AnimationClip` len=0,7, `isHuman=True` |
+| `1HCombatRunF` | 0,633 | True | False | — (в `Locomotion` BlendTree) |
+| `1HPain` | 0,5 | True | False | `AnimationClip` len=0,5, `isHuman=True` |
+| `1HDeathA` | 1,8 | True | False | `AnimationClip` len=1,8, `isHuman=True` |
+
+Плюс `1HIdle` (2,333) — тот, у которого `internalID` сохранился, — тоже `True/False`.
+
+**Вывод.** Гипотеза «без `internalID` Unity резолвит ссылку в `null`» **опровергнута**
+для `fileID: 7400000`: позиционное разрешение работает. Потеря `internalIDToNameTable`
+после `0e5caab` — косметическая, восстанавливать `.meta` из `HEAD~1` **не нужно**.
+Не путать с § 3: там `null` возникал не из-за отсутствия таблицы, а из-за
+ссылки на `7400000` там, где клип имеет нестандартный `internalID`
+(`1HIdle` = `1827226128182048838`) — и это единственный такой случай, у него поле на месте.
+
+**Побочная находка.** У `BaseMale@1HDeathA` импортёр показывает
+`clipAnimations=0`, но `defaultClipAnimations=1` — то есть клип берётся
+из default-секции, а не из переопределённой. Работает, но отличается от
+остальных пяти; при следующей правке импортёра — не «исправлять» вслепую.
+
+### Историческое описание (оставлено как след)
 
 **Что обнаружено.** После правки шести `BaseMale*.fbx.meta` в них исчезло
 поле `internalID` у части клипов:
@@ -287,22 +334,41 @@ Unity **молча** резолвила ссылку в `null`, и состоя�
 только клип с нестандартным внутренним ID — а он один (`1HIdle`), и у него
 поле на месте.
 
-**Как проверить (без полной сборки клиента, ~11 минут).**
+**Как проверить (без полной сборки клиента, ~3 минуты с нуля).**
 
 ```powershell
-# на копии проекта в %TEMP%, как описано в § 6
-& $unity -batchmode -quit -projectPath $copy `
+$src = 'F:\Projects\LittleBigAdventureOnline\unity-client'
+$copy = 'F:\dsh-tmp\probe9'          # НЕ %TEMP%: на C: свободно ~18 ГБ
+robocopy $src $copy /E /XD Library .utmp _Recovery .git obj Temp Logs Builds /NFL /NDL /NJH /NJS /NP
+# копия полна, если получилось 917 файлов:
+(Get-ChildItem "$copy\Assets" -Recurse -File).Count
+
+& 'N:\Program Files\Unity Hub\Editor\6000.3.28f1\Editor\Unity.exe' `
+  -batchmode -quit -projectPath $copy `
   -executeMethod Albion.Editor.WarriorAnimationProbe.Probe `
   -logFile "$copy\probe.log"
-# затем искать в логе строки [diag] и подпись bind pose
-Select-String -Path "$copy\probe.log" -Pattern '\[diag\]|head=|anchorY=|hipsRot=' |
-  Select-Object -First 40
+
+# не искать [diag] — Probe пишет блок между этими маркерами:
+$c = Get-Content "$copy\probe.log"
+$s = ($c | Select-String 'PROBE START' | Select-Object -First 1).LineNumber
+$e = ($c | Select-String 'PROBE END'   | Select-Object -First 1).LineNumber
+$c[($s-1)..($e-1)] | Select-Object -First 60
 ```
 
-**Что считать нормой.** Для каждого из пяти клипов в логе должно быть
-`changes` > 0 (кость реально двигается). Признак поломки — тот же, что в § 3:
-`head=0,535 anchorY=0,793 hipsRot=0,0,0,0,0,0` (bind pose) и `changes=1`
-у всех пяти состояний.
+**Три ловушки, стоившие времени 19.11.2026:**
 
-**Если подтвердится** — вернуть `internalIDToNameTable` (или перезалить `.meta`
-из `HEAD~1` и повторить импорт), затем перегенерировать контроллер.
+1. `%TEMP%` больше не использовать — на `C:` всего ~18 ГБ, копии живут на `F:`.
+2. `Start-Process`-обёртка возвращает управление **до** Unity: лог обрывается на
+   `Application.AssetDatabase Initial Refresh Start`, и это выглядит как падение.
+   Ждать `WaitForExit` процесса `Unity`, а не кода запуска.
+3. `Probe` пишет через `Debug.Log`, поэтому сообщение стоит **строкой выше**
+   трассировки `WarriorAnimationProbe:Probe`. Искать `PROBE START/END`, не `[diag]`.
+
+**Что считать нормой.** В разделе 3 «CONTROLLER» у состояния должны быть
+`motion=AnimationClip len=<не 0>` и `isHuman=True empty=False`.
+Признак поломки — `motion=NULL` или `empty=True`
+(симптом bind pose — § 3, подпись `head=0,535 anchorY=0,793`).
+
+**Что делать при подтверждении** — вернуть `internalIDToNameTable`
+(или перезалить `.meta` из `HEAD~1` и повторить импорт), затем перегенерировать
+контроллер. На 19.11.2026 подтверждения нет: всё разрешилось.

@@ -1,5 +1,12 @@
 fileFormatVersion: 2
 guid: 98730b7884f51c84daac95aa72960d91
+AssetOrigin:
+  serializedVersion: 1
+  productId: 44041
+  packageName: Female Warrior Princess
+  packageVersion: 3.0
+  assetPath: Assets/AllStarCharacterLibrary/Models/RootAnimsMale/BaseMale.fbx
+  uploadId: 335979
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable:
@@ -353,7 +360,7 @@ ModelImporter:
     second: //RootNode
   externalObjects: {}
   materials:
-    materialImportMode: 0
+    materialImportMode: 1
     materialName: 0
     materialSearch: 1
     materialLocation: 0
@@ -591,7 +598,7 @@ ModelImporter:
     blendShapeNormalImportMode: 1
     normalSmoothingSource: 0
   referencedClips: []
-  importAnimation: 0
+  importAnimation: 1
   humanDescription:
     serializedVersion: 3
     human:

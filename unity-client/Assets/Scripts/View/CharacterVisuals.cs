@@ -25,8 +25,11 @@ namespace Albion.Client
 
         [Header("Animator states (leave empty if the controller uses parameters only)")]
         [SerializeField] private string idleState = "Idle";
-        [SerializeField] private string walkState = "Walk";
-        [SerializeField] private string runState = "Run";
+        // The controller has ONE locomotion state, driven by a Walk/Run blend tree; there is no
+        // separate "Walk" or "Run" state. Asking for those hashed to nothing, HasState returned
+        // false, and the legs stayed in the idle pose while the root slid across the map.
+        [SerializeField] private string walkState = "Locomotion";
+        [SerializeField] private string runState = "Locomotion";
         [SerializeField] private string attackState = "Attack";
         [SerializeField] private string hitState = "Hit";
         [SerializeField] private string deathState = "Dead";
@@ -34,6 +37,22 @@ namespace Albion.Client
         // Must cover the authored 1H_Melee_Attack_Chop clip (~1.07 s); 0.45 s cut the swing
         // almost immediately and looked like a twitch.
         [SerializeField] private float attackDuration = 1.0f;
+
+        // How long the pose watch keeps re-entering the current state after the weapon hierarchy
+        // changes. Slots are instantiated and toggled over a few frames, and each change drops the
+        // rig to the bind pose; a second covers that window with margin without costing anything
+        // once it removes itself.
+        private const float PoseWatchSeconds = 1.0f;
+
+        // Locomotion hysteresis. The measured speed is a per-frame displacement divided by frame
+        // time, so it jitters; separate start/stop thresholds plus a short dwell stop Idle and
+        // Locomotion from trading places every frame.
+        private const float StartSpeed = 0.35f;
+        private const float StopSpeed = 0.1f;
+        private const float LocomotionDwellSeconds = 0.18f;
+
+        private bool _locomotionMoving;
+        private float _locomotionChangedAt = -1f;
 
         [Header("Weapon mount calibration")]
         [SerializeField] private Vector3 weaponLocalPosition;
@@ -54,41 +73,36 @@ namespace Albion.Client
         private int _attackIndex;
         private string _lastAttackState = string.Empty;
 
-        private static readonly string[] SwordCombo =
-        {
-            // Диагональный разрез читается как удар клинком: рубящий Chop первым кадром
-            // уводил корпус вперёд и выглядел как удар головой.
-            "1H_Melee_Attack_Slice_Diagonal",
-            "1H_Melee_Attack_Chop",
-            "1H_Melee_Attack_Slice_Horizontal",
-            "1H_Melee_Attack_Stab",
-        };
+        /// <summary>
+        /// How long the stagger reaction owns the character. Must cover the clip, or a second
+        /// damage event restarts it and the flinch visibly repeats while the player keeps moving.
+        /// </summary>
+        private const float HitReactionSeconds = 0.6f;
 
-        private static readonly string[] AxeCombo =
-        {
-            "1H_Melee_Attack_Chop",
-            "1H_Melee_Attack_Slice_Horizontal",
-            "1H_Melee_Attack_Slice_Diagonal",
-        };
+        // Every melee combo resolves to the ONE attack state the controller actually has.
+        // These arrays previously held KayKit clip names ("1H_Melee_Attack_Chop" and friends)
+        // that exist nowhere in WarriorLocomotion.controller. PlayState checks HasState, found
+        // nothing, and returned — so pressing attack did literally nothing: no clip, no error,
+        // just the character frozen in whatever pose it was already in.
+        private static readonly string[] SwordCombo = { "Attack" };
 
-        private static readonly string[] DaggerCombo =
-        {
-            "1H_Melee_Attack_Stab",
-            "1H_Melee_Attack_Chop",
-            "1H_Melee_Attack_Slice_Diagonal",
-        };
+        private static readonly string[] AxeCombo = { "Attack" };
 
+        private static readonly string[] DaggerCombo = { "Attack" };
+
+        // Must match the state names AlbionBowAnimationSetup writes into the controller. The old
+        // entries ("1H_Ranged_Shoot" / "1H_Ranged_Shooting") were leftover KayKit names that exist
+        // nowhere in the project, so the Animator silently failed to find them and the bow never
+        // fired. Named as literals, not shared constants: that setup script is editor-only and
+        // runtime code cannot reference it.
         private static readonly string[] BowCombo =
         {
-            "1H_Ranged_Shoot",
-            "1H_Ranged_Shooting",
+            "BowShoot",
         };
 
-        private static readonly string[] StaffCombo =
-        {
-            "Spellcast_Shoot",
-            "Spellcast_Long",
-        };
+        // The controller has no spellcast states either; staff falls back to the melee swing
+        // rather than asking for a state that does not exist.
+        private static readonly string[] StaffCombo = { "Attack" };
 
         [Serializable]
         public sealed class WeaponBinding
@@ -270,7 +284,9 @@ namespace Albion.Client
             {
                 if (!wasDead)
                 {
-                    SetBool(DeadParameter, true);
+                    // PlayState is the only path. Setting the Dead bool as well would fire the
+                    // AnyState -> Dead transition on top of the direct Play, and the two entry
+                    // points restarted the clip against each other.
                     PlayState(deathState, 0.1f, true);
                 }
                 return;
@@ -300,14 +316,57 @@ namespace Albion.Client
             if (_attackQueuedHit)
             {
                 _attackQueuedHit = false;
-                _hitUntil = Time.time + 0.22f;
+                _hitUntil = Time.time + HitReactionSeconds;
                 SetTrigger(HitParameter);
-                PlayState(hitState, 0.06f, true);
                 return;
             }
 
-            if (speed <= 0.1f) PlayState(idleState, 0.12f, false);
-            else PlayState(speed >= runSpeedThreshold ? runState : walkState, 0.12f, false);
+            PlayLocomotionWithHysteresis(speed);
+        }
+
+        /// <summary>
+        /// Chooses the locomotion state with hysteresis, so a speed hovering at the threshold cannot
+        /// alternate states every frame.
+        ///
+        /// The old test was a bare "speed <= 0.1f", and the speed handed in is a per-frame
+        /// displacement divided by the frame time — it naturally jitters around any fixed cutoff.
+        /// The log caught Idle and Locomotion trading places 747 times in one session (about 25 per
+        /// second, i.e. almost every frame), which restarted the clip constantly: the legs never
+        /// advanced, the body appeared to slide without striding, and everything parented to a bone
+        /// (weapon slots included) visibly flickered between poses.
+        ///
+        /// Start and stop therefore use different thresholds, plus a minimum time in state. Once
+        /// moving, the character keeps moving until it is clearly stopped; once stopped, it needs
+        /// clearly more than noise before it walks again.
+        /// </summary>
+        private void PlayLocomotionWithHysteresis(float speed)
+        {
+            var moving = _locomotionMoving;
+            if (moving)
+            {
+                if (speed < StopSpeed) moving = false;
+            }
+            else if (speed > StartSpeed)
+            {
+                moving = true;
+            }
+
+            // A state that was just entered is held briefly. Without this the very next frame can
+            // undo the switch, and the cross-fade never completes — the pose is stuck between two
+            // clips, which reads as a body that is not animating at all.
+            if (moving != _locomotionMoving
+                && Time.time - _locomotionChangedAt < LocomotionDwellSeconds)
+            {
+                moving = _locomotionMoving;
+            }
+
+            if (moving != _locomotionMoving)
+            {
+                _locomotionMoving = moving;
+                _locomotionChangedAt = Time.time;
+            }
+
+            PlayState(moving ? walkState : idleState, 0.12f, false);
         }
 
         /// <summary>Immediately turns the visual to a horizontal direction (combat facing).</summary>
@@ -367,9 +426,20 @@ namespace Albion.Client
             var controller = animator != null ? animator.runtimeAnimatorController : null;
             if (controller != null)
             {
-                foreach (var clip in controller.animationClips)
+                var clips = controller.animationClips;
+                foreach (var clip in clips)
                 {
                     if (clip != null && clip.name == stateName) return clip.length;
+                }
+
+                // Clip names differ from state names: the "Attack" state plays a clip called
+                // "1HAttack", "Dead" plays "1HDeathA". Falling back to a flat attackDuration
+                // kept the character locked in the swing (or never released) for every state.
+                foreach (var clip in clips)
+                {
+                    if (clip == null) continue;
+                    if (clip.name.IndexOf(stateName, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return clip.length;
                 }
             }
             return attackDuration;
@@ -385,9 +455,13 @@ namespace Albion.Client
                 _attackQueuedHit = true;
                 return;
             }
-            _hitUntil = Time.time + 0.22f;
+            // The ANYSTATE -> Hit transition is the only entry point. Firing the trigger AND
+            // calling Play restarted the clip against itself, which is why one hit looked like
+            // two very fast reactions. While the reaction plays it must not be re-entered at
+            // all: repeated HP deltas used to restart it on every snapshot while moving.
+            if (Time.time < _hitUntil) return;
+            _hitUntil = Time.time + HitReactionSeconds;
             SetTrigger(HitParameter);
-            PlayState(hitState, 0.06f, true);
         }
 
         /// <summary>
@@ -397,6 +471,12 @@ namespace Albion.Client
         /// </summary>
         public void Equip(WeaponKind kind)
         {
+            // UnityView calls this on EVERY snapshot (ApplyWeapon), several times per second.
+            // Without this guard the slot SetActive calls — and the pose restore that follows them
+            // — ran continuously, so the rig was re-entered and re-bound constantly instead of
+            // once. WeaponVisuals.Equip has had the same guard for a while.
+            if (_equipped == kind && _weaponSlotsBuilt) return;
+
             HideEmbeddedEquipment();
             BuildWeaponSlots();
 
@@ -412,6 +492,84 @@ namespace Albion.Client
             _lastAttackState = string.Empty;
             if (!target.HasValue)
                 Debug.LogWarning("CharacterVisuals: no authored binding for " + kind + "; character stays unarmed.", this);
+            else
+            {
+                RestorePose();
+                WatchPose();
+            }
+        }
+
+        /// <summary>
+        /// Re-applies the current state after a weapon slot was parented into the rig.
+        ///
+        /// Adding a transform under an animated hierarchy makes Unity fall back to the bind pose,
+        /// and the Animator keeps advancing its own clock without rewriting the bones.
+        ///
+        /// This must NOT call Animator.Play. Play enters a state directly, bypassing transitions,
+        /// so replaying the state that happened to be current restarted a one-shot forever: with a
+        /// sword equipped the character sat in Attack at normalizedTime 0,01 for the whole session
+        /// (59 consecutive log rows) because Equip runs on every snapshot and re-entered the swing
+        /// before it could reach its exit transition. Rebinding instead re-evaluates the graph from
+        /// its own parameters, which is what the state machine needs.
+        /// </summary>
+        private void RestorePose()
+        {
+            if (animator == null || animator.runtimeAnimatorController == null) return;
+            if (!animator.isActiveAndEnabled) return;
+            animator.Rebind();
+            animator.Update(0f);
+        }
+
+        /// <summary>
+        /// Keeps the rig posed for a few frames after the weapon hierarchy changed.
+        ///
+        /// Restoring the pose once, at the end of Equip, was not enough: the slots are built and
+        /// toggled over several frames (BuildWeaponSlots instantiates them, then Equip calls
+        /// SetActive on each), and EVERY such change under an animated hierarchy drops the rig back
+        /// to the bind pose. The in-game log caught the result — hips frozen at -0,083 with every
+        /// rotation exactly zero while normalizedTime kept running.
+        ///
+        /// The watch runs in LateUpdate, after the Animator has evaluated, so a bind pose written
+        /// this frame is repaired before rendering. Once the deadline passes it removes itself, so
+        /// steady-state cost is zero.
+        /// </summary>
+        private sealed class PoseWatch : MonoBehaviour
+        {
+            private CharacterVisuals _owner;
+            private float _until;
+
+            public void Configure(CharacterVisuals owner, float seconds)
+            {
+                _owner = owner;
+                _until = Time.time + seconds;
+            }
+
+            private void LateUpdate()
+            {
+                if (_owner == null)
+                {
+                    Destroy(this);
+                    return;
+                }
+
+                _owner.RestorePose();
+
+                if (Time.time < _until) return;
+                Destroy(this);
+            }
+        }
+
+        /// <summary>Arms the pose watch for the frames in which weapon slots are being wired.</summary>
+        private void WatchPose()
+        {
+            if (animator == null) return;
+            var existing = animator.GetComponent<PoseWatch>();
+            if (existing != null)
+            {
+                existing.Configure(this, PoseWatchSeconds);
+                return;
+            }
+            animator.gameObject.AddComponent<PoseWatch>().Configure(this, PoseWatchSeconds);
         }
 
         private void BuildWeaponSlots()
@@ -447,9 +605,11 @@ namespace Albion.Client
                     hasBindingCalibration ? binding.LocalEuler : weaponLocalEuler);
                 slot.transform.localScale = hasBindingCalibration
                     ? binding.LocalScale : weaponLocalScale;
-                if (binding.Kind == WeaponKind.Bow)
+                if (binding.Kind == WeaponKind.Bow && !hasBindingCalibration)
                 {
-                    // Лук в левой руке развёрнут тетивой к стрелку: ствол смотрит вперёд по -Z.
+                    // Fallback only: the authored binding above already carries the full
+                    // calibration (it includes the 90 deg string line). Adding this on top of
+                    // authored values would double the turn and break the grip.
                     slot.transform.localRotation *= Quaternion.Euler(0f, 90f, 0f);
                 }
 

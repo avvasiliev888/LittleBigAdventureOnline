@@ -12,17 +12,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fbffc42fe38f15f43a0f119fb26ecbfe, type: 3}
   m_Name: WarriorVisual
   m_EditorClassIdentifier: Assembly-CSharp::Albion.Client.CharacterVisualSettings
-  Prefab: {fileID: 2663770890429336008, guid: 4e3bab902af58d7478841866a59e4af2, type: 3}
-  Controller: {fileID: 9100000, guid: 0e3b4ded7b9d59942b26a38b788bfb61, type: 2}
+  Prefab: {fileID: 1052260892624195920, guid: 2412842cc3a084a47875ca148fe77039, type: 3}
+  Controller: {fileID: 9100000, guid: df63136e924820541b6ba64e6e7d516c, type: 2}
   Height: 1.95
   Yaw: 0
   GroundOffset: 0
+  BowHandRoll: 90
+  BowHeadTurn: -82.16
   Weapons:
   - Kind: 1
     Prefab: {fileID: 5819914424028908077, guid: b96ce2810d0c9c34f994bb8e289d7ce9, type: 3}
-    LocalPosition: {x: 0, y: 0, z: 0}
-    LocalEuler: {x: 0, y: 0, z: 0}
-    LocalScale: {x: 0.85, y: 0.85, z: 0.85}
+    LocalPosition: {x: -0.01, y: -0.14, z: -0.04}
+    LocalEuler: {x: 0, y: 0, z: 90}
+    LocalScale: {x: 1, y: 1, z: 1}
   - Kind: 2
     Prefab: {fileID: 1440099485981824612, guid: a92ad1d0d20473b45b193ff9d87f379f, type: 3}
     LocalPosition: {x: 0, y: 0, z: 0}
@@ -30,9 +32,9 @@ MonoBehaviour:
     LocalScale: {x: 0.9, y: 0.9, z: 0.9}
   - Kind: 3
     Prefab: {fileID: 2457236870587443505, guid: f02b8ee17fd0e894383d571358f08e89, type: 3}
-    LocalPosition: {x: 0, y: 0, z: 0}
-    LocalEuler: {x: 0, y: 0, z: 0}
-    LocalScale: {x: 0.9, y: 0.9, z: 0.9}
+    LocalPosition: {x: 0.09, y: 0.12, z: -0.15}
+    LocalEuler: {x: 90, y: 90, z: -95}
+    LocalScale: {x: 1, y: 1, z: 1}
   - Kind: 4
     Prefab: {fileID: 6334354293856962084, guid: 7e9f9d4ad9782a74bb6f4264799ef7b9, type: 3}
     LocalPosition: {x: 0, y: 0, z: 0}

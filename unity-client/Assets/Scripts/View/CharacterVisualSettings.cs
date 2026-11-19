@@ -16,6 +16,10 @@ namespace Albion.Client
         [Min(0.1f)] public float Height = 1.95f;
         public float Yaw;
         public float GroundOffset;
+        [Tooltip("Degrees the bow-holding wrist is rolled about the forearm axis (preview-calibrated).")]
+        public float BowHandRoll = 90f;
+        [Tooltip("Degrees the head is turned toward the bow (preview-calibrated).")]
+        public float BowHeadTurn = -82.16f;
         [Tooltip("Authored weapon prefabs, one entry per WeaponKind. Pivots must be at the grip.")]
         public CharacterVisuals.WeaponBinding[] Weapons = Array.Empty<CharacterVisuals.WeaponBinding>();
 
@@ -90,6 +94,13 @@ namespace Albion.Client
                 -(bounds.min.x + bounds.max.x) * 0.5f * scale,
                 -bounds.min.y * scale + GroundOffset,
                 -(bounds.min.z + bounds.max.z) * 0.5f * scale);
+            // Grounding is re-solved every frame: one-shot clips move the hips, and the offset
+            // computed here from the rest pose would leave the body sunk into the floor.
+            var anchor = calibration.gameObject.AddComponent<GroundAnchor>();
+            anchor.Configure(visual.transform, calibration, animator, GroundOffset, Height, scale);
+            // Solve once immediately so the first drawn frame is already grounded instead of
+            // popping down on the next LateUpdate.
+            anchor.Ground();
 
             foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
             {
@@ -97,13 +108,20 @@ namespace Albion.Client
                 renderer.receiveShadows = true;
             }
 
+            // Weapon slots are parented into the hand during the next frames. The pose is only
+            // meaningful once that assembly settles, so the pose log stays quiet until then.
+            WarriorDiagnostics.Pause();
             animator.enabled = true;
             var character = visual.GetComponent<CharacterVisuals>()
                 ?? visual.GetComponentInChildren<CharacterVisuals>(true)
                 ?? visual.AddComponent<CharacterVisuals>();
             character.Initialize(facing, animator, animator.runtimeAnimatorController);
             character.SetWeapons(Weapons);
+            AttachAimPose(visual, animator, character);
+            AttachDiagnostics(visual, animator, calibration);
             HealthBar.Attach(root, Height + GroundOffset);
+            // Resume on the next frame, after the animator has produced a real pose.
+            root.gameObject.AddComponent<DiagnosticsResume>();
             return root;
         }
 
@@ -140,6 +158,10 @@ namespace Albion.Client
                 -(bounds.min.x + bounds.max.x) * 0.5f * scale,
                 -bounds.min.y * scale + GroundOffset,
                 -(bounds.min.z + bounds.max.z) * 0.5f * scale);
+            var anchor = calibration.gameObject.AddComponent<GroundAnchor>();
+            anchor.Configure(visual.transform, calibration, visual.GetComponent<Animator>(),
+                GroundOffset, Height, scale);
+            anchor.Ground();
             foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
             {
                 renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
@@ -164,8 +186,33 @@ namespace Albion.Client
             return root;
         }
 
-        private static void DisablePhysics(GameObject visual)
+        /// <summary>
+        /// Installs the per-frame aim corrections (wrist roll + head turn) that the preview window
+        /// calibrated. Skipped entirely when both values are zero, so characters that never aim pay
+        /// nothing for it.
+        /// </summary>
+        private void AttachAimPose(GameObject visual, Animator animator, CharacterVisuals character)
         {
+            if (Mathf.Abs(BowHandRoll) < 0.01f && Mathf.Abs(BowHeadTurn) < 0.01f) return;
+            var pose = visual.GetComponent<CharacterAimPose>() ?? visual.AddComponent<CharacterAimPose>();
+            // The bow slot is located lazily each frame, because Equip() may not have run yet here
+            // and the slot is rebuilt whenever the loadout changes.
+            pose.Configure(animator, null, BowHandRoll, BowHeadTurn);
+        }
+
+        /// <summary>
+        /// Turns on the pose logger: one line every half second in Player.log with the active
+        /// Animator state, bone heights and any weapon teleports. Animation bugs on an imported
+        /// rig cannot be judged from the pivot alone — bone positions are the only evidence.
+        /// </summary>
+        private static void AttachDiagnostics(GameObject visual, Animator animator, Transform calibration)
+        {
+            var diagnostics = visual.GetComponent<WarriorDiagnostics>()
+                ?? visual.AddComponent<WarriorDiagnostics>();
+            diagnostics.Configure(animator, calibration);
+        }
+
+        private static void DisablePhysics(GameObject visual)        {
             foreach (var item in visual.GetComponentsInChildren<Animator>(true))
             {
                 item.applyRootMotion = false;
@@ -183,12 +230,19 @@ namespace Albion.Client
         {
             var min = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
             var max = new Vector3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
+            var lowest = float.PositiveInfinity;
+            var lowestSource = "-";
             var skins = visual.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             var mesh = new Mesh();
             try
             {
                 foreach (var skin in skins)
                 {
+                    if (skin.sharedMesh == null) continue;
+                    // A mounted weapon is parented to the hand, so it counts as "geometry" and a
+                    // resting bow hangs BELOW the feet. Grounding on that lifted the whole body
+                    // off the floor — the character appeared to hover with tucked legs.
+                    if (IsMountedEquipment(skin.transform)) continue;
                     skin.enabled = true;
                     skin.BakeMesh(mesh, false);
                     foreach (var vertex in mesh.vertices)
@@ -196,6 +250,11 @@ namespace Albion.Client
                         var point = root.InverseTransformPoint(skin.transform.TransformPoint(vertex));
                         min = Vector3.Min(min, point);
                         max = Vector3.Max(max, point);
+                        if (point.y < lowest)
+                        {
+                            lowest = point.y;
+                            lowestSource = Path(skin.transform, visual.transform);
+                        }
                     }
                     mesh.Clear();
                 }
@@ -205,16 +264,177 @@ namespace Albion.Client
             foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
             {
                 if (renderer is SkinnedMeshRenderer || renderer.bounds.size == Vector3.zero) continue;
+                if (IsMountedEquipment(renderer.transform)) continue;
                 var b = renderer.bounds;
                 foreach (var corner in Corners(b))
                 {
                     var point = root.InverseTransformPoint(corner);
                     min = Vector3.Min(min, point);
                     max = Vector3.Max(max, point);
+                    if (point.y < lowest)
+                    {
+                        lowest = point.y;
+                        lowestSource = Path(renderer.transform, visual.transform) + " [static]";
+                    }
                 }
             }
 
+            if (!float.IsFinite(min.y) || !float.IsFinite(max.y))
+                throw new InvalidOperationException("Character has no measurable geometry; check the prefab.");
+
+            LowestSource = lowestSource;
             return (min, max);
+        }
+
+        /// <summary>Which object the last <see cref="Measure"/> call found lowest.</summary>
+        private static string LowestSource = "-";
+
+        /// <summary>Hierarchy path of a transform, so the log says exactly which object was lowest.</summary>
+        private static string Path(Transform item, Transform stopAt)
+        {
+            var builder = new System.Text.StringBuilder(item.name);
+            for (var current = item.parent; current != null && current != stopAt; current = current.parent)
+            {
+                builder.Insert(0, current.name + "/");
+            }
+            return builder.ToString();
+        }
+
+        /// <summary>
+        /// Re-anchors the visual to the ground on the pose that is CURRENTLY displayed.
+        ///
+        /// The startup offset is computed once, from the rest pose. One-shot clips (attack, hit,
+        /// death) lower the hips or shift the body, and the Animator writes those bones straight
+        /// onto the hierarchy — so the model sinks through the floor while the clip plays and stays
+        /// there afterwards. Recomputing every frame keeps the feet on the ground regardless of
+        /// what the clip does.
+        /// </summary>
+        /// <summary>
+        /// Re-enables the pose log one frame after the character was built, once the animator has
+        /// written a real pose. Sampling earlier reported the half-assembled rig.
+        /// </summary>
+        private sealed class DiagnosticsResume : MonoBehaviour
+        {
+            private int _frames;
+
+            private void LateUpdate()
+            {
+                if (++_frames < 2) return;
+                WarriorDiagnostics.Resume();
+                Destroy(this);
+            }
+        }
+
+        private sealed class GroundAnchor : MonoBehaviour
+        {
+            private Transform _visual;
+            private Transform _calibration;
+            private Animator _animator;
+            private Transform _leftFoot;
+            private Transform _rightFoot;
+            /// <summary>Distance from the foot bone down to the sole, in calibration local units.</summary>
+            private float _soleDrop;
+            private float _offset;
+            private float _height;
+            private float _scale;
+
+            public void Configure(Transform visual, Transform calibration, Animator animator,
+                float offset, float height, float scale)
+            {
+                _visual = visual;
+                _calibration = calibration;
+                _animator = animator;
+                _offset = offset;
+                _height = height;
+                _scale = scale;
+
+                // The sole offset is measured ONCE, from the rest pose, by comparing the foot bone
+                // against the lowest body vertex. Thereafter grounding only looks at the foot
+                // bones, so a hanging sword, a bow or a cape can never lift the character.
+                if (_animator != null && _animator.isHuman)
+                {
+                    _leftFoot = _animator.GetBoneTransform(HumanBodyBones.LeftFoot);
+                    _rightFoot = _animator.GetBoneTransform(HumanBodyBones.RightFoot);
+                }
+
+                if (_leftFoot == null || _rightFoot == null || _calibration == null) return;
+                var bounds = Measure(visual.gameObject, _calibration);
+                var restFoot = LowestFootY();
+                if (!float.IsNaN(restFoot)) _soleDrop = restFoot - bounds.min.y;
+            }
+
+            private void LateUpdate()
+            {
+                // Deliberately does NOT call _animator.Update(0): forcing the animator through a
+                // zero-length step from LateUpdate left it pinned on the bind pose as soon as a
+                // weapon slot was parented into the hierarchy, which is exactly the "hovers with
+                // tucked legs, identical numbers every frame" pose the player saw.
+                Ground();
+            }
+
+            /// <summary>Re-solves the vertical anchor from the pose currently on the bones.</summary>
+            public void Ground()
+            {
+                if (_visual == null || _calibration == null) return;
+
+                var basePosition = _calibration.localPosition;
+
+                if (_leftFoot != null && _rightFoot != null)
+                {
+                    var foot = LowestFootY();
+                    if (!float.IsNaN(foot))
+                    {
+                        // Feet, not geometry: the lowest sole is placed on the ground.
+                        basePosition.y = -((foot - _soleDrop) * _scale) + _offset;
+                        _calibration.localPosition = basePosition;
+                        WarriorDiagnostics.GroundMinY = foot - _soleDrop;
+                        WarriorDiagnostics.GroundMinSource = "footBones";
+                        return;
+                    }
+                }
+
+                // Fallback for rigs without usable foot bones: measure the body geometry, with
+                // mounted weapons excluded.
+                var bounds = Measure(_visual.gameObject, _calibration);
+                // Only the vertical anchor moves; X/Z centring was correct at startup.
+                basePosition.y = -bounds.min.y * _scale + _offset;
+                _calibration.localPosition = basePosition;
+                // Published so the pose log can show whether grounding, not the clip, is what
+                // lifts the body off the floor.
+                WarriorDiagnostics.GroundMinY = bounds.min.y;
+                WarriorDiagnostics.GroundMinSource = LowestSource;            }
+
+            /// <summary>Height of the lowest foot bone in calibration-local units.</summary>
+            private float LowestFootY()
+            {
+                if (_calibration == null) return float.NaN;
+                var left = float.PositiveInfinity;
+                var right = float.PositiveInfinity;
+                if (_leftFoot != null)
+                    left = _calibration.InverseTransformPoint(_leftFoot.position).y;
+                if (_rightFoot != null)
+                    right = _calibration.InverseTransformPoint(_rightFoot.position).y;
+                var lowest = Mathf.Min(left, right);
+                return float.IsNaN(lowest) || float.IsInfinity(lowest) ? float.NaN : lowest;
+            }
+        }
+
+        /// <summary>
+        /// True for a transform that belongs to a mounted weapon rather than the body. These must
+        /// never influence grounding: a hanging bow or a lowered blade reaches below the feet and
+        /// would lift the whole character off the floor.
+        /// </summary>
+        private static bool IsMountedEquipment(Transform transform)
+        {
+            for (var current = transform; current != null; current = current.parent)
+            {
+                if (current.name.StartsWith("Weapon ", StringComparison.Ordinal)
+                    || current.name.StartsWith("WeaponSlot_", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static Vector3[] Corners(Bounds bounds)

@@ -133,6 +133,27 @@ namespace Albion.Client
             _destinationActive = false;
         }
 
+        /// <summary>
+        /// Drops every held movement input: the click-to-move destination AND the held ability key.
+        ///
+        /// Death and respawn must both call this. A player who dies (or respawns) while still
+        /// holding the right mouse button keeps a live destination, so the very next tick after
+        /// respawn sends a MoveCommand and the character runs off on its own — for as long as the
+        /// button is down, which the player reads as "runs right forever until I press something".
+        /// The destination was recorded against the OLD position, so its direction is arbitrary and
+        /// typically points away from the spawn point.
+        ///
+        /// Held keys are intentionally not consulted here: this is called once on the death/respawn
+        /// edge, and the player must re-press to move again. Guessing "they probably still hold it"
+        /// is exactly what produced the runaway.
+        /// </summary>
+        public void ResetHeldInput()
+        {
+            _destinationActive = false;
+            _destination = UnityVector3.zero;
+            _abilityPressed = false;
+        }
+
         public void PollFrame()
         {
             var touchAttack = _touchAttack != null && _touchAttack();
@@ -183,6 +204,16 @@ namespace Albion.Client
                 _sequence++;
                 command = new AbilityCommand(_abilityTarget(), clientTick, _sequence);
                 return true;
+            }
+
+            // A one-shot attack or shot owns the character: the legs are planted in the clip, so
+            // sending a move command here made the body slide across the ground with its feet in
+            // a shooting pose — the "floats without running" symptom. Standing still for the
+            // length of the clip, then continuing, is what the animation is authored for.
+            if (IsAttackPlaying())
+            {
+                command = null;
+                return false;
             }
 
             var direction = ReadMovementDirection();

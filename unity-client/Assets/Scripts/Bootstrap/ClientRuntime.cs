@@ -240,6 +240,14 @@ namespace Albion.Client
                 return;
             }
 
+            // Death/respawn edge: drop held movement input before the pipeline reads a command.
+            // Without this the destination recorded before death stayed live, and the character
+            // ran off on its own right after respawn until the player pressed something.
+            if (_view != null && _view.ConsumePlayerRespawnEdge())
+            {
+                _input.ResetHeldInput();
+            }
+
             _input.PollFrame();
             var cooldownBefore = _pipeline.Prediction?.CooldownRemainingTicks ?? 0;
             _pipeline.Update(Time.deltaTime);

@@ -21,6 +21,16 @@ namespace Albion.Client
         // not a stride. This never clamps, changes, or predicts the entity's position.
         private const float AnimationDiscontinuitySpeed = 2f * TickRate;
 
+        // Frames an entity visual may be absent from the sampled snapshots before it is destroyed.
+        // Half a second at 60 fps: long enough to survive interpolation gaps while a body is being
+        // created, short enough that a despawned player is not left standing in the world.
+        private const int MissingEntityGraceFrames = 30;
+
+        // Fastest legitimate ground speed in this game. A per-frame displacement implying more than
+        // this is a resumed frame (spawn, respawn, tab focus) or a correction, not a stride; the log
+        // caught Idle being handed 29,44 m/s from such a frame.
+        private const float MaxSpeed = 12f;
+
 
         private readonly SnapshotBuffer _buffer = new SnapshotBuffer(8);
         private readonly Transform _root;
@@ -38,6 +48,12 @@ namespace Albion.Client
             public bool WasDead;
             public bool UsedPrediction;
             public int LastHp;
+            /// <summary>
+            /// Last Render call in which this entity appeared in the sampled snapshot. Used to
+            /// retire visuals whose entity left the world (despawn, disconnect, respawn with a new
+            /// id); nothing else removed them, so they stayed in the scene forever.
+            /// </summary>
+            public int LastSeenFrame;
         }
 
         private readonly Dictionary<uint, EntityVisual> _entities = new Dictionary<uint, EntityVisual>();
@@ -56,7 +72,12 @@ namespace Albion.Client
         private Vector3 _predictedPosition;
         private Vector3 _predictionVelocity;
         private Vector3 _displayPosition;
+        // Death/respawn bookkeeping for the input reset: the view is the only place that sees the
+        // authoritative IsDead flag, so the edge is derived here and consumed once by the caller.
+        private bool _playerKnownDead;
         private bool _hasPrediction;
+        /// <summary>Incremented once per Render; entity visuals older than the current frame are retired.</summary>
+        private int _frame;
 
         /// <summary>Создаёт представление; объекты сущностей создаются под <paramref name="root"/>.</summary>
         /// <param name="root">Родительский объект для сетевых корней персонажей.</param>
@@ -197,11 +218,52 @@ namespace Albion.Client
                 ApplyEntity(entity, frameDeltaTime, renderCatchUp);
             }
 
+            RetireMissingEntities();
             ApplyCorpses();
 
             if (PlayerEntityId != 0 && _entities.TryGetValue(PlayerEntityId, out var player))
             {
                 Player = player.Root;
+            }
+        }
+
+        /// <summary>
+        /// Destroys visuals for entities that stopped appearing in the sampled snapshots.
+        ///
+        /// Nothing used to remove them: _entities only ever grew, so every respawn (which gives the
+        /// player a new entity id) or disconnect left the previous body standing in the scene
+        /// forever, frozen in the first frame of its last clip. Two warriors were then drawn on top
+        /// of each other — one animating, one a statue — which read in game as a body hovering with
+        /// tucked legs that flickered and slid without moving its feet.
+        ///
+        /// The grace period is generous on purpose: interpolated sampling can omit an entity for a
+        /// frame or two while it is being created, and deleting then would make it blink.
+        /// </summary>
+        private void RetireMissingEntities()
+        {
+            if (_entities.Count == 0) return;
+            _frame++;
+
+            List<uint> stale = null;
+            foreach (var pair in _entities)
+            {
+                if (_frame - pair.Value.LastSeenFrame <= MissingEntityGraceFrames) continue;
+                // Never retire the local player: a dropped snapshot while the session is still
+                // alive must not delete the body the user is controlling.
+                if (pair.Key == PlayerEntityId) continue;
+                stale ??= new List<uint>();
+                stale.Add(pair.Key);
+            }
+
+            if (stale == null) return;
+            foreach (var id in stale)
+            {
+                if (_entities[id]?.Root != null)
+                {
+                    Object.Destroy(_entities[id].Root.gameObject);
+                }
+
+                _entities.Remove(id);
             }
         }
 
@@ -270,6 +332,9 @@ namespace Albion.Client
                 _entities[entity.Id] = state;
             }
 
+            // Marks the entity as present this frame, so RetireMissingEntities leaves it alone.
+            state.LastSeenFrame = _frame;
+
             // Труп моба уже нарисован отдельным объектом: мёртвое тело моба скрываем до респавна.
             if (state.IsMob && state.Root.gameObject.activeSelf == entity.IsDead)
             {
@@ -293,21 +358,38 @@ namespace Albion.Client
             var respawn = state.WasDead && !entity.IsDead;
             var velocity = Vector3.zero;
             var reset = respawn;
+            // How far the drawn root actually moved since the previous frame. This is the only
+            // honest source for the animation: the legs must match the distance the body covers.
+            var travelled = position - state.LastPosition;
+            travelled.y = 0f;
+            var hasTravelled = state.HasPosition && float.IsFinite(travelled.magnitude);
             if (usePrediction)
             {
                 // First predicted movement is immediate, including the switch away from snapshots.
-                velocity = _predictionVelocity;
+                //
+                // NOT _predictionVelocity. The pipeline samples it once per 20 Hz tick and zeroes
+                // it on any tick without a freshly read MoveCommand - which happens between ticks,
+                // whenever the click-to-move destination is reached, and for the whole length of a
+                // one-shot attack. Applying that stale value here (this runs at frame rate) made
+                // the character alternate Idle/Locomotion twenty times a second and hand a frozen
+                // speed of 4,2 to an Idle pose: "runs in place", welded feet, flickering weapon.
+                // The drawn position advances every frame, so its per-frame delta is smooth and
+                // stays zero exactly when the character is really standing still.
+                var measured = hasTravelled && deltaTime > 0f ? travelled / deltaTime : Vector3.zero;
+                // A resumed frame (first after spawn, respawn, tab focus) can carry a huge position
+                // delta for a tiny deltaTime; the log showed Idle receiving 29,44 m/s that way. A
+                // value above MaxSpeed cannot be a stride, so fall back to zero instead of feeding
+                // the animator a number that makes the legs kick.
+                velocity = measured.sqrMagnitude > MaxSpeed * MaxSpeed ? Vector3.zero : measured;
             }
             else
             {
-                var displacement = position - state.LastPosition;
-                displacement.y = 0f;
                 reset |= !state.HasPosition || state.UsedPrediction || renderCatchUp
                     || !float.IsFinite(deltaTime) || deltaTime <= 0f
-                    || !IsFinite(position) || !IsFinite(displacement);
+                    || !hasTravelled;
                 if (!reset)
                 {
-                    velocity = displacement / deltaTime;
+                    velocity = travelled / deltaTime;
                     reset = !IsFinite(velocity) || velocity.sqrMagnitude > AnimationDiscontinuitySpeed * AnimationDiscontinuitySpeed;
                 }
             }
@@ -535,6 +617,41 @@ namespace Albion.Client
                 state.Character?.EquipFromArchetype(item.Archetype);
                 state.Weapons?.EquipFromArchetype(item.Archetype);
             }
+        }
+
+        /// <summary>
+        /// Returns true exactly once on the frame the local player goes from dead to alive.
+        ///
+        /// The caller uses this edge to drop held movement input. A player who dies while holding
+        /// the right mouse button keeps a click-to-move destination recorded against the OLD
+        /// position; after respawn the next tick sends a MoveCommand towards it, so the character
+        /// runs off on its own until the player presses something. Exposing the edge here keeps the
+        /// decision data-driven: the view is the only place that sees the authoritative dead/alive
+        /// flag, so the input layer must not try to infer it.
+        /// </summary>
+        public bool ConsumePlayerRespawnEdge()
+        {
+            if (PlayerEntityId == 0 || !_entities.ContainsKey(PlayerEntityId))
+            {
+                _playerKnownDead = false;
+                return false;
+            }
+
+            var alive = _latestSnapshot != null && !IsPlayerDeadInLatestSnapshot();
+            var edged = alive && _playerKnownDead;
+            _playerKnownDead = !alive;
+            return edged;
+        }
+
+        private bool IsPlayerDeadInLatestSnapshot()
+        {
+            if (_latestSnapshot == null) return false;
+            for (var i = 0; i < _latestSnapshot.Entities.Count; i++)
+            {
+                if (_latestSnapshot.Entities[i].Id == PlayerEntityId) return _latestSnapshot.Entities[i].IsDead;
+            }
+
+            return false;
         }
 
         /// <summary>

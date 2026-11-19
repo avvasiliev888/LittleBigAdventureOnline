@@ -33,9 +33,18 @@ namespace Albion.Client
         private readonly float _approachSlack;
         private readonly float _walkScale;
         private readonly float _mouseMoveThreshold;
+        /// <summary>
+        /// How many ticks the body may refuse to come to rest before the strike is sent anyway.
+        /// A safety bound only: without it a prediction that never reports zero speed would keep
+        /// the attack latched forever, and the player would read that as a dead Space key.
+        /// </summary>
+        private const int StoppedTicksLimit = 10;
+
         private bool _abilityPressed;
+        private bool _attackHeld;
+        private bool _moveKeyHeld;
+        private uint _lockedTarget;
         private bool _destinationActive;
-        private bool _approachActive;
         private int _stoppedTicks;
         private UnityVector3 _cursorPoint;
         private bool _cursorPointValid;
@@ -168,19 +177,19 @@ namespace Albion.Client
             _destinationActive = false;
             _destination = UnityVector3.zero;
             _abilityPressed = false;
+            // The attack key and the locked aim die with the character too: after respawn a
+            // still-locked enemy would otherwise pull the body across the map on the first tick.
+            _attackHeld = false;
+            _moveKeyHeld = false;
+            _lockedTarget = 0;
+            _stoppedTicks = 0;
         }
 
         public void PollFrame()
         {
-            var touchAttack = _touchAttack != null && _touchAttack();
-            // На Android касание приходит и как mouse button 0; чтобы тапы по HUD/стику не
-            // запускали удар, мышь учитываем только на desktop. Атака на телефоне — кнопка.
-            // ЛКМ больше не атакует: это движение к курсору/точке и клик по луту.
-            if (Input.GetKey(KeyCode.Space) || touchAttack)
-            {
-                _abilityPressed = true;
-            }
-
+            // Pointer state first: the attack press below locks the target by the cursor point,
+            // so the point has to be the one from THIS frame, not the previous one.
+            var worldClick = false;
             if (!Application.isMobilePlatform)
             {
                 if (_isPointerCapturedByUi != null && _isPointerCapturedByUi())
@@ -194,9 +203,58 @@ namespace Albion.Client
                     // The cursor point is tracked every frame, not only while a button is held:
                     // the attack key must know what the player is pointing at.
                     _cursorPointValid = TryGroundPoint(out _cursorPoint);
-                    PollMouseDestination();
+                    worldClick = PollMouseDestination();
                 }
             }
+
+            // Any other command supersedes a pending attack. A click that starts a run to a point
+            // must abort the auto-approach; otherwise the character keeps walking to the target
+            // and the player cannot take back a misclick.
+            if (worldClick)
+            {
+                CancelAttack();
+            }
+
+            // Same for a fresh movement-key press: it is a new command, so the old one loses.
+            // Held keys are not re-checked — that would kill the attack pressed while walking.
+            var moveHeld = KeyboardDirection() != System.Numerics.Vector2.Zero;
+            if (moveHeld && !_moveKeyHeld)
+            {
+                CancelAttack();
+            }
+
+            _moveKeyHeld = moveHeld;
+
+            var touchAttack = _touchAttack != null && _touchAttack();
+            // На Android касание приходит и как mouse button 0; чтобы тапы по HUD/стику не
+            // запускали удар, мышь учитываем только на desktop. Атака на телефоне — кнопка.
+            // ЛКМ больше не атакует: это движение к курсору/точке и клик по луту.
+            //
+            // One PRESS is one strike. The flag used to be re-armed on every frame the key stayed
+            // down, so a held (or slightly sticky) Space queued a fresh strike as soon as the
+            // cooldown expired — the reported "attack sometimes fires a second time" with no
+            // action from the player.
+            var attackHeld = Input.GetKey(KeyCode.Space) || touchAttack;
+            if (attackHeld && !_attackHeld)
+            {
+                // A press is only honoured when the strike can actually be sent now. Arming it
+                // during the cooldown latched the flag, and the strike then fired by itself the
+                // moment the cooldown expired — the reported "the attack sometimes fires a second
+                // time and I cannot tell which keys cause it". Nothing the player did not press
+                // can produce a swing.
+                if (IsAbilityReady() && !IsAttackPlaying())
+                {
+                    _abilityPressed = true;
+                    _stoppedTicks = 0;
+                    // The target is chosen ONCE, here. Re-aiming while the key is merely down let a
+                    // character already running to one enemy switch to whatever the cursor brushed
+                    // over, so the strike landed somewhere the player never picked. A new press
+                    // re-aims; nothing else does.
+                    _lockedTarget = _abilityTarget != null ? _abilityTarget() : 0u;
+                }
+            }
+
+            _attackHeld = attackHeld;
         }
 
         /// <inheritdoc />
@@ -233,8 +291,9 @@ namespace Albion.Client
                 // Arrived, but the body is still sliding: the server needs a stop tick before the
                 // strike, otherwise the swing starts while the legs are mid-stride and the facing
                 // is still owned by the velocity vector — the reported "turns his back and hits
-                // the air, yet the damage lands".
-                if (!IsStopped())
+                // the air, yet the damage lands". Bounded, so a body that never reports rest
+                // cannot latch the attack forever.
+                if (!IsStopped() && _stoppedTicks < StoppedTicksLimit)
                 {
                     ++_stoppedTicks;
                     _sequence++;
@@ -244,10 +303,10 @@ namespace Albion.Client
 
                 _stoppedTicks = 0;
                 _abilityPressed = false;
-                _approachActive = false;
                 _destinationActive = false;
                 _sequence++;
-                command = new AbilityCommand(_abilityTarget(), clientTick, _sequence);
+                // The locked target, not a fresh lookup: aiming was decided on the press.
+                command = new AbilityCommand(_lockedTarget, clientTick, _sequence);
                 return true;
             }
 
@@ -281,7 +340,12 @@ namespace Albion.Client
             return true;
         }
 
-        private System.Numerics.Vector2 ReadMovementDirection()
+        /// <summary>
+        /// WASD only, without the mouse destination and without the touch stick. Split out because
+        /// the new-command check in PollFrame must see the key press itself, not the combined
+        /// direction: a live mouse destination would otherwise mask a fresh key press.
+        /// </summary>
+        private System.Numerics.Vector2 KeyboardDirection()
         {
             var x = 0f;
             var z = 0f;
@@ -306,7 +370,24 @@ namespace Albion.Client
                 z += 1f;
             }
 
-            var keyboard = new System.Numerics.Vector2(x, z);
+            return new System.Numerics.Vector2(x, z);
+        }
+
+        /// <summary>
+        /// Drops a pending attack and its locked target. Called when the player issues a different
+        /// command, so a misclicked attack into a far away enemy can be taken back instead of
+        /// running the character across the map.
+        /// </summary>
+        private void CancelAttack()
+        {
+            _abilityPressed = false;
+            _lockedTarget = 0;
+            _stoppedTicks = 0;
+        }
+
+        private System.Numerics.Vector2 ReadMovementDirection()
+        {
+            var keyboard = KeyboardDirection();
             var touch = _touchMove != null ? _touchMove() : System.Numerics.Vector2.Zero;
             // Новая клавиатурная команда отменяет точку, к которой персонаж бежал.
             if (keyboard.LengthSquared() > 0.0001f)
@@ -336,12 +417,14 @@ namespace Albion.Client
         private bool TryApproachStep(uint clientTick, out ICommand command)
         {
             command = null;
-            if (_targetPosition == null || _abilityTarget == null || _playerPosition == null)
+            if (_targetPosition == null || _playerPosition == null)
             {
                 return false;
             }
 
-            var targetId = _abilityTarget();
+            // The target locked on the attack press, not a fresh lookup: the approach must chase
+            // the enemy the player aimed at even after the cursor has moved away.
+            var targetId = _lockedTarget;
             if (targetId == 0) return false;
             var target = _targetPosition(targetId);
             if (!target.HasValue) return false;
@@ -363,7 +446,6 @@ namespace Albion.Client
                 return false;
             }
 
-            _approachActive = true;
             _sequence++;
             command = new MoveCommand(System.Numerics.Vector2.Normalize(
                 new System.Numerics.Vector2(dx / distance, dz / distance)), clientTick, _sequence);
@@ -390,37 +472,38 @@ namespace Albion.Client
             return _cursorPointValid;
         }
 
-        private void PollMouseDestination()
+        /// <summary>
+        /// Tracks the click-to-move destination. Returns true only on a fresh button press, which
+        /// the caller uses as "the player issued a different command" — a click supersedes a
+        /// pending attack. A held button is not a new command.
+        /// </summary>
+        private bool PollMouseDestination()
         {
             var left = Input.GetMouseButton(0);
             var right = Input.GetMouseButton(1);
             if (!left && !right)
             {
-                return;
-            }
-
-            if (!TryGroundPoint(out var point))
-            {
-                return;
-            }
-
-            var clicked = Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1);
-            var released = Input.GetMouseButtonUp(0) || Input.GetMouseButtonUp(1);
-            if (released && !left && !right)
-            {
                 // A one-shot click must not stay live after the button is gone. The destination
                 // used to survive until the character actually arrived, so an old click resumed
                 // pulling the body right after a shot — the reported "runs backwards after firing".
                 _destinationActive = false;
-                return;
+                return false;
             }
 
+            if (!TryGroundPoint(out var point))
+            {
+                return false;
+            }
+
+            var clicked = Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1);
             _destination = point;
             _destinationActive = true;
             if (clicked)
             {
                 _groundClick?.Invoke(point);
             }
+
+            return clicked;
         }
 
         private bool TryReadMouseDirection(out System.Numerics.Vector2 direction)

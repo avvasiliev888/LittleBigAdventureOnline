@@ -402,6 +402,77 @@ namespace Tests
         }
 
         [Fact]
+        public void Pipeline_FindNearestEntityTo_PicksLivingByCursorAndSkipsCorpses()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            var config = TestWorld.Config();
+            using var server = new GameServer(config, serverTransport, new ServerOptions());
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            using var pipeline = new ClientPipeline(
+                transport, new ScriptedInputSource(Vector2.Zero), new RecordingView(), content: content);
+            pipeline.Start();
+
+            Step(pipeline, server, 5);
+
+            // Nothing in the world: no target, and no body-centred fallback invented one.
+            Assert.Equal(0u, pipeline.FindNearestEntityTo(new Vector3(0f, 0f, 0f), pipeline.EntityId));
+
+            var far = TestWorld.Entity(2, config, x: 8f);
+            var near = TestWorld.Entity(3, config, x: 1f);
+            server.Simulation.State.AddEntity(far);
+            server.Simulation.State.AddEntity(near);
+            Step(pipeline, server, 2);
+
+            // The cursor decides, not the character's own body: near the far mob means the far mob.
+            Assert.Equal(2u, pipeline.FindNearestEntityTo(new Vector3(8f, 0f, 0f), pipeline.EntityId));
+            Assert.Equal(3u, pipeline.FindNearestEntityTo(new Vector3(1f, 0f, 0f), pipeline.EntityId));
+
+            // A corpse is never a candidate: pointing straight at it selects the next LIVING body
+            // instead. The corpse itself is skipped, not treated as a blocker.
+            near.Hp = 0;
+            Step(pipeline, server, 2);
+            Assert.Equal(2u, pipeline.FindNearestEntityTo(new Vector3(1f, 0f, 0f), pipeline.EntityId));
+
+            // And with every candidate dead the search stays empty instead of falling back.
+            far.Hp = 0;
+            Step(pipeline, server, 2);
+            Assert.Equal(0u, pipeline.FindNearestEntityTo(new Vector3(8f, 0f, 0f), pipeline.EntityId));
+            Assert.Equal(0u, pipeline.FindNearestEntityTo(new Vector3(1f, 0f, 0f), pipeline.EntityId));
+        }
+
+        [Fact]
+        public void Pipeline_FindNearestEntityTo_MeasuresToBodySurface()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            var config = TestWorld.Config();
+            using var server = new GameServer(config, serverTransport, new ServerOptions());
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            using var pipeline = new ClientPipeline(
+                transport, new ScriptedInputSource(Vector2.Zero), new RecordingView(), content: content);
+            pipeline.Start();
+
+            Step(pipeline, server, 5);
+            var target = TestWorld.Entity(2, config, x: 3f);
+            server.Simulation.State.AddEntity(target);
+            Step(pipeline, server, 2);
+
+            // A point one metre short of the mob still hits it, because the radius is subtracted:
+            // "nearest to the cursor" must behave like pointing at the BODY, not at its centre.
+            var radius = content.GetCollisionRadius(target.ActorId);
+            Assert.True(radius > 0f);
+            var insideGap = new Vector3(3f - (radius * 0.5f), 0f, 0f);
+            Assert.Equal(2u, pipeline.FindNearestEntityTo(insideGap, pipeline.EntityId));
+        }
+
+        [Fact]
         public void Pipeline_IgnoresAbilityWhileCooldownActive_AndFiresAfterIt()
         {
             var serverTransport = new InMemoryServerTransport();

@@ -677,43 +677,48 @@ namespace Client.Network
         }
 
         /// <summary>
-        /// Nearest entity to an arbitrary world point (the mouse cursor), living first, then dead.
+        /// Nearest LIVING entity to an arbitrary world point (the mouse cursor), straight-line
+        /// distance, no fallback.
         ///
         /// The player presses attack while pointing AT something, so "nearest to the body" picked a
-        /// mob standing behind the character while the one under the cursor stayed untouched. Falls
-        /// back to the body-centred search when the cursor point is not usable.
+        /// mob standing behind the character while the one under the cursor stayed untouched. Two
+        /// things are deliberately gone: corpses (a body is not a target - the customer does not
+        /// want to mark one or strike one) and the body-centred fallback (it turned a press with
+        /// nothing under the cursor into an attack on whatever happened to be nearby). No target
+        /// found means 0, and the caller reports "nothing to attack" instead of swinging.
         /// </summary>
         public uint FindNearestEntityTo(Vector3 point, uint excludeEntityId)
         {
             if (_lastSnapshot == null) return 0;
 
-            var livingId = 0u;
-            var livingDistance = float.MaxValue;
-            var deadId = 0u;
-            var deadDistance = float.MaxValue;
+            var nearestId = 0u;
+            var nearestDistance = float.MaxValue;
 
             foreach (var entity in _lastSnapshot.Entities)
             {
-                if (entity.Id == excludeEntityId) continue;
+                if (entity.Id == excludeEntityId || entity.IsDead) continue;
 
-                var distance = Vector3.Distance(point, entity.Position);
-                if (!entity.IsDead)
+                // "Visible" is measured to the body's surface, not its centre: a big mob whose
+                // centre sits just outside the comparison still has most of itself on screen.
+                var distance = Vector3.Distance(point, entity.Position) - BodyRadius(entity.ActorId);
+                if (distance < nearestDistance)
                 {
-                    if (distance < livingDistance)
-                    {
-                        livingDistance = distance;
-                        livingId = entity.Id;
-                    }
-                }
-                else if (distance < deadDistance)
-                {
-                    deadDistance = distance;
-                    deadId = entity.Id;
+                    nearestDistance = distance;
+                    nearestId = entity.Id;
                 }
             }
 
-            if (livingId != 0 || deadId != 0) return livingId != 0 ? livingId : deadId;
-            return FindNearestEntity(excludeEntityId);
+            return nearestId;
+        }
+
+        /// <summary>
+        /// Collision radius of an actor, used so target picking measures to the body's edge rather
+        /// than to its centre. Mob profiles included; unknown actors get the default radius.
+        /// </summary>
+        private float BodyRadius(uint actorId)
+        {
+            if (_content == null) return Prediction?.CollisionRadius ?? 0f;
+            return _content.GetCollisionRadius(actorId);
         }
 
         /// <summary>

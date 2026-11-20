@@ -214,24 +214,22 @@ namespace Albion.Client
                 return 0;
             }
 
-            // Живая цель имеет приоритет; если живых нет, берём ближайшую мёртвую. Удар по
-            // мёртвой цели — легальный miss с кулдауном, а стабильный id переживает респавн.
-            // target 0 остаётся только для пустого мира.
             // The player aims with the cursor, so the target is the entity closest to the ground
             // point under the mouse — not the one closest to the body.
+            //
+            // There is deliberately NO fallback to "nearest entity" any more. That fallback picked
+            // whatever stood near the character, corpses included, and it is how a press landed on
+            // an enemy - or a body - the player was not pointing at. The customer's rule: if there
+            // is no visible target under the cursor, there is no attack at all, only a message.
             if (_input != null && _input.TryGetCursorPoint(out var cursor))
             {
                 var point = new System.Numerics.Vector3(cursor.x, cursor.y, cursor.z);
-                var byCursor = _pipeline.FindNearestEntityTo(point, _pipeline.EntityId);
-                if (byCursor != 0)
-                {
-                    _lastAbilityTarget = byCursor;
-                    return _lastAbilityTarget;
-                }
+                _lastAbilityTarget = _pipeline.FindNearestEntityTo(point, _pipeline.EntityId);
+                return _lastAbilityTarget;
             }
 
-            _lastAbilityTarget = _pipeline.FindNearestEntity(_pipeline.EntityId);
-            return _lastAbilityTarget;
+            _lastAbilityTarget = 0;
+            return 0;
         }
 
         private Vector3 PlayerPosition()
@@ -327,6 +325,12 @@ namespace Albion.Client
             }
 
             _input.PollFrame();
+            // A press that found nothing to attack must say so: silently doing nothing reads as a
+            // broken Space key, and the customer asked for exactly this feedback.
+            if (_input.ConsumeNoTargetReport())
+            {
+                _hud?.ShowMessage("Нет цели для атаки");
+            }
             var cooldownBefore = _pipeline.Prediction?.CooldownRemainingTicks ?? 0;
             _pipeline.Update(Time.deltaTime);
             var cooldownAfter = _pipeline.Prediction?.CooldownRemainingTicks ?? 0;

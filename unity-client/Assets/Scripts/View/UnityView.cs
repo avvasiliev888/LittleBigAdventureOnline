@@ -31,6 +31,10 @@ namespace Albion.Client
         // caught Idle being handed 29,44 m/s from such a frame.
         private const float MaxSpeed = 12f;
 
+        // A simulated speed above this counts as "really running" and refreshes the remembered run
+        // direction. Below it the character is stopping, and the direction must not be refreshed.
+        private const float MinDirectionSpeed = 0.5f;
+
 
         private readonly SnapshotBuffer _buffer = new SnapshotBuffer(8);
         private readonly Transform _root;
@@ -72,6 +76,11 @@ namespace Albion.Client
         private Vector3 _predictedPosition;
         private Vector3 _predictionVelocity;
         private Vector3 _displayPosition;
+        // Last direction the SIMULATION moved the local player in. The drawn position must not be
+        // used for facing (see ApplyEntity), so the direction is remembered here and re-applied
+        // while the visible speed decays to zero.
+        private Vector3 _lastRunDirection;
+        private bool _hasRunDirection;
         // Death/respawn bookkeeping for the input reset: the view is the only place that sees the
         // authoritative IsDead flag, so the edge is derived here and consumed once by the caller.
         private bool _playerKnownDead;
@@ -378,20 +387,40 @@ namespace Albion.Client
             {
                 // First predicted movement is immediate, including the switch away from snapshots.
                 //
-                // NOT _predictionVelocity. The pipeline samples it once per 20 Hz tick and zeroes
-                // it on any tick without a freshly read MoveCommand - which happens between ticks,
-                // whenever the click-to-move destination is reached, and for the whole length of a
-                // one-shot attack. Applying that stale value here (this runs at frame rate) made
-                // the character alternate Idle/Locomotion twenty times a second and hand a frozen
-                // speed of 4,2 to an Idle pose: "runs in place", welded feet, flickering weapon.
-                // The drawn position advances every frame, so its per-frame delta is smooth and
-                // stays zero exactly when the character is really standing still.
+                // NOT _predictionVelocity for the MAGNITUDE. The pipeline samples it once per 20 Hz
+                // tick and zeroes it on any tick without a freshly read MoveCommand - which happens
+                // between ticks, whenever the click-to-move destination is reached, and for the whole
+                // length of a one-shot attack. Applying that stale value here (this runs at frame
+                // rate) made the character alternate Idle/Locomotion twenty times a second and hand
+                // a frozen speed of 4,2 to an Idle pose: "runs in place", welded feet, flickering
+                // weapon. The drawn position advances every frame, so its per-frame delta is smooth
+                // and stays zero exactly when the character is really standing still.
                 var measured = hasTravelled && deltaTime > 0f ? travelled / deltaTime : Vector3.zero;
                 // A resumed frame (first after spawn, respawn, tab focus) can carry a huge position
                 // delta for a tiny deltaTime; the log showed Idle receiving 29,44 m/s that way. A
                 // value above MaxSpeed cannot be a stride, so fall back to zero instead of feeding
                 // the animator a number that makes the legs kick.
                 velocity = measured.sqrMagnitude > MaxSpeed * MaxSpeed ? Vector3.zero : measured;
+
+                // Direction comes from the simulation, never from the drawn delta. When the player
+                // stops, LocalPredictionSmoother zeroes the velocity but keeps decaying its visual
+                // correction offset, so the drawn body slides BACKWARDS for 4-12 frames at up to
+                // 1,6 m/s. Measuring the facing from that delta turned the warrior around 180
+                // degrees exactly when he reached the clicked point - "arrives and turns back the
+                // other way, every time" - and produced the "tiny step in the middle of a run"
+                // twitches. The remembered run direction is used while the magnitude decays, so the
+                // body keeps facing where it last ran and simply slows down.
+                var predicted = new Vector3(_predictionVelocity.x, 0f, _predictionVelocity.z);
+                if (predicted.sqrMagnitude > MinDirectionSpeed * MinDirectionSpeed)
+                {
+                    _lastRunDirection = predicted.normalized;
+                    _hasRunDirection = true;
+                }
+
+                if (_hasRunDirection)
+                {
+                    velocity = _lastRunDirection * velocity.magnitude;
+                }
             }
             else
             {

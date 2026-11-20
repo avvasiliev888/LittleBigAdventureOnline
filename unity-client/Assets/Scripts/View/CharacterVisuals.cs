@@ -68,6 +68,19 @@ namespace Albion.Client
         private float _baseYaw;
         private float _bowYawOffsetDeg = 90f;
 
+        // Last yaw the body actually moved in, and the last frame that motion was seen. When the
+        // character stops, the drawn position keeps drifting backwards for 4-12 frames (the
+        // prediction smoother unwinds its extrapolation and correction offset), so a per-frame
+        // velocity faces the body at up to 1,6 m/s *towards the other side*. That is the reported
+        // "arrives at the point and turns around 180 degrees". Motion therefore has to be
+        // confirmed before it is allowed to steer: a direction that contradicts the remembered
+        // one is treated as braking, not as a turn, unless it persists.
+        private float _motionYaw;
+        private bool _hasMotionYaw;
+        private Vector3 _lastMotionDirection;
+        private float _oppositeSince = -1f;
+        private const float ReverseConfirmSeconds = 0.07f;
+
         [Header("Weapon mount calibration")]
         [SerializeField] private Vector3 weaponLocalPosition;
         [SerializeField] private Vector3 weaponLocalEuler;
@@ -329,8 +342,11 @@ namespace Albion.Client
 
             var speedForHoldRelease = speed;
             // A deliberate move releases the aim hold; otherwise the warrior would keep staring at
-            // a target he walked away from long ago.
-            if (!IsAttackPlaying && speedForHoldRelease > StartSpeed) _holdYaw = false;
+            // a target he walked away from long ago. The hold also ends with the swing, whatever
+            // the speed: a volley fired on the spot left _holdYaw set forever, and the body kept a
+            // 90 degree bow offset long after the bow was lowered.
+            if (!IsAttackPlaying && (speedForHoldRelease > StartSpeed || _holdYaw && !_turning))
+                _holdYaw = false;
 
             // A pending combat turn owns the facing root while it settles: velocity facing would
             // otherwise rewrite the rotation every frame and the target-facing would never appear.
@@ -353,8 +369,12 @@ namespace Albion.Client
             }
             else if (!dead && speed > 0f && facing != null)
             {
-                var yaw = Quaternion.LookRotation(velocity / speed, Vector3.up).eulerAngles.y;
-                ApplyFacingQuaternion(yaw, true);
+                ApplyConfirmedMotion(velocity / speed, speed, deltaTime);
+            }
+            else if (!dead && speed <= StopSpeed && _hasMotionYaw)
+            {
+                // Stand still and face the last direction the body really moved in.
+                ApplyFacingQuaternion(_motionYaw, true);
             }
 
             var wasDead = _dead;
@@ -500,6 +520,58 @@ namespace Albion.Client
             if (remember) _baseYaw = baseYaw;
             facing.rotation = Quaternion.Euler(0f, baseYaw + _yawOffsetDeg, 0f);
         }
+
+        /// <summary>
+        /// Faces the body along a measured direction, but only after the motion has been confirmed.
+        ///
+        /// Caller hands in the direction of the drawn-position delta. That delta is not a movement
+        /// input: the prediction smoother unwinds its extrapolation (up to 0.05 s of speed) plus a
+        /// decaying correction offset when the character stops, so the drawn body slides backwards
+        /// for 0.07-0.20 s at up to 1,6 m/s. Facing that delta turned the warrior around 180 degrees
+        /// exactly at the moment he reached the clicked point. A direction that contradicts the
+        /// remembered one is now held in suspicion for <see cref="ReverseConfirmSeconds"/>; if it
+        /// survives that long it is a real reversal (WASD or a new click) and is accepted.
+        /// </summary>
+        private void ApplyConfirmedMotion(Vector3 direction, float speed, float deltaTime)
+        {
+            if (!_hasMotionYaw)
+            {
+                AcceptMotion(direction, speed);
+                return;
+            }
+
+            // Braking is not turning: any motion below the start threshold keeps the body where it is.
+            if (speed <= StartSpeed)
+            {
+                ApplyFacingQuaternion(_motionYaw, true);
+                return;
+            }
+
+            if (Vector3.Dot(direction, _lastMotionDirection) < 0f)
+            {
+                var now = Time.time;
+                if (_oppositeSince < 0f) _oppositeSince = now;
+                if (now - _oppositeSince < ReverseConfirmSeconds)
+                {
+                    // Too new to be a real reversal: treat as braking, keep the standing yaw.
+                    ApplyFacingQuaternion(_motionYaw, true);
+                    return;
+                }
+            }
+
+            AcceptMotion(direction, speed);
+        }
+
+        private void AcceptMotion(Vector3 direction, float speed)
+        {
+            if (!float.IsFinite(direction.x) || !float.IsFinite(direction.z)) return;
+            _lastMotionDirection = direction;
+            _motionYaw = Quaternion.LookRotation(direction, Vector3.up).eulerAngles.y;
+            _hasMotionYaw = true;
+            _oppositeSince = -1f;
+            ApplyFacingQuaternion(_motionYaw, true);
+        }
+
 
         /// <summary>One-shot swing; a hit received during it is queued, not allowed to cancel it.</summary>
         public void PlayAttack()

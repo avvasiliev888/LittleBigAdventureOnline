@@ -58,6 +58,12 @@ namespace Albion.Client
         private float _lastJumpDeltaY;
         private string _lastState = string.Empty;
         private int _stateChanges;
+        /// <summary>Frames where the body yaw jumped more than 120 degrees: a visible spin.</summary>
+        private int _yawFlips;
+        /// <summary>Locomotion state switches; must stay flat during a straight run.</summary>
+        private int _locomotionSwitches;
+        private float _lastYaw = float.NaN;
+        private string _lastLocomotionState = string.Empty;
         private bool _hasSpeedParameter;
         private bool _rigDumped;
 
@@ -129,6 +135,7 @@ namespace Albion.Client
             if (_leftFoot == null) Resolve();
 
             TrackWeaponJump();
+            TrackFacingAndLocomotion();
 
             var state = CurrentStateName();
             if (state != _lastState)
@@ -146,6 +153,36 @@ namespace Albion.Client
             if (Time.time < _nextReport) return;
             _nextReport = Time.time + ReportInterval;
             Report(state);
+        }
+
+        /// <summary>
+        /// Counts the two symptoms the customer reported, so the fix is proven rather than claimed.
+        ///
+        /// `flips`: the body yaw jumped more than 120 degrees in one frame. That is the "arrived at
+        /// the clicked point and turned around" report - a spin is never animation, it is the facing
+        /// root being rewritten. `loco`: the locomotion state changed. On a straight run it must not
+        /// change at all; any growth is the "twitch in the middle of a run" report.
+        /// </summary>
+        private void TrackFacingAndLocomotion()
+        {
+            var root = _calibration != null ? _calibration : transform;
+            var yaw = root.eulerAngles.y;
+            if (!float.IsNaN(_lastYaw))
+            {
+                var delta = Mathf.Abs(Mathf.DeltaAngle(_lastYaw, yaw));
+                if (delta > 120f) _yawFlips++;
+            }
+
+            _lastYaw = yaw;
+
+            var state = CurrentStateName();
+            if (!string.IsNullOrEmpty(_lastLocomotionState) && state != _lastLocomotionState
+                && (state == "Locomotion" || _lastLocomotionState == "Locomotion"))
+            {
+                _locomotionSwitches++;
+            }
+
+            _lastLocomotionState = state;
         }
 
         private void Report(string state)
@@ -185,6 +222,14 @@ namespace Albion.Client
             }
 
             builder.Append("  changes=").Append(_stateChanges);
+
+            // The two counters the facing and jitter fixes are judged by. `flips` counts frames
+            // where the body yaw jumped more than 120 degrees - the "arrived at the point and
+            // turned around" report measured directly, so it can be proven fixed instead of
+            // argued about. `loco` counts locomotion state switches; during a straight run it
+            // must not grow at all.
+            builder.Append(" flips=").Append(_yawFlips);
+            builder.Append(" loco=").Append(_locomotionSwitches);
 
             // The decisive block for "the clip plays but the body never moves".
             //  layer/animSpeed  whether the graph is actually advancing the layer at all

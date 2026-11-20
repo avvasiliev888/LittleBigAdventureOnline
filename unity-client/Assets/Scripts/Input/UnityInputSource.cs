@@ -72,6 +72,12 @@ namespace Albion.Client
         /// </summary>
         private const int MissingTicksLimit = 20;
 
+        /// <summary>
+        /// Half a metre of extra radius once the fight is committed. Stops the "steps in, steps
+        /// back" shuttle when the character sits exactly on the weapon's range boundary.
+        /// </summary>
+        private const float ReachHysteresis = 0.5f;
+
         private bool _attackHeld;
         private bool _moveKeyHeld;
         /// <summary>
@@ -81,17 +87,11 @@ namespace Albion.Client
         /// </summary>
         private uint _engagedTarget;
         /// <summary>
-        /// Chase is the ONLY part of an engagement that a movement command cancels. The target
-        /// stays locked, so the character keeps striking while it remains inside weapon range.
+        /// Set when the player pressed attack with nothing to attack. The HUD reads it once and
+        /// shows a short message; it is never an engagement, because there is nothing to fight.
         /// </summary>
-        private bool _chaseActive;
+        private bool _noTargetReported;
         private int _missingTicks;
-        /// <summary>
-        /// One legal swing into empty space, queued when the player pressed attack with no entity
-        /// under the cursor. It is deliberately NOT an engagement: there is nothing to fight, so
-        /// it must not repeat.
-        /// </summary>
-        private bool _voidSwing;
         private bool _destinationActive;
         private int _stoppedTicks;
         private UnityVector3 _cursorPoint;
@@ -253,22 +253,21 @@ namespace Albion.Client
                 }
             }
 
-            // A fresh world click is a NEW MOVEMENT ORDER. It cancels the chase — the player asked
-            // to go somewhere else — but it does NOT end the fight: the target stays locked, and
-            // strikes continue on every ready cooldown for as long as that target remains inside
-            // weapon range. That split is the heart of the model: movement and combat are two
-            // independent channels, and only the chase belongs to both.
+            // A fresh world click is a NEW MOVEMENT ORDER, and it ENDS the fight. The customer's
+            // rule of 20.11.2026 supersedes the earlier "two independent buses" model: any movement
+            // command cancels the attack on the target, even while the target is inside weapon
+            // range. An order to walk away means walk away, not walk away while still swinging.
             if (worldClick)
             {
-                CancelChase();
+                CancelAttack();
             }
 
             // Same for a fresh movement-key press. Held keys are not re-checked — that would
-            // cancel the chase while the player simply keeps walking toward the target.
+            // cancel the fight while the player simply keeps walking toward the target.
             var moveHeld = KeyboardDirection() != System.Numerics.Vector2.Zero;
             if (moveHeld && !_moveKeyHeld)
             {
-                CancelChase();
+                CancelAttack();
             }
 
             _moveKeyHeld = moveHeld;
@@ -293,20 +292,15 @@ namespace Albion.Client
                 var target = _abilityTarget != null ? _abilityTarget() : 0u;
                 if (target == 0)
                 {
-                    // No entity to fight. A swing into the void is a legal miss, but it must not
-                    // become an engagement, or the character would keep striking empty air until
-                    // the player pressed something else.
+                    // No visible target. Striking empty air is no longer allowed: the customer
+                    // asked for a message instead, and the press must not create an engagement.
                     ReleaseEngagement(clearDestination: false);
-                    _voidSwing = true;
+                    _noTargetReported = true;
                 }
                 else
                 {
                     ReleaseEngagement(clearDestination: false);
                     _engagedTarget = target;
-                    // A press means "go and hit it": the chase starts armed, and a later movement
-                    // command may take the chase back without dropping the target.
-                    _chaseActive = true;
-                    _voidSwing = false;
                 }
             }
 
@@ -363,75 +357,52 @@ namespace Albion.Client
 
                 if (!IsAttackPlaying())
                 {
-                    // Chase only while it is still armed. A movement command disarms it and
-                    // leaves the target locked: the player takes back "run to him" without
-                    // taking back "hit him".
-                    if (_chaseActive && TryApproachStep(clientTick, out var chase))
+                    // Out of reach: pursue. The pursuit is unconditional now - a movement command
+                    // ends the whole engagement, so while a target is still locked the only order
+                    // this character can have is "close in and keep hitting".
+                    if (TryApproachStep(clientTick, out var chase))
                     {
                         _sequence++;
                         command = chase;
                         return true;
                     }
 
-                    if (IsWithinReach(_engagedTarget))
+                    if (IsAbilityReady())
                     {
-                        if (IsAbilityReady())
+                        // Arrived, but the body may still be sliding: the server needs a stop
+                        // tick before the strike, otherwise the swing starts mid-stride and
+                        // the facing is still owned by the velocity vector — "turns his back
+                        // and hits the air, yet the damage lands". Bounded, so a body that
+                        // never reports rest cannot latch the strike.
+                        if (!IsStopped() && _stoppedTicks < StoppedTicksLimit)
                         {
-                            // Arrived, but the body may still be sliding: the server needs a stop
-                            // tick before the strike, otherwise the swing starts mid-stride and
-                            // the facing is still owned by the velocity vector — "turns his back
-                            // and hits the air, yet the damage lands". Bounded, so a body that
-                            // never reports rest cannot latch the strike.
-                            if (!IsStopped() && _stoppedTicks < StoppedTicksLimit)
-                            {
-                                ++_stoppedTicks;
-                                _sequence++;
-                                command = new MoveCommand(System.Numerics.Vector2.Zero, clientTick, _sequence);
-                                return true;
-                            }
-
-                            _stoppedTicks = 0;
-                            // Repeating by cooldown is the whole point of an engagement: the
-                            // strike comes back on its own while the target stays in range, with
-                            // no further input from the player.
+                            ++_stoppedTicks;
                             _sequence++;
-                            command = new AbilityCommand(_engagedTarget, clientTick, _sequence);
+                            command = new MoveCommand(System.Numerics.Vector2.Zero, clientTick, _sequence);
                             return true;
                         }
 
-                        // Cooldown still running: fall through to movement, so WASD and clicks
-                        // still work. The engagement is untouched and the next ready tick strikes
-                        // again — pursuit during the cooldown is the default, not a special case.
+                        _stoppedTicks = 0;
+                        // Repeating by cooldown is the whole point of an engagement: the
+                        // strike comes back on its own while the target stays in range, with
+                        // no further input from the player.
+                        _sequence++;
+                        command = new AbilityCommand(_engagedTarget, clientTick, _sequence);
+                        return true;
                     }
-                    else if (!_chaseActive)
-                    {
-                        // The chase was cancelled and the player has walked out of reach: the
-                        // strike can no longer land, so the engagement ends. The destination is
-                        // kept — the player is running somewhere and must not be stopped.
-                        ReleaseEngagement(clearDestination: false);
-                    }
+
+                    // In reach, cooldown still running: stand and wait for it. Falling through to
+                    // the movement channel here used to hand the body back to WASD and clicks,
+                    // which is exactly what allowed a character parked at the bow's 7,4 m boundary
+                    // to take one step in, lose the "in range" verdict to a cooldown or a drifting
+                    // target, and take one step back - the "shuffles at the edge of the radius"
+                    // report. During a fight the only motion allowed is the pursuit above.
                 }
             }
 
-            // A queued swing into empty space. It waits for readiness instead of being dropped,
-            // so a press during the cooldown is not silently swallowed.
-            if (_voidSwing && !IsAttackPlaying() && IsAbilityReady())
-            {
-                _voidSwing = false;
-                if (!IsStopped() && _stoppedTicks < StoppedTicksLimit)
-                {
-                    ++_stoppedTicks;
-                    _sequence++;
-                    command = new MoveCommand(System.Numerics.Vector2.Zero, clientTick, _sequence);
-                    return true;
-                }
-
-                _stoppedTicks = 0;
-                _sequence++;
-                command = new AbilityCommand(0u, clientTick, _sequence);
-                return true;
-            }
-
+            // No target means no attack. A swing into empty space is no longer allowed: the press
+            // reports it to the HUD and sends nothing, so a character can never stand there
+            // striking air on a cooldown the player did not ask for.
             return ReadPlainMovement(clientTick, out command);
         }
 
@@ -507,16 +478,18 @@ namespace Albion.Client
         }
 
         /// <summary>
-        /// Takes back the CHASE only, leaving the engagement intact.
+        /// Ends the fight because the player gave a different order.
         ///
-        /// This is the single place where the two channels meet. The player's rule: a new movement
-        /// order cancels "run to that enemy", but it does not cancel "keep hitting him" — the fight
-        /// goes on while the target stays inside weapon range, and ends only when the new orders
-        /// carry the character out of it.
+        /// The customer's rule of 20.11.2026 replaces the earlier two-bus model: ANY movement
+        /// command - a click into the world or a fresh WASD press - cancels the attack on the
+        /// target, even while that target is inside weapon range. The swing already in flight is
+        /// allowed to finish (the customer asked for that explicitly), but no new strike and no
+        /// pursuit is started afterwards.
         /// </summary>
-        private void CancelChase()
+        private void CancelAttack()
         {
-            _chaseActive = false;
+            if (_engagedTarget == 0) return;
+            ReleaseEngagement(clearDestination: false);
         }
 
         /// <summary>
@@ -527,8 +500,6 @@ namespace Albion.Client
         private void ReleaseEngagement(bool clearDestination)
         {
             _engagedTarget = 0;
-            _chaseActive = false;
-            _voidSwing = false;
             _stoppedTicks = 0;
             _missingTicks = 0;
             if (clearDestination)
@@ -552,6 +523,13 @@ namespace Albion.Client
         /// Inside the strike radius, measured horizontally against the same config range the
         /// server validates with, minus the approach slack. A bow simply has a bigger radius, so
         /// the same check stops the chase at 7.4 m instead of 2.4 m — no separate bow branch.
+        ///
+        /// The comparison is HYSTERETIC. With one threshold, a character parked exactly on the
+        /// boundary decided "in range" and "out of range" on successive ticks: one tick of pursuit
+        /// in, then no pursuit, then pursuit again — the customer's "steps toward it, steps back,
+        /// steps toward it again" at the bow's 8 m edge. The step-in threshold is unchanged; the
+        /// step-out threshold is wider by <see cref="ReachHysteresis"/>, so the verdict has to
+        /// change by half a metre before the behaviour does.
         /// </summary>
         private bool IsWithinReach(uint targetId)
         {
@@ -569,7 +547,10 @@ namespace Albion.Client
             var distance = MathF.Sqrt((dx * dx) + (dz * dz));
             if (!float.IsFinite(distance)) return true;
 
-            return distance <= MathF.Max(0.1f, range - _approachSlack);
+            var enter = MathF.Max(0.1f, range - _approachSlack);
+            // Already committed to this target: hold on until it is clearly out of reach.
+            var threshold = _engagedTarget == targetId ? enter + ReachHysteresis : enter;
+            return distance <= threshold;
         }
 
         private System.Numerics.Vector2 ReadMovementDirection()
@@ -649,6 +630,17 @@ namespace Albion.Client
         /// whatever the cursor brushed over.
         /// </summary>
         public uint EngagedTarget => _engagedTarget;
+
+        /// <summary>
+        /// True once after the player pressed attack with no visible target under the cursor. The
+        /// caller shows a short message and clears it; without this the press looked ignored.
+        /// </summary>
+        public bool ConsumeNoTargetReport()
+        {
+            if (!_noTargetReported) return false;
+            _noTargetReported = false;
+            return true;
+        }
 
         /// <summary>
         /// World point under the mouse cursor, refreshed every frame. The ability target is chosen

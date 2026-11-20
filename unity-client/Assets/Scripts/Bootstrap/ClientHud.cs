@@ -1217,7 +1217,11 @@ namespace Albion.Client
             }
         }
 
-        private void ShowMessage(string message)
+        /// <summary>
+        /// Shows a short line in the HUD for four seconds. Public because the runtime reports game
+        /// events the HUD cannot observe itself — for example an attack press with nothing to hit.
+        /// </summary>
+        public void ShowMessage(string message)
         {
             _message = message;
             _messageUntil = Time.unscaledTime + 4f;

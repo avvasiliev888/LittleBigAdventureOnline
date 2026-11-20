@@ -107,6 +107,14 @@ namespace Albion.Client
         /// waiting costs more ground than the margin to the server's range.
         /// </summary>
         private bool _targetMoving;
+        /// <summary>
+        /// Previous value of <see cref="_targetMoving"/>, so a FOLLOW step can be told apart from
+        /// a fresh pursuit. A follow step is taken only while the target keeps receding; the first
+        /// tick it holds its ground the legs must stop, otherwise the follow step taken on the
+        /// closing tick carries the body into the enemy and the widened step-out verdict then
+        /// reports "out of reach" and starts the pursuit again - the forward-back shuttle.
+        /// </summary>
+        private bool _targetMovedLastTick;
         private UnityVector3 _lastTargetPosition;
         private bool _hasLastTargetPosition;
         private UnityVector3 _cursorPoint;
@@ -316,6 +324,10 @@ namespace Albion.Client
                 {
                     ReleaseEngagement(clearDestination: false);
                     _engagedTarget = target;
+                    // The press says "fight", not "walk". A destination left from an earlier
+                    // click would otherwise survive the whole engagement and pull the body past
+                    // the enemy during every cooldown - see the hold-station branch below.
+                    _destinationActive = false;
                 }
             }
 
@@ -440,12 +452,26 @@ namespace Albion.Client
                     // 3,2 m/s) and leaves the character inside reach when the cooldown expires.
                     // Receding is a monotone signal, not the boundary oscillation above, so this
                     // cannot reintroduce the shuttle.
-                    if (_targetMoving && TryApproachStep(clientTick, out var follow, strictReach: true))
+                    if (_targetMoving && _targetMovedLastTick
+                        && TryApproachStep(clientTick, out var follow, strictReach: true))
                     {
                         _sequence++;
                         command = follow;
                         return true;
                     }
+
+                    // HOLD STATION while the cooldown runs. Falling through to the movement channel
+                    // below used to hand the body back to a LIVE click-to-move destination left over
+                    // from the approach click, and that point lies BEHIND the enemy (the player
+                    // clicked the mob, not a spot in front of it). So every cooldown ended with a
+                    // dash past the target, the widened step-out verdict (2,4 + 0,5 = 2,9 m) called
+                    // it out of reach, the pursuit dragged it back in, and the cycle repeated: the
+                    // customer's "runs forward-back-forward-back between hits" of 20.11.2026.
+                    //
+                    // Held WASD and the touch stick are NOT dropped here: those are the player's
+                    // live intent, visible on screen, and they worked. Only the stale destination
+                    // point is ignored.
+                    return ReadPlainMovement(clientTick, out command, includeDestination: false);
                 }
             }
 
@@ -460,7 +486,7 @@ namespace Albion.Client
         /// WASD and the click-to-move destination decide. Split out because the engagement loop
         /// needs it both as its tail and as the answer for a target that is briefly missing.
         /// </summary>
-        private bool ReadPlainMovement(uint clientTick, out ICommand command)
+        private bool ReadPlainMovement(uint clientTick, out ICommand command, bool includeDestination = true)
         {
 
             // A one-shot attack or shot owns the character: the legs are planted in the clip, so
@@ -473,7 +499,7 @@ namespace Albion.Client
                 return false;
             }
 
-            var direction = ReadMovementDirection();
+            var direction = ReadMovementDirection(includeDestination);
             if (direction == System.Numerics.Vector2.Zero)
             {
                 command = null;
@@ -554,6 +580,7 @@ namespace Albion.Client
             // A fresh engagement must re-measure: carrying the old position into a new target
             // would compare two different bodies and read as "moving" on the first tick.
             _targetMoving = false;
+            _targetMovedLastTick = false;
             _hasLastTargetPosition = false;
             if (clearDestination)
             {
@@ -647,6 +674,7 @@ namespace Albion.Client
             if (_targetPosition == null)
             {
                 _targetMoving = false;
+                _targetMovedLastTick = false;
                 return;
             }
 
@@ -657,6 +685,8 @@ namespace Albion.Client
                 // rather than letting a dropped delta tick turn a chase into a standing shot.
                 return;
             }
+
+            _targetMovedLastTick = _targetMoving;
 
             if (_hasLastTargetPosition)
             {
@@ -674,7 +704,7 @@ namespace Albion.Client
             _lastTargetPosition = target.Value;
         }
 
-        private System.Numerics.Vector2 ReadMovementDirection()
+        private System.Numerics.Vector2 ReadMovementDirection(bool includeDestination = true)
         {
             var keyboard = KeyboardDirection();
             var touch = _touchMove != null ? _touchMove() : System.Numerics.Vector2.Zero;
@@ -684,7 +714,7 @@ namespace Albion.Client
                 _destinationActive = false;
             }
 
-            if (Application.isMobilePlatform || !TryReadMouseDirection(out var mouse))
+            if (Application.isMobilePlatform || !includeDestination || !TryReadMouseDirection(out var mouse))
             {
                 return keyboard + touch;
             }

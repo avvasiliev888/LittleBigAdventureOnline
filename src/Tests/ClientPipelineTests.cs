@@ -512,6 +512,138 @@ namespace Tests
         }
 
         [Fact]
+        public void Pipeline_FindAbilityTargetTo_TakesTheOnlyVisibleEnemyWhereverTheCursorIs()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            var config = TestWorld.Config();
+            using var server = new GameServer(config, serverTransport, new ServerOptions());
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            using var pipeline = new ClientPipeline(
+                transport, new ScriptedInputSource(Vector2.Zero), new RecordingView(), content: content);
+            pipeline.Start();
+
+            Step(pipeline, server, 5);
+            server.Simulation.State.AddEntity(TestWorld.Entity(2, config, x: 12f));
+            Step(pipeline, server, 2);
+
+            // Camera behind and above the player looking forward, like the real follow camera
+            // (offset 0, 10, -8). Both the enemy and the ground in front are in frame.
+            var camera = CameraAt(new Vector3(0f, 10f, -8f), new Vector3(0f, 0f, 0f));
+
+            // Cursor in the far corner of the screen, 40 metres from the enemy: with ONE enemy
+            // visible the press must still pick it. This is the customer's first half of the rule,
+            // and it is exactly what the old "cursor must be on the body" threshold broke.
+            Assert.Equal(2u, pipeline.FindAbilityTargetTo(new Vector3(-30f, 0f, 40f), pipeline.EntityId, camera));
+            Assert.Equal(2u, pipeline.FindAbilityTargetTo(new Vector3(12f, 0f, 0f), pipeline.EntityId, camera));
+        }
+
+        [Fact]
+        public void Pipeline_FindAbilityTargetTo_PicksNearestToCursorWhenSeveralAreVisible()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            var config = TestWorld.Config();
+            using var server = new GameServer(config, serverTransport, new ServerOptions());
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            using var pipeline = new ClientPipeline(
+                transport, new ScriptedInputSource(Vector2.Zero), new RecordingView(), content: content);
+            pipeline.Start();
+
+            Step(pipeline, server, 5);
+            var left = TestWorld.Entity(2, config, x: -6f);
+            var right = TestWorld.Entity(3, config, x: 6f);
+            server.Simulation.State.AddEntity(left);
+            server.Simulation.State.AddEntity(right);
+            Step(pipeline, server, 2);
+
+            var camera = CameraAt(new Vector3(0f, 10f, -8f), new Vector3(0f, 0f, 0f));
+
+            // Both are on screen, so the cursor decides - and only in this case.
+            Assert.Equal(2u, pipeline.FindAbilityTargetTo(new Vector3(-6f, 0f, 0f), pipeline.EntityId, camera));
+            Assert.Equal(3u, pipeline.FindAbilityTargetTo(new Vector3(6f, 0f, 0f), pipeline.EntityId, camera));
+
+            // A corpse stops being a candidate, so the living one is left alone on screen.
+            left.Hp = 0;
+            Step(pipeline, server, 2);
+            Assert.Equal(3u, pipeline.FindAbilityTargetTo(new Vector3(-6f, 0f, 0f), pipeline.EntityId, camera));
+        }
+
+        [Fact]
+        public void Pipeline_FindAbilityTargetTo_ReturnsZeroWhenNothingIsOnScreen()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            var config = TestWorld.Config();
+            using var server = new GameServer(config, serverTransport, new ServerOptions());
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            using var pipeline = new ClientPipeline(
+                transport, new ScriptedInputSource(Vector2.Zero), new RecordingView(), content: content);
+            pipeline.Start();
+
+            Step(pipeline, server, 5);
+
+            var camera = CameraAt(new Vector3(0f, 10f, -8f), new Vector3(0f, 0f, 0f));
+
+            // Empty world: nothing to pick, and no body-centred fallback invented one.
+            Assert.Equal(0u, pipeline.FindAbilityTargetTo(new Vector3(0f, 0f, 0f), pipeline.EntityId, camera));
+
+            // An enemy BEHIND the camera is off screen, so a press with nothing visible reaches
+            // the "nothing to attack" message instead of striking at an unseen enemy.
+            server.Simulation.State.AddEntity(TestWorld.Entity(2, config, x: 90f));
+            Step(pipeline, server, 2);
+            Assert.Equal(0u, pipeline.FindAbilityTargetTo(new Vector3(90f, 0f, 0f), pipeline.EntityId, camera));
+        }
+
+        [Fact]
+        public void Pipeline_FindAbilityTargetTo_FallsBackToTheCursorRuleWithoutACamera()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            var config = TestWorld.Config();
+            using var server = new GameServer(config, serverTransport, new ServerOptions());
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            using var pipeline = new ClientPipeline(
+                transport, new ScriptedInputSource(Vector2.Zero), new RecordingView(), content: content);
+            pipeline.Start();
+
+            Step(pipeline, server, 5);
+            server.Simulation.State.AddEntity(TestWorld.Entity(2, config, x: 4f));
+            Step(pipeline, server, 2);
+
+            // No camera, no evidence of what is on screen: the cursor-on-body rule still holds,
+            // and it must not turn empty ground into a target.
+            Assert.Equal(0u, pipeline.FindAbilityTargetTo(new Vector3(0f, 0f, 0f), pipeline.EntityId, null));
+            Assert.Equal(2u, pipeline.FindAbilityTargetTo(new Vector3(4f, 0f, 0f), pipeline.EntityId, null));
+        }
+
+        /// <summary>
+        /// The follow camera's pyramid: standing at <paramref name="position"/> and looking at the
+        /// player, exactly as <see cref="CameraFollow"/> aims it, with the game's 60-degree lens
+        /// and a 16:9 viewport. A horizontal camera would put the ground out of frame and prove
+        /// nothing about what a player can see.
+        /// </summary>
+        private static ViewFrustum CameraAt(Vector3 position, Vector3 lookAt)
+        {
+            var direction = Vector3.Normalize(lookAt - position);
+            var right = Vector3.Normalize(Vector3.Cross(Vector3.UnitY, direction));
+            var up = Vector3.Cross(direction, right);
+            return new ViewFrustum(position, right, up, direction, 60f, 16f / 9f, 0.3f);
+        }
+
+        [Fact]
         public void Pipeline_IgnoresAbilityWhileCooldownActive_AndFiresAfterIt()
         {
             var serverTransport = new InMemoryServerTransport();

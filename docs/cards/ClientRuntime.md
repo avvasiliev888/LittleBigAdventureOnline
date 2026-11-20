@@ -1,7 +1,7 @@
 # ClientRuntime
 
 **Файл:** `unity-client/Assets/Scripts/Bootstrap/ClientRuntime.cs`  
-**Размер:** 629 строк ≈ 6 707 токенов — читать целиком дорого, пользуйтесь этой карточкой.
+**Размер:** 662 строк ≈ 7 116 токенов — читать целиком дорого, пользуйтесь этой карточкой.
 
 **Назначение:** Точка сборки клиента: ввод, конвейер, HUD, камера.
 
@@ -10,7 +10,7 @@
 ## API (детерминированно из графа trail)
 
 ```
-- L18-L628  class ClientRuntime  public sealed class ClientRuntime : MonoBehaviour
+- L18-L661  class ClientRuntime  public sealed class ClientRuntime : MonoBehaviour
 - L48-L48  variable Pipeline  public ClientPipeline? Pipeline => _pipeline;
 - L51-L51  variable View  public UnityView? View => _view;
 - L54-L54  variable Input  public UnityInputSource? Input => _input;
@@ -19,28 +19,29 @@
 - L92-L128  method LoadContentAndStart  private IEnumerator LoadContentAndStart(string host, int port)
 - L130-L141  method ReadMobileDefaultHost  private static string ReadMobileDefaultHost()
 - L143-L208  method StartSession  private void StartSession(string host, int port)
-- L210-L235  method ResolveAbilityTarget  private uint ResolveAbilityTarget()
-- L237-L246  method PlayerPosition  private Vector3 PlayerPosition()
-- L253-L256  method TargetPosition  private Vector3? TargetPosition(uint entityId)
-- L263-L266  method AbilityRange  private float AbilityRange()
-- L272-L278  method IsPlayerStopped  private bool IsPlayerStopped()
-- L285-L289  method ApproachSlack  private float ApproachSlack()
-- L301-L306  method TargetStatus  private AbilityTargetStatus TargetStatus(uint entityId)
-- L308-L312  method OnGroundClick  private void OnGroundClick(Vector3 point)
-- L314-L345  method Update  private void Update()
-- L347-L354  method OnDestroy  private void OnDestroy()
-- L356-L386  method OnGUI  private void OnGUI()
-- L388-L398  method DrawBuildVersion  private static void DrawBuildVersion()
-- L400-L413  method DrawStartupPanel  private void DrawStartupPanel()
-- L415-L464  method DrawConnectPanel  private void DrawConnectPanel()
-- L466-L494  method ConnectFromPanel  private void ConnectFromPanel()
-- L496-L513  method EnsureCamera  private void EnsureCamera()
-- L515-L525  method EnsureLight  private static void EnsureLight()
-- L527-L561  method EnsureGround  private static void EnsureGround()
-- L563-L566  method EnsureAmbient  private static void EnsureAmbient()
-- L568-L587  method EnsureVolume  private static Volume EnsureVolume()
-- L589-L607  method UpdateFps  private void UpdateFps()
-- L609-L627  method ReadSetting  private static string ReadSetting(string environmentName, string argumentName, string fallback)
+- L210-L236  method ResolveAbilityTarget  private uint ResolveAbilityTarget()
+- L243-L262  method CameraFrustum  private ViewFrustum? CameraFrustum()
+- L264-L273  method PlayerPosition  private Vector3 PlayerPosition()
+- L280-L283  method TargetPosition  private Vector3? TargetPosition(uint entityId)
+- L290-L293  method AbilityRange  private float AbilityRange()
+- L299-L305  method IsPlayerStopped  private bool IsPlayerStopped()
+- L312-L316  method ApproachSlack  private float ApproachSlack()
+- L328-L333  method TargetStatus  private AbilityTargetStatus TargetStatus(uint entityId)
+- L335-L339  method OnGroundClick  private void OnGroundClick(Vector3 point)
+- L341-L378  method Update  private void Update()
+- L380-L387  method OnDestroy  private void OnDestroy()
+- L389-L419  method OnGUI  private void OnGUI()
+- L421-L431  method DrawBuildVersion  private static void DrawBuildVersion()
+- L433-L446  method DrawStartupPanel  private void DrawStartupPanel()
+- L448-L497  method DrawConnectPanel  private void DrawConnectPanel()
+- L499-L527  method ConnectFromPanel  private void ConnectFromPanel()
+- L529-L546  method EnsureCamera  private void EnsureCamera()
+- L548-L558  method EnsureLight  private static void EnsureLight()
+- L560-L594  method EnsureGround  private static void EnsureGround()
+- L596-L599  method EnsureAmbient  private static void EnsureAmbient()
+- L601-L620  method EnsureVolume  private static Volume EnsureVolume()
+- L622-L640  method UpdateFps  private void UpdateFps()
+- L642-L660  method ReadSetting  private static string ReadSetting(string environmentName, string argumentName, string fallback)
 ```
 
 ## Как пользоваться

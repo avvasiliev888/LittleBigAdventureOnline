@@ -677,8 +677,92 @@ namespace Client.Network
         }
 
         /// <summary>
+        /// Chooses the ability target exactly as the customer described it on 20.11.2026.
+        ///
+        /// The rule has two halves, and the cursor is only half of it:
+        /// <list type="number">
+        /// <item>One living enemy on screen — that one is the target, however far the cursor is
+        /// from it. A player who can see a single enemy and presses attack means that enemy.</item>
+        /// <item>Several on screen — the one nearest to the cursor point AT THE MOMENT OF THE
+        /// PRESS. This is the only case where aiming matters.</item>
+        /// </list>
+        /// Nothing on screen returns 0, and the caller shows "nothing to attack" instead of
+        /// swinging at air or at something the player cannot see.
+        ///
+        /// Corpses are never candidates (a body is not a target), and neither is the caller's own
+        /// entity. Visibility is decided by the camera pyramid, because "on screen" is what the
+        /// player can see and cannot be inferred from distances.
+        /// </summary>
+        /// <param name="cursorPoint">World point under the mouse, sampled this frame.</param>
+        /// <param name="excludeEntityId">Usually the local player.</param>
+        /// <param name="view">Camera pyramid, or null when no camera exists.</param>
+        /// <returns>Entity id, or 0 when nothing living is on screen.</returns>
+        public uint FindAbilityTargetTo(Vector3 cursorPoint, uint excludeEntityId, ViewFrustum? view)
+        {
+            if (_lastSnapshot == null) return 0;
+
+            if (!view.HasValue)
+            {
+                // No camera means no way to know what is on screen — a headless test, or a client
+                // whose camera is not built yet. Falling back to "the cursor is on the body" is
+                // the only rule that still means something there, and it cannot invent a target
+                // out of empty ground.
+                return FindNearestEntityTo(cursorPoint, excludeEntityId);
+            }
+
+            var visibleCount = 0;
+            var lastVisibleId = 0u;
+            var nearestId = 0u;
+            var nearestDistance = float.MaxValue;
+
+            foreach (var entity in _lastSnapshot.Entities)
+            {
+                if (entity.Id == excludeEntityId || entity.IsDead) continue;
+
+                var radius = BodyRadius(entity.ActorId);
+                if (!IsBodyOnScreen(view.Value, entity.Position, radius)) continue;
+
+                visibleCount++;
+                lastVisibleId = entity.Id;
+
+                // Aiming is measured to the body's centre: the customer asked for "nearest to the
+                // cursor", and a radius-weighted comparison would silently prefer fat enemies.
+                var distance = Vector3.Distance(cursorPoint, entity.Position);
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearestId = entity.Id;
+                }
+            }
+
+            if (visibleCount == 0) return 0;
+            return visibleCount == 1 ? lastVisibleId : nearestId;
+        }
+
+        /// <summary>
+        /// Extra radius added to a body when deciding whether it is on screen. Presentation only:
+        /// it stands for the part of a figure above its collision cylinder, so a body whose feet
+        /// have just left the frame still counts as visible.
+        /// </summary>
+        private const float VisibilityBodyMargin = 0.6f;
+
+        /// <summary>
+        /// True when a body standing at <paramref name="position"/> is at least partly inside the
+        /// view pyramid. The comparison sphere is raised by its radius, so it spans the ground
+        /// contact up to roughly head height instead of centring on the feet.
+        /// </summary>
+        private static bool IsBodyOnScreen(ViewFrustum view, Vector3 position, float radius)
+        {
+            var centre = position + new Vector3(0f, radius, 0f);
+            return view.IsSphereVisible(centre, radius + VisibilityBodyMargin);
+        }
+
+        /// <summary>
         /// Nearest LIVING entity to an arbitrary world point (the mouse cursor), straight-line
         /// distance, no fallback.
+        ///
+        /// This is the no-camera rule; <see cref="FindAbilityTargetTo"/> is what the game uses,
+        /// because it also knows what is on screen.
         ///
         /// The player presses attack while pointing AT something, so "nearest to the body" picked a
         /// mob standing behind the character while the one under the cursor stayed untouched. Two

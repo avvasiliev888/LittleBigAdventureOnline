@@ -1,7 +1,7 @@
 # ClientPipeline
 
 **Файл:** `src/Client.Network/ClientPipeline.cs`  
-**Размер:** 824 строк ≈ 9 432 токенов — читать целиком дорого, пользуйтесь этой карточкой.
+**Размер:** 928 строк ≈ 10 889 токенов — читать целиком дорого, пользуйтесь этой карточкой.
 
 **Назначение:** Клиентский конвейер: 20 Гц тик, ввод, предсказание, рендер.
 
@@ -10,7 +10,7 @@
 ## API (детерминированно из графа trail)
 
 ```
-- L14-L823  class ClientPipeline  public sealed class ClientPipeline : IDisposable
+- L14-L927  class ClientPipeline  public sealed class ClientPipeline : IDisposable
 - L54-L69  method ClientPipeline  public ClientPipeline(
 - L72-L72  variable EntityId  public uint EntityId { get; private set; }
 - L75-L75  variable HasSession  public bool HasSession { get; private set; }
@@ -51,15 +51,18 @@
 - L574-L594  method ApplyReceivedSnapshot  private void ApplyReceivedSnapshot(SimulationSnapshot snapshot)
 - L596-L630  method SyncPredictionFromSnapshot  private void SyncPredictionFromSnapshot(SimulationSnapshot snapshot)
 - L640-L677  method FindNearestEntity  public uint FindNearestEntity(uint excludeEntityId)
-- L686-L717  method FindNearestEntityTo  public uint FindNearestEntityTo(Vector3 point, uint excludeEntityId)
-- L731-L744  method TryGetEntity  public bool TryGetEntity(uint entityId, out EntitySnapshot entity)
-- L746-L756  method RequestFullSnapshot  private void RequestFullSnapshot(bool force = false)
-- L758-L779  method TrimSnapshots  private void TrimSnapshots(uint currentTick)
-- L781-L794  method Reconcile  private void Reconcile(SimulationSnapshot snapshot, uint acknowledgedSequence)
-- L796-L802  method OnReconciled  private void OnReconciled(PredictionReconciliation reconciliation)
-- L804-L812  method OnTransportDisconnected  private void OnTransportDisconnected(string reason)
-- L814-L817  method ReadUInt32  private static uint ReadUInt32(byte[] buffer, int offset)
-- L819-L822  method ReadSingle  private static float ReadSingle(byte[] buffer, int offset)
+- L700-L740  method FindAbilityTargetTo  public uint FindAbilityTargetTo(Vector3 cursorPoint, uint excludeEntityId, ViewFrustum? view)
+- L754-L758  method IsBodyOnScreen  private static bool IsBodyOnScreen(ViewFrustum view, Vector3 position, float radius)
+- L774-L804  method FindNearestEntityTo  public uint FindNearestEntityTo(Vector3 point, uint excludeEntityId)
+- L817-L821  method BodyRadius  private float BodyRadius(uint actorId)
+- L835-L848  method TryGetEntity  public bool TryGetEntity(uint entityId, out EntitySnapshot entity)
+- L850-L860  method RequestFullSnapshot  private void RequestFullSnapshot(bool force = false)
+- L862-L883  method TrimSnapshots  private void TrimSnapshots(uint currentTick)
+- L885-L898  method Reconcile  private void Reconcile(SimulationSnapshot snapshot, uint acknowledgedSequence)
+- L900-L906  method OnReconciled  private void OnReconciled(PredictionReconciliation reconciliation)
+- L908-L916  method OnTransportDisconnected  private void OnTransportDisconnected(string reason)
+- L918-L921  method ReadUInt32  private static uint ReadUInt32(byte[] buffer, int offset)
+- L923-L926  method ReadSingle  private static float ReadSingle(byte[] buffer, int offset)
 ```
 
 ## Как пользоваться

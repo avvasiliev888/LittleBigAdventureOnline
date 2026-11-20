@@ -214,22 +214,51 @@ namespace Albion.Client
                 return 0;
             }
 
-            // The player aims with the cursor, so the target is the entity closest to the ground
-            // point under the mouse — not the one closest to the body.
+            // The customer's rule of 20.11.2026 decides the target, and the cursor is only half
+            // of it: with ONE living enemy on screen that enemy is picked wherever the mouse
+            // happens to be; with SEVERAL the nearest to the cursor at the instant of the press
+            // wins; with none there is no attack at all, only a message.
             //
-            // There is deliberately NO fallback to "nearest entity" any more. That fallback picked
-            // whatever stood near the character, corpses included, and it is how a press landed on
-            // an enemy - or a body - the player was not pointing at. The customer's rule: if there
-            // is no visible target under the cursor, there is no attack at all, only a message.
+            // "On screen" is answered by the camera pyramid, not by a distance threshold. A
+            // distance rule cannot tell a target at the far edge of the frame from one behind
+            // the character, and it is what made a press lock onto enemies the player could not
+            // see. There is deliberately no fallback to "nearest entity": that is how a press
+            // used to land on whatever stood near the character, corpses included.
             if (_input != null && _input.TryGetCursorPoint(out var cursor))
             {
                 var point = new System.Numerics.Vector3(cursor.x, cursor.y, cursor.z);
-                _lastAbilityTarget = _pipeline.FindNearestEntityTo(point, _pipeline.EntityId);
+                _lastAbilityTarget = _pipeline.FindAbilityTargetTo(point, _pipeline.EntityId, CameraFrustum());
                 return _lastAbilityTarget;
             }
 
             _lastAbilityTarget = 0;
             return 0;
+        }
+
+        /// <summary>
+        /// The current camera's view pyramid, or null when there is no camera yet. Rebuilt on
+        /// every press rather than cached: the camera follows the player, so a cached pyramid
+        /// would answer for where the player stood a second ago.
+        /// </summary>
+        private ViewFrustum? CameraFrustum()
+        {
+            var camera = _cameraFollow != null ? _cameraFollow.GetComponent<Camera>() : Camera.main;
+            if (camera == null) return null;
+
+            var transform = camera.transform;
+            var position = transform.position;
+            var right = transform.right;
+            var up = transform.up;
+            var forward = transform.forward;
+
+            return new ViewFrustum(
+                new System.Numerics.Vector3(position.x, position.y, position.z),
+                new System.Numerics.Vector3(right.x, right.y, right.z),
+                new System.Numerics.Vector3(up.x, up.y, up.z),
+                new System.Numerics.Vector3(forward.x, forward.y, forward.z),
+                camera.fieldOfView,
+                camera.aspect,
+                camera.nearClipPlane);
         }
 
         private Vector3 PlayerPosition()

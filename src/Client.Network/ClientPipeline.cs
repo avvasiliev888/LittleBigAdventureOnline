@@ -701,6 +701,14 @@ namespace Client.Network
                 // "Visible" is measured to the body's surface, not its centre: a big mob whose
                 // centre sits just outside the comparison still has most of itself on screen.
                 var distance = Vector3.Distance(point, entity.Position) - BodyRadius(entity.ActorId);
+
+                // The cursor has to be ON the body, not merely nearer to it than to the next one.
+                // Ranking alone made every press find SOME target: the closest living entity to
+                // the cursor point, however many metres away and wherever it stood off screen.
+                // That is why a press with nothing under the cursor still locked on, and why the
+                // "nothing to attack" message could never be reached.
+                if (distance > CursorHitSlack) continue;
+
                 if (distance < nearestDistance)
                 {
                     nearestDistance = distance;
@@ -710,6 +718,13 @@ namespace Client.Network
 
             return nearestId;
         }
+
+        /// <summary>
+        /// How far outside the body's silhouette the cursor may sit and still count as pointing at
+        /// it. A small grace so aiming at the feet or at the outline still picks the body; anything
+        /// larger turns "point at the enemy" back into "somewhere in that direction".
+        /// </summary>
+        private const float CursorHitSlack = 0.35f;
 
         /// <summary>
         /// Collision radius of an actor, used so target picking measures to the body's edge rather

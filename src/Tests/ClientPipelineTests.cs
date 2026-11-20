@@ -431,17 +431,56 @@ namespace Tests
             Assert.Equal(2u, pipeline.FindNearestEntityTo(new Vector3(8f, 0f, 0f), pipeline.EntityId));
             Assert.Equal(3u, pipeline.FindNearestEntityTo(new Vector3(1f, 0f, 0f), pipeline.EntityId));
 
-            // A corpse is never a candidate: pointing straight at it selects the next LIVING body
-            // instead. The corpse itself is skipped, not treated as a blocker.
+            // A corpse is not a target. The cursor must sit ON a body to select it, so pointing
+            // at a corpse selects NOTHING — it does not slide over to the next living enemy in
+            // that direction. The customer's rule: a body is not marked and not struck, and a
+            // press with nothing under the cursor must reach the "nothing to attack" message.
             near.Hp = 0;
             Step(pipeline, server, 2);
-            Assert.Equal(2u, pipeline.FindNearestEntityTo(new Vector3(1f, 0f, 0f), pipeline.EntityId));
+            Assert.Equal(0u, pipeline.FindNearestEntityTo(new Vector3(1f, 0f, 0f), pipeline.EntityId));
+
+            // Pointing at empty ground selects nothing either, however close the enemies are.
+            Assert.Equal(0u, pipeline.FindNearestEntityTo(new Vector3(4.5f, 0f, 0f), pipeline.EntityId));
+            Assert.Equal(0u, pipeline.FindNearestEntityTo(new Vector3(-30f, 0f, 0f), pipeline.EntityId));
+
+            // The living one is still picked when the cursor is actually on it.
+            Assert.Equal(2u, pipeline.FindNearestEntityTo(new Vector3(8f, 0f, 0f), pipeline.EntityId));
 
             // And with every candidate dead the search stays empty instead of falling back.
             far.Hp = 0;
             Step(pipeline, server, 2);
             Assert.Equal(0u, pipeline.FindNearestEntityTo(new Vector3(8f, 0f, 0f), pipeline.EntityId));
             Assert.Equal(0u, pipeline.FindNearestEntityTo(new Vector3(1f, 0f, 0f), pipeline.EntityId));
+        }
+
+        [Fact]
+        public void Pipeline_FindNearestEntityTo_RequiresCursorOnTheBody()
+        {
+            var serverTransport = new InMemoryServerTransport();
+            var config = TestWorld.Config();
+            using var server = new GameServer(config, serverTransport, new ServerOptions());
+            server.Start();
+
+            var clientId = serverTransport.ConnectClient();
+            using var transport = new InMemoryClientTransport(serverTransport, clientId);
+            var content = ClientContent.LoadFromDirectory(Path.Combine(AppContext.BaseDirectory, "config"));
+            using var pipeline = new ClientPipeline(
+                transport, new ScriptedInputSource(Vector2.Zero), new RecordingView(), content: content);
+            pipeline.Start();
+
+            Step(pipeline, server, 5);
+            var target = TestWorld.Entity(2, config, x: 20f);
+            server.Simulation.State.AddEntity(target);
+            Step(pipeline, server, 2);
+
+            // Ranking alone used to make ANY press find a target: the nearest living entity to the
+            // cursor point, no matter how far. That is why Space with nothing under the cursor
+            // still locked on at any distance and the "nothing to attack" message was unreachable.
+            Assert.Equal(0u, pipeline.FindNearestEntityTo(new Vector3(0f, 0f, 0f), pipeline.EntityId));
+            Assert.Equal(0u, pipeline.FindNearestEntityTo(new Vector3(14f, 0f, 0f), pipeline.EntityId));
+
+            // On the body: picked.
+            Assert.Equal(2u, pipeline.FindNearestEntityTo(new Vector3(20f, 0f, 0f), pipeline.EntityId));
         }
 
         [Fact]

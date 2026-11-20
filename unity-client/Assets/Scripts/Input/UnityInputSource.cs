@@ -78,6 +78,13 @@ namespace Albion.Client
         /// </summary>
         private const float ReachHysteresis = 0.5f;
 
+        /// <summary>
+        /// A target is "on the move" once its own position changed by this much since the previous
+        /// tick. A fleeing mob at 3,2 m/s covers 0,16 m per 0,05 s tick, so the bar sits at half
+        /// of that: clearly above interpolation jitter on a standing body, well below a walk.
+        /// </summary>
+        private const float TargetMovingThreshold = 0.08f;
+
         private bool _attackHeld;
         private bool _moveKeyHeld;
         /// <summary>
@@ -94,6 +101,14 @@ namespace Albion.Client
         private int _missingTicks;
         private bool _destinationActive;
         private int _stoppedTicks;
+        /// <summary>
+        /// True when the locked target's distance grew on the last tick, i.e. it is running away
+        /// from us. Only a receding target is struck without waiting for the body to come to rest:
+        /// waiting costs more ground than the margin to the server's range.
+        /// </summary>
+        private bool _targetMoving;
+        private UnityVector3 _lastTargetPosition;
+        private bool _hasLastTargetPosition;
         private UnityVector3 _cursorPoint;
         private bool _cursorPointValid;
         private UnityVector3 _destination;
@@ -355,6 +370,10 @@ namespace Albion.Client
 
                 _missingTicks = 0;
 
+                // Sampled before any decision: the strike needs to know whether the target is
+                // running away from us, and that answer is a comparison of two ticks.
+                TrackTargetDistance(_engagedTarget);
+
                 if (!IsAttackPlaying())
                 {
                     // Out of reach: pursue. The pursuit is unconditional now - a movement command
@@ -369,6 +388,23 @@ namespace Albion.Client
 
                     if (IsAbilityReady())
                     {
+                        // A FLEEING target cannot be waited for. The rest wait below costs about
+                        // 0,2 s, and a mob at 3,2 m/s covers 0,64 m in that time - more than the
+                        // 0,60 m between the client's fire threshold (8,0 - 0,6 = 7,4 m) and the
+                        // server's own range (8,0 m). So the shot was always released from OUTSIDE
+                        // the server's radius, rejected as out of range, the fight resumed, and the
+                        // character ran-stop-ran in a circle without ever firing - the customer's
+                        // report of 21.11.2026. A receding target is therefore struck on the tick
+                        // it enters reach; a target that holds its ground keeps the rest wait, so
+                        // the swing still never starts over a running stride.
+                        if (_targetMoving)
+                        {
+                            _stoppedTicks = 0;
+                            _sequence++;
+                            command = new AbilityCommand(_engagedTarget, clientTick, _sequence);
+                            return true;
+                        }
+
                         // Arrived, but the body may still be sliding: the server needs a stop
                         // tick before the strike, otherwise the swing starts mid-stride and
                         // the facing is still owned by the velocity vector — "turns his back
@@ -391,12 +427,25 @@ namespace Albion.Client
                         return true;
                     }
 
-                    // In reach, cooldown still running: stand and wait for it. Falling through to
-                    // the movement channel here used to hand the body back to WASD and clicks,
-                    // which is exactly what allowed a character parked at the bow's 7,4 m boundary
-                    // to take one step in, lose the "in range" verdict to a cooldown or a drifting
-                    // target, and take one step back - the "shuffles at the edge of the radius"
-                    // report. During a fight the only motion allowed is the pursuit above.
+                    // In reach, cooldown still running. A target that HOLDS its ground is waited
+                    // for: falling through to the movement channel here used to hand the body back
+                    // to WASD and clicks, which is what allowed a character parked at the bow's
+                    // 7,4 m boundary to take one step in, lose the "in range" verdict, and take one
+                    // step back — the "shuffles at the edge of the radius" report.
+                    //
+                    // A target that is RUNNING AWAY is different: standing still for the cooldown
+                    // loses several metres, so the next approach is a fresh sprint and the fight
+                    // becomes run-stop-run without a shot. Keeping the legs moving toward a
+                    // receding target holds the distance roughly constant (4,0 m/s against
+                    // 3,2 m/s) and leaves the character inside reach when the cooldown expires.
+                    // Receding is a monotone signal, not the boundary oscillation above, so this
+                    // cannot reintroduce the shuttle.
+                    if (_targetMoving && TryApproachStep(clientTick, out var follow, strictReach: true))
+                    {
+                        _sequence++;
+                        command = follow;
+                        return true;
+                    }
                 }
             }
 
@@ -502,6 +551,10 @@ namespace Albion.Client
             _engagedTarget = 0;
             _stoppedTicks = 0;
             _missingTicks = 0;
+            // A fresh engagement must re-measure: carrying the old position into a new target
+            // would compare two different bodies and read as "moving" on the first tick.
+            _targetMoving = false;
+            _hasLastTargetPosition = false;
             if (clearDestination)
             {
                 _destinationActive = false;
@@ -533,24 +586,92 @@ namespace Albion.Client
         /// </summary>
         private bool IsWithinReach(uint targetId)
         {
-            if (_targetPosition == null || _playerPosition == null) return true;
-
-            var target = _targetPosition(targetId);
-            if (!target.HasValue) return false;
-
-            var range = _abilityRange != null ? _abilityRange() : 0f;
-            if (!float.IsFinite(range) || range <= 0f) return true;
-
-            var player = _playerPosition();
-            var dx = target.Value.x - player.x;
-            var dz = target.Value.z - player.z;
-            var distance = MathF.Sqrt((dx * dx) + (dz * dz));
-            if (!float.IsFinite(distance)) return true;
+            if (!TryHorizontalDistance(targetId, out var distance, out var range)) return true;
 
             var enter = MathF.Max(0.1f, range - _approachSlack);
             // Already committed to this target: hold on until it is clearly out of reach.
             var threshold = _engagedTarget == targetId ? enter + ReachHysteresis : enter;
             return distance <= threshold;
+        }
+
+        /// <summary>
+        /// The plain fire threshold with no hysteresis. Used by the cooldown follow-up, which has
+        /// to decide "am I still close enough to keep pace" and must not inherit the widened
+        /// step-out verdict meant for ending a chase.
+        /// </summary>
+        private bool IsWithinFireThreshold(uint targetId)
+        {
+            if (!TryHorizontalDistance(targetId, out var distance, out var range)) return true;
+            return distance <= MathF.Max(0.1f, range - _approachSlack);
+        }
+
+        /// <summary>
+        /// Horizontal distance to a target plus the configured ability range, in one place so the
+        /// two reach tests cannot drift apart. Returns false when the answer is not knowable, and
+        /// the callers then treat the target as reachable rather than stranding the player.
+        /// </summary>
+        private bool TryHorizontalDistance(uint targetId, out float distance, out float range)
+        {
+            distance = 0f;
+            range = 0f;
+            if (_targetPosition == null || _playerPosition == null) return false;
+
+            var target = _targetPosition(targetId);
+            if (!target.HasValue) return false;
+
+            range = _abilityRange != null ? _abilityRange() : 0f;
+            if (!float.IsFinite(range) || range <= 0f) return false;
+
+            var player = _playerPosition();
+            var dx = target.Value.x - player.x;
+            var dz = target.Value.z - player.z;
+            distance = MathF.Sqrt((dx * dx) + (dz * dz));
+            return float.IsFinite(distance);
+        }
+
+        /// <summary>
+        /// True when the locked target's own position moved on the last tick — it is running, not
+        /// standing and being hit.
+        ///
+        /// The strike used to wait for OUR body to come to rest at the bow's 7,4 m threshold, and a
+        /// fleeing mob covered 0,64 m during that wait — beyond the 0,60 m left before the server's
+        /// own 8,0 m range. Every shot was released out of range, rejected, and the pursuit started
+        /// again: run, stop, run, stop, never firing.
+        ///
+        /// The signal is the TARGET's movement, not the change in distance: while we close in
+        /// faster than it flees (4,0 m/s against 3,2 m/s) the distance shrinks, so a distance-based
+        /// test would call the target stationary exactly when it is hardest to catch.
+        /// </summary>
+        private void TrackTargetDistance(uint targetId)
+        {
+            if (_targetPosition == null)
+            {
+                _targetMoving = false;
+                return;
+            }
+
+            var target = _targetPosition(targetId);
+            if (!target.HasValue)
+            {
+                // No position this tick is not evidence of anything: keep the previous verdict
+                // rather than letting a dropped delta tick turn a chase into a standing shot.
+                return;
+            }
+
+            if (_hasLastTargetPosition)
+            {
+                var mx = target.Value.x - _lastTargetPosition.x;
+                var mz = target.Value.z - _lastTargetPosition.z;
+                var moved = MathF.Sqrt((mx * mx) + (mz * mz));
+                _targetMoving = float.IsFinite(moved) && moved > TargetMovingThreshold;
+            }
+            else
+            {
+                _targetMoving = false;
+                _hasLastTargetPosition = true;
+            }
+
+            _lastTargetPosition = target.Value;
         }
 
         private System.Numerics.Vector2 ReadMovementDirection()
@@ -582,7 +703,7 @@ namespace Albion.Client
         /// against; when it is not known yet the step assumes "already in range" rather than
         /// stranding the player in an auto-run that never ends.
         /// </summary>
-        private bool TryApproachStep(uint clientTick, out ICommand command)
+        private bool TryApproachStep(uint clientTick, out ICommand command, bool strictReach = false)
         {
             command = null;
             if (_targetPosition == null || _playerPosition == null || _engagedTarget == 0)
@@ -597,7 +718,14 @@ namespace Albion.Client
 
             // Already inside the radius: the caller sends the strike on the same tick, so there is
             // no one-frame window where the character stands still before swinging.
-            if (IsWithinReach(_engagedTarget)) return false;
+            //
+            // strictReach ignores the hysteresis and uses the plain fire threshold. The cooldown
+            // follow-up needs that: it must hold station at 7,4 m against a moving target, not
+            // sprint into its chest, and not wait for the widened 7,9 m step-out verdict.
+            if (strictReach ? IsWithinFireThreshold(_engagedTarget) : IsWithinReach(_engagedTarget))
+            {
+                return false;
+            }
 
             var player = _playerPosition();
             var dx = target.Value.x - player.x;

@@ -31,6 +31,166 @@ namespace Albion.Client
         /// <summary>Flat double-sided ring used by the shrinking click marker.</summary>
         public static Mesh Ring => Get("ring", MakeRing);
 
+        /// <summary>
+        /// Плоский гранёный диск в плоскости XY. Морозное пятно на земле: у него неровный
+        /// край, поэтому он не читается как нарисованный круг.
+        /// </summary>
+        public static Mesh Disc => Get("disc", () =>
+        {
+            const int sides = 14;
+            var vertices = new List<Vector3> { Vector3.zero };
+            var normals = new List<Vector3> { Vector3.back };
+            var uv = new List<Vector2> { new Vector2(0.5f, 0.5f) };
+            var indices = new List<int>();
+
+            var random = new System.Random(4242);
+            for (var i = 0; i < sides; i++)
+            {
+                var angle = (i / (float)sides) * Mathf.PI * 2f;
+                // Неровный радиус: край пятна не должен быть идеальной окружностью.
+                var radius = 0.5f * (0.82f + (float)random.NextDouble() * 0.18f);
+                vertices.Add(new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
+                normals.Add(Vector3.back);
+                uv.Add(new Vector2(Mathf.Cos(angle) * 0.5f + 0.5f, Mathf.Sin(angle) * 0.5f + 0.5f));
+            }
+
+            for (var i = 0; i < sides; i++)
+            {
+                indices.Add(0);
+                indices.Add(1 + i);
+                indices.Add(1 + ((i + 1) % sides));
+            }
+
+            var mesh = new Mesh { vertices = vertices.ToArray() };
+            mesh.normals = normals.ToArray();
+            mesh.uv = uv.ToArray();
+            mesh.triangles = indices.ToArray();
+            mesh.RecalculateBounds();
+            return mesh;
+        });
+
+        /// <summary>
+        /// Гранёный кристалл: две пирамиды на общей грани, плоское затенение, неровные грани.
+        /// Заменяет круглые примитивы в ледяной магии — гладкий шар и тор читаются как
+        /// «кружок», а гранёный камень читается как лёд.
+        /// </summary>
+        public static Mesh IceCrystal => Get("ice-crystal", () => MakeCrystal(7, 3));
+
+        /// <summary>
+        /// Ледяной шип, растущий из земли: кристалл, растянутый по Y с наклоном.
+        /// Основание сдвинуто к y=0, поэтому при масштабировании шип растёт ВВЕРХ от земли,
+        /// а не в обе стороны от своего центра — иначе он висит в воздухе.
+        /// </summary>
+        public static Mesh IceSpike => Get("ice-spike", () => MakeCrystal(6, 2, shiftY: 0.62f));
+
+        /// <summary>
+        /// Координаты вершин кристалла для разлёта: каждый осколок строится с новым seed,
+        /// поэтому два осколка в одном взрыве не выглядят копиями.
+        /// </summary>
+        public static Mesh CrystalVariant(int seed)
+        {
+            var key = "ice-crystal-" + seed;
+            if (Cache.TryGetValue(key, out var cached) && cached != null)
+            {
+                return cached;
+            }
+
+            var mesh = MakeCrystal(6 + (seed % 4), 2 + (seed % 3), seed);
+            mesh.name = "Procedural " + key;
+            Cache[key] = mesh;
+            return mesh;
+        }
+
+        /// <summary>
+        /// Кристалл из двух пирамид. <paramref name="sides"/> задаёт число граней,
+        /// <paramref name="jitter"/> — разброс вершин, чтобы грани были неровными.
+        /// <paramref name="shiftY"/> поднимает меш так, чтобы его основание стояло на y=0:
+        /// нужно шипам, которые растут из земли. Нормали не сглаживаются.
+        /// </summary>
+        private static Mesh MakeCrystal(int sides, int jitter, int seed = 0, float shiftY = 0f)
+        {
+            var vertices = new List<Vector3>();
+            var normals = new List<Vector3>();
+            var uv = new List<Vector2>();
+            var indices = new List<int>();
+
+            var random = new System.Random(seed == 0 ? 12345 : seed * 7919);
+            float Drift() => (float)((random.NextDouble() - 0.5) * 0.06 * jitter);
+
+            // Пояс: вершины на неровном радиусе вокруг оси Y.
+            var ring = new List<Vector3>(sides);
+            for (var i = 0; i < sides; i++)
+            {
+                var angle = (i / (float)sides) * Mathf.PI * 2f;
+                var radius = 0.34f + Drift();
+                ring.Add(new Vector3(
+                    Mathf.Cos(angle) * radius,
+                    Drift() * 0.5f,
+                    Mathf.Sin(angle) * radius));
+            }
+
+            // Вершина сверху вытянута: кристалл должен быть острым, а не шарообразным.
+            var top = new Vector3(Drift() * 0.4f, 0.95f + Drift(), Drift() * 0.4f);
+            var bottom = new Vector3(Drift() * 0.4f, -0.62f + Drift(), Drift() * 0.4f);
+
+            for (var i = 0; i < sides; i++)
+            {
+                var a = ring[i];
+                var b = ring[(i + 1) % sides];
+
+                AddTriangle(vertices, normals, uv, indices, top, a, b);
+                AddTriangle(vertices, normals, uv, indices, bottom, b, a);
+            }
+
+            // Сдвиг основания к нулю: без него масштабирование растягивает шип в обе стороны
+            // от центра, и он висит над землёй вместо того, чтобы расти из неё.
+            if (shiftY != 0f)
+            {
+                for (var i = 0; i < vertices.Count; i++)
+                {
+                    vertices[i] += Vector3.up * shiftY;
+                }
+            }
+
+            var mesh = new Mesh { vertices = vertices.ToArray() };
+            mesh.normals = normals.ToArray();
+            mesh.uv = uv.ToArray();
+            mesh.triangles = indices.ToArray();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        /// <summary>Треугольник с нормалью от грани: плоское затенение без сглаживания.</summary>
+        private static void AddTriangle(
+            List<Vector3> vertices,
+            List<Vector3> normals,
+            List<Vector2> uv,
+            List<int> indices,
+            Vector3 a,
+            Vector3 b,
+            Vector3 c)
+        {
+            var normal = Vector3.Cross(b - a, c - a).normalized;
+            if (normal.sqrMagnitude < 0.0001f)
+            {
+                return;
+            }
+
+            var start = vertices.Count;
+            vertices.Add(a);
+            vertices.Add(b);
+            vertices.Add(c);
+            normals.Add(normal);
+            normals.Add(normal);
+            normals.Add(normal);
+            uv.Add(new Vector2(0f, 1f));
+            uv.Add(new Vector2(0f, 0f));
+            uv.Add(new Vector2(1f, 0f));
+            indices.Add(start);
+            indices.Add(start + 1);
+            indices.Add(start + 2);
+        }
+
         private static Mesh Get(string key, Func<Mesh> factory)
         {
             if (Cache.TryGetValue(key, out var mesh) && mesh != null)

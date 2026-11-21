@@ -52,6 +52,8 @@ namespace Albion.Client
             /// осколок) и поза атаки. Пусто у игроков и у мобов без записи в конфиге.
             /// </summary>
             public MobDefinition MobDefinition;
+            /// <summary>Посох дальнобойного моба, если ему его выдали. Иначе null.</summary>
+            public GameObject Staff;
             public Vector3 LastPosition;
             public bool HasPosition;
             public bool WasDead;
@@ -356,6 +358,14 @@ namespace Albion.Client
                     HealthBar = root.GetComponentInChildren<HealthBar>(),
                 };
                 _entities[entity.Id] = state;
+
+                // Посох дальнобойному мобу: ApplyWeapon мобов не обслуживает, и маг делал жест
+                // пустой рукой — снаряд вылетал из воздуха.
+                if (state.MobDefinition != null && state.MobDefinition.IsRanged
+                    && state.Character != null && state.Staff == null)
+                {
+                    state.Staff = IceStaff.Attach(state.Character);
+                }
             }
 
             // Marks the entity as present this frame, so RetireMissingEntities leaves it alone.
@@ -568,8 +578,52 @@ namespace Albion.Client
         /// sideways from the body, so "weapon forward" sends the arrow across the chest — the
         /// flight line must be built from the shooter toward the target instead.
         /// </summary>
+        /// <summary>
+        /// Длина клипа атаки дальнобойного моба в секундах. Нужна, чтобы эффект совпадал
+        /// с жестом: 0,667 с у короткого клипа и 1,333 с у <c>Attack04</c> требуют разного
+        /// момента вылета. Если клип не найден — 1,0 с как безопасная середина.
+        /// </summary>
+        private static float RangedAttackClipLength(EntityVisual state)
+        {
+            var animator = state.Character != null ? state.Character.Animator : null;
+            if (animator == null || animator.runtimeAnimatorController == null)
+            {
+                return 1f;
+            }
+
+            // Берём длительность текущего состояния атаки: имя клипа задаётся контроллером.
+            var clips = animator.runtimeAnimatorController.animationClips;
+            if (clips == null || clips.Length == 0)
+            {
+                return 1f;
+            }
+
+            var longest = 1f;
+            foreach (var clip in clips)
+            {
+                if (clip != null && clip.name.StartsWith("Attack", System.StringComparison.Ordinal)
+                    && clip.length > 0f)
+                {
+                    longest = Mathf.Max(longest, clip.length);
+                }
+            }
+
+            return longest;
+        }
+
         private static Vector3 AttackOrigin(EntityVisual state)
         {
+            // Посох в приоритете: снаряд должен рождаться у кристалла на его конце,
+            // а не в кулаке. EquippedTransform у мобов пуст — оружия им не выдаётся.
+            if (state.Staff != null)
+            {
+                var gem = state.Staff.transform.Find("Staff gem");
+                if (gem != null)
+                {
+                    return gem.position;
+                }
+            }
+
             var weapon = state.Character != null ? state.Character.EquippedTransform : null;
             if (weapon != null)
             {
@@ -692,8 +746,15 @@ namespace Albion.Client
                 if (candidate.MobDefinition != null && candidate.MobDefinition.IsRanged && distance > 2.5f)
                 {
                     var origin = AttackOrigin(candidate);
-                    ProjectileVfx.IceShard(origin, playerPosition + (Vector3.up * 1.0f), 0.25f);
-                    FrostVfx.ChargeAt(origin);
+
+                    // Тайминги берутся из длины клипа, а не из зашитых 0,25 с: раньше весь
+                    // эффект укладывался в первые 0,3 с клипа длиной 1,33 с, и маг махал
+                    // рукой в пустоте. Заряд — на замахе, вылет — в момент броска.
+                    var clipLength = RangedAttackClipLength(candidate);
+                    var release = Mathf.Clamp(clipLength * 0.55f, 0.25f, 0.85f);
+
+                    FrostVfx.ChargeAt(origin, release);
+                    ProjectileVfx.IceShard(origin, playerPosition + (Vector3.up * 1.0f), release);
                 }
             }
 

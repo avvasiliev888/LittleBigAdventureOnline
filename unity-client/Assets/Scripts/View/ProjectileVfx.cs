@@ -18,6 +18,12 @@ namespace Albion.Client
         /// </summary>
         private const float ShardSpeed = 24f;
 
+        /// <summary>
+        /// Разрешить создание снаряда вне Play Mode. Включает только раскадровка
+        /// <c>IceVfxStoryboard</c>: в обычном редактировании сцены эффект не нужен.
+        /// </summary>
+        public static bool AllowEditModeSpawn;
+
         private Vector3 _from;
         private Vector3 _to;
         private float _speed = ArrowSpeed;
@@ -50,8 +56,9 @@ namespace Albion.Client
 
         private static void Spawn(Vector3 from, Vector3 to, float delay, bool isOrb, bool isShard = false)
         {
-            // В EditMode-проверках эффект не создаётся: он не должен попадать в редактируемую сцену.
-            if (!Application.isPlaying)
+            // В EditMode-проверках эффект не создаётся: он не должен попадать в редактируемую
+            // сцену. Исключение — раскадровка, которой эффект нужен именно вне Play Mode.
+            if (!Application.isPlaying && !AllowEditModeSpawn)
             {
                 return;
             }
@@ -168,60 +175,104 @@ namespace Albion.Client
         }
 
         /// <summary>
-        /// Гранёная ледяная глыба: вытянутое ядро, две встречные пирамиды-шипа и морозный
-        /// шлейф. Форма читается как лёд, а не как шар: у неё есть направление и острые грани.
+        /// Летящий осколок: ОДИН гранёный кристалл с преломляющим шейдером вместо прежней
+        /// сборки из гладкого цилиндра и двух конусов, покрашенных непрозрачным белым glow.
+        /// За ним — горсть мелких осколков, отстающих по пути, и холодный свет.
         /// </summary>
         private static void BuildIceShard(Transform parent, Color color)
         {
             var core = new GameObject("Shard core").transform;
             core.SetParent(parent, false);
+            // Кристалл вытянут по Y своей модели, поэтому повёрнут носком вперёд по +Z.
             core.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            core.localScale = new Vector3(0.16f, 0.44f, 0.16f);
-            core.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.Cylinder;
-            AddRenderer(core.gameObject, ProceduralMaterials.Glow(new Color(0.55f, 0.86f, 1f)));
+            core.localScale = Vector3.one * 0.42f;
+            core.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.IceCrystal;
+            AddRenderer(core.gameObject, IceMaterials.Shard);
 
-            // Носок осколка: конус смотрит вперёд по +Z и задаёт направление полёта.
-            var tip = new GameObject("Shard tip").transform;
-            tip.SetParent(parent, false);
-            tip.localPosition = new Vector3(0f, 0f, 0.26f);
-            tip.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            tip.localScale = new Vector3(0.20f, 0.34f, 0.20f);
-            tip.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.Cone;
-            AddRenderer(tip.gameObject, ProceduralMaterials.Glow(new Color(0.90f, 0.98f, 1f)));
+            var tumble = core.gameObject.AddComponent<IceTumble>();
+            tumble.Configure(180f);
 
-            var tail = new GameObject("Shard tail").transform;
-            tail.SetParent(parent, false);
-            tail.localPosition = new Vector3(0f, 0f, -0.24f);
-            tail.localRotation = Quaternion.Euler(-90f, 0f, 0f);
-            tail.localScale = new Vector3(0.15f, 0.26f, 0.15f);
-            tail.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.Cone;
-            AddRenderer(tail.gameObject, ProceduralMaterials.Glow(new Color(0.30f, 0.60f, 0.95f)));
-
-            // Три ребра по кругу: без них осколок выглядит гладким цилиндром.
-            for (var i = 0; i < 3; i++)
+            // След из мелких осколков: лёд крошится на лету.
+            for (var i = 0; i < 5; i++)
             {
-                var rib = new GameObject("Shard rib").transform;
-                rib.SetParent(parent, false);
-                rib.localRotation = Quaternion.Euler(0f, i * 120f, 0f);
-                rib.localPosition = Quaternion.Euler(0f, i * 120f, 0f) * new Vector3(0f, 0f, 0.06f);
-                rib.localScale = new Vector3(0.05f, 0.30f, 0.05f);
-                rib.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.Box;
-                AddRenderer(rib.gameObject, ProceduralMaterials.Glow(new Color(0.72f, 0.93f, 1f)));
+                var mote = new GameObject("Shard mote").transform;
+                mote.SetParent(parent, false);
+                mote.localPosition = new Vector3(
+                    Random.Range(-0.06f, 0.06f),
+                    Random.Range(-0.06f, 0.06f),
+                    Random.Range(-0.30f, -0.05f));
+                mote.localScale = Vector3.one * Random.Range(0.03f, 0.07f);
+                mote.gameObject.AddComponent<MeshFilter>().sharedMesh =
+                    ProceduralMeshLibrary.CrystalVariant(i + 11);
+                AddRenderer(mote.gameObject, IceMaterials.Mote);
+
+                var drift = mote.gameObject.AddComponent<IceTrailMote>();
+                drift.Configure(Random.Range(0.15f, 0.5f));
             }
 
             var light = parent.gameObject.AddComponent<Light>();
             light.type = LightType.Point;
-            light.color = color;
-            light.range = 4.5f;
-            light.intensity = 2.2f;
+            light.color = new Color(0.55f, 0.84f, 1f);
+            light.range = 5f;
+            light.intensity = 2.6f;
 
+            // Непрозрачная яркая полоса: прежний Glow-шлейф давал именно ту «белую полоску».
+            // Теперь шлейф — голубой туман, а не заливка.
             var trail = parent.gameObject.AddComponent<TrailRenderer>();
-            trail.time = 0.30f;
-            trail.startWidth = 0.26f;
+            trail.time = 0.26f;
+            trail.startWidth = 0.22f;
             trail.endWidth = 0f;
-            trail.sharedMaterial = ProceduralMaterials.Glow(new Color(0.45f, 0.80f, 1f));
+            trail.numCapVertices = 2;
+            trail.sharedMaterial = IceMaterials.Mote;
             trail.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             trail.receiveShadows = false;
+        }
+
+        /// <summary>Медленное вращение осколка: грани блестят, лёд читается объёмным.</summary>
+        public sealed class IceTumble : MonoBehaviour, IceAnimator
+        {
+            private float _speed;
+
+            public void Configure(float speed)
+            {
+                _speed = speed;
+            }
+
+            private void Update()
+            {
+                Advance(Time.deltaTime);
+            }
+
+            public void Advance(float deltaTime)
+            {
+                transform.Rotate(Vector3.forward, _speed * deltaTime, Space.Self);
+            }
+        }
+
+        /// <summary>Мелкий осколок отстаёт вдоль полёта и тает.</summary>
+        public sealed class IceTrailMote : MonoBehaviour, IceAnimator
+        {
+            private float _drift;
+            private float _age;
+
+            public void Configure(float drift)
+            {
+                _drift = drift;
+            }
+
+            private void Update()
+            {
+                Advance(Time.deltaTime);
+            }
+
+            public void Advance(float deltaTime)
+            {
+                _age += deltaTime;
+                // Отставание назад по -Z: осколок не летит с той же скоростью, что ядро.
+                transform.localPosition += Vector3.back * (_drift * deltaTime);
+                transform.Rotate(Vector3.up, 240f * deltaTime, Space.Self);
+                transform.localScale *= Mathf.Lerp(1f, 0.965f, Mathf.Clamp01(_age));
+            }
         }
 
         private static void AddRenderer(GameObject target, Material material)

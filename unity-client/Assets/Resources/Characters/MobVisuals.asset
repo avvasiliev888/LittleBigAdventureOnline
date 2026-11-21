@@ -24,7 +24,7 @@ MonoBehaviour:
     Yaw: 0
     GroundOffset: 0
   - MobKey: red_warlord
-    Prefab: {fileID: 2767940049021525272, guid: f49eb94c38dbef54eb1cf59999d71f8b, type: 3}
+    Prefab: {fileID: 7630005384604402083, guid: 2cf6a466b3e1f0447a4b9d164584a5fd, type: 3}
     Height: 2.45
     Yaw: 0
     GroundOffset: 0

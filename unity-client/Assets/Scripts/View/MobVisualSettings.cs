@@ -72,8 +72,19 @@ namespace Albion.Client
                 }
 
                 var hasBody = false;
+                var hasAlbedo = false;
                 foreach (var renderer in entry.Prefab.GetComponentsInChildren<Renderer>(true))
                 {
+                    // A body is a skinned mesh, not a material whose name contains "skeleton".
+                    // The old test only passed for KayKit, whose material happens to be called
+                    // "skeleton"; the battle wizard's is "WizardBody" and was rejected with
+                    // "no skeleton body material" — measured 21.11.2026, which made the check a
+                    // gate that only let one art pack through.
+                    if (!(renderer is SkinnedMeshRenderer))
+                    {
+                        continue;
+                    }
+
                     foreach (var material in renderer.sharedMaterials)
                     {
                         if (material == null)
@@ -82,24 +93,27 @@ namespace Albion.Client
                                 "Mob prefab " + entry.Prefab.name + " has a missing material.");
                         }
 
-                        if (material.name.IndexOf("skeleton", StringComparison.OrdinalIgnoreCase) < 0)
-                        {
-                            continue;
-                        }
-
                         hasBody = true;
-                        if (material.HasProperty("_BaseMap") && material.GetTexture("_BaseMap") == null)
+
+                        if (material.HasProperty("_BaseMap") && material.GetTexture("_BaseMap") != null)
                         {
-                            throw new InvalidOperationException(
-                                "Mob body material has no albedo texture: " + material.name);
+                            hasAlbedo = true;
                         }
 
+                        // Only a near-white emission washes the model out. A coloured glow is a
+                        // deliberate overlay — the KayKit skeletons ship M_Glow, red (1;0,18;0,08)
+                        // and untextured, and an earlier version of this check rejected them for
+                        // having no albedo. An overlay is not a body.
                         if (material.IsKeywordEnabled("_EMISSION")
-                            && material.HasProperty("_EmissionColor")
-                            && material.GetColor("_EmissionColor").maxColorComponent > 0.05f)
+                            && material.HasProperty("_EmissionColor"))
                         {
-                            throw new InvalidOperationException(
-                                "Mob body material has white emission and will render white: " + material.name);
+                            var emission = material.GetColor("_EmissionColor");
+                            if (emission.r > 0.9f && emission.g > 0.9f && emission.b > 0.9f)
+                            {
+                                throw new InvalidOperationException(
+                                    "Mob body material has white emission and will render white: "
+                                    + material.name);
+                            }
                         }
                     }
                 }
@@ -107,7 +121,16 @@ namespace Albion.Client
                 if (!hasBody)
                 {
                     throw new InvalidOperationException(
-                        "Mob prefab has no skeleton body material: " + entry.Prefab.name);
+                        "Mob prefab has no skinned body mesh: " + entry.Prefab.name);
+                }
+
+                // One textured material is enough: a body plus an untextured glow overlay is a
+                // normal setup. Zero textured materials is the real defect — it means the model
+                // imported with no albedo and will render flat grey.
+                if (!hasAlbedo)
+                {
+                    throw new InvalidOperationException(
+                        "Mob prefab has no textured body material: " + entry.Prefab.name);
                 }
             }
         }

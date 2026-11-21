@@ -40,22 +40,8 @@ namespace Albion.Editor
         private const int Width = 240;
         private const int Height = 300;
 
-        /// <summary>Frames per required clip. Twelve is enough for a loop to read as motion.</summary>
+        /// <summary>Frames per clip. Twelve is enough for a loop to read as motion.</summary>
         private const int Frames = 12;
-
-        /// <summary>
-        /// The six clips the game actually needs. Chosen by name fragment, because the package
-        /// uses "BattleRunForward" and "WalkForward" rather than plain "run"/"walk".
-        /// </summary>
-        private static readonly (string Label, string Fragment)[] Required =
-        {
-            ("idle", "Idle01"),
-            ("walk", "WalkForward"),
-            ("run", "BattleRunForward"),
-            ("attack", "Attack01"),
-            ("death", "Die"),
-            ("hit", "GetHit"),
-        };
 
         [MenuItem("Albion/Clips/Contact Sheet Battle Wizard")]
         public static void Run()
@@ -119,6 +105,8 @@ namespace Albion.Editor
 
                 report.AppendLine("=== CLIPS ===");
 
+                var clipIndex = 0;
+
                 foreach (var clipPath in clipPaths)
                 {
                     var clip = AssetDatabase
@@ -144,14 +132,12 @@ namespace Albion.Editor
                         File.WriteAllBytes(Path.Combine(stillDir, name + ".png"), still);
                     }
 
-                    var label = MatchRequired(name);
-                    if (label == null)
-                    {
-                        continue;
-                    }
-
-                    // A loop is sampled over one period; a one-shot over its whole length. Sampling
-                    // a one-shot on a loop wrap shows the same first pose twice.
+                    // EVERY clip gets a filmstrip, not only the six required ones. A still says
+                    // what a pose looks like but not what the motion does, and the difference is
+                    // exactly what decides whether a clip is usable. The customer asked to see the
+                    // whole catalogue move, and a name like "Attack02Maintain" is unreadable.
+                    // Frames are prefixed by index so files sort in catalogue order, and the clip
+                    // name is carried in the prefix to keep every clip's frames distinct.
                     var step = clip.isLooping ? length / Frames : length / (Frames - 1);
                     for (var frame = 0; frame < Frames; frame++)
                     {
@@ -161,9 +147,11 @@ namespace Albion.Editor
                             continue;
                         }
 
-                        var file = Path.Combine(frameDir, $"{label}_{frame:00}.png");
+                        var file = Path.Combine(frameDir, $"{clipIndex:00}_{name}_{frame:00}.png");
                         File.WriteAllBytes(file, bytes);
                     }
+
+                    clipIndex++;
                 }
 
                 renderTexture.Release();
@@ -189,24 +177,6 @@ namespace Albion.Editor
 
             report.AppendLine("########## CLIP SHEET END ##########");
             Debug.Log(report.ToString());
-        }
-
-        private static string MatchRequired(string clipName)
-        {
-            // EXACT name only, deliberately. A substring rule let "DieRecovery" match the "Die"
-            // fragment and overwrite the death_XX.png frames that "Die" had just written, so the
-            // death filmstrip showed the character STANDING UP — measured 20.11.2026, it read as a
-            // resurrection and made a perfectly good clip look broken. All six required clips have
-            // exact file names, so substring matching buys nothing and only creates collisions.
-            foreach (var (label, fragment) in Required)
-            {
-                if (string.Equals(clipName, fragment, StringComparison.OrdinalIgnoreCase))
-                {
-                    return label;
-                }
-            }
-
-            return null;
         }
 
         private static Camera BuildCamera()

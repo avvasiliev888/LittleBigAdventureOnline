@@ -62,7 +62,12 @@ def build_gallery(out_dir: str, title: str) -> str:
     parts: list[str] = []
 
     if gifs:
-        parts.append("<h2>Нужные игре клипы — движение</h2><div class=\"clips\">")
+        parts.append(f"<h2>Все клипы в движении — {len(gifs)}</h2>")
+        parts.append(
+            "<div class=\"sub\" style=\"margin:-4px 0 14px\">Каждый клип целиком: "
+            "12 кадров по порядку. Раскадровки ниже показывают те же кадры подряд.</div>"
+        )
+        parts.append("<div class=\"clips\">")
         for path in gifs:
             name = os.path.splitext(os.path.basename(path))[0]
             size = os.path.getsize(path) // 1024

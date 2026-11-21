@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import re
 import sys
 from collections import defaultdict
 
@@ -27,17 +28,34 @@ except ImportError:
     sys.exit(2)
 
 
+FRAME_RE = re.compile(r"^(\d+)_(.+)_(\d+)$")
+
+
+def group_frames(frames_dir: str) -> dict[str, list[str]]:
+    """Кадры сгруппированы по имени клипа.
+
+    Имя кадра: "<порядковый номер>_<имя клипа>_<номер кадра>". Имя клипа само
+    содержит подчёркивания, поэтому разбор идёт с двух концов, а не делением
+    по последнему "_": иначе "Attack02Maintain" превратился бы в "Attack02Maintain"
+    без номера, а клип с "_" в имени — в мусор.
+    """
+    groups: dict[str, list[str]] = defaultdict(list)
+    for path in sorted(glob.glob(os.path.join(frames_dir, "*.png"))):
+        stem = os.path.splitext(os.path.basename(path))[0]
+        match = FRAME_RE.match(stem)
+        if not match:
+            continue
+        groups[match.group(2)].append(path)
+    return dict(sorted(groups.items(), key=lambda kv: int(FRAME_RE.match(os.path.splitext(os.path.basename(kv[1][0]))[0]).group(1))))
+
+
 def build_gifs(out_dir: str, fps: int) -> int:
     """Один GIF на клип: кадры сгруппированы по префиксу до последнего '_'."""
     frames_dir = os.path.join(out_dir, "frames")
     clips_dir = os.path.join(out_dir, "clips")
     os.makedirs(clips_dir, exist_ok=True)
 
-    groups: dict[str, list[str]] = defaultdict(list)
-    for path in sorted(glob.glob(os.path.join(frames_dir, "*.png"))):
-        name = os.path.splitext(os.path.basename(path))[0]
-        label = name.rsplit("_", 1)[0]
-        groups[label].append(path)
+    groups = group_frames(frames_dir)
 
     written = 0
     duration = max(20, int(1000 / max(1, fps)))
@@ -72,10 +90,7 @@ def build_filmstrips(out_dir: str, thumb: int = 120) -> int:
     strips_dir = os.path.join(out_dir, "strips")
     os.makedirs(strips_dir, exist_ok=True)
 
-    groups: dict[str, list[str]] = defaultdict(list)
-    for path in sorted(glob.glob(os.path.join(frames_dir, "*.png"))):
-        name = os.path.splitext(os.path.basename(path))[0]
-        groups[name.rsplit("_", 1)[0]].append(path)
+    groups = group_frames(frames_dir)
 
     written = 0
     pad = 4

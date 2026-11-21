@@ -1,11 +1,12 @@
 {
-  "_comment": "Наборы анимаций по типу оружия. Один набор обслуживает много бойцов: замах меча одинаков у мечника, разбойника и скелета. Проверяется tools/unity/check-animation-sets.py против реального инвентаря клипов.",
-  "_source": "KayKit (Assets/Art/Characters/KayKit) — 76-95 клипов в одном FBX, риг Humanoid, поэтому любое тело с Humanoid получает эти клипы.",
+  "_comment": "Наборы анимаций по типу оружия. Один набор обслуживает много бойцов: замах меча одинаков у мечника, разбойника и скелета. Проверяется tools/unity/check-animation-sets.py против инвентаря docs/imports/clip-inventory.json.",
+  "_source": "Поле source задаёт папку донора. Клип обязан лежать в ней: иначе набор молча получит движение из чужого пакета, и удар мечом окажется ударом посоха.",
   "_roles": "idle, walk, run, attack, death, hit — шесть ролей, которых достаточно мобу.",
   "sets": [
     {
       "key": "unarmed",
       "label": "Без оружия — звери, скелеты, монахи",
+      "source": "Assets/Art/Characters/KayKit",
       "idle": "Unarmed_Idle",
       "walk": "Walking_A",
       "run": "Running_A",
@@ -16,6 +17,7 @@
     {
       "key": "sword_1h",
       "label": "Одноручное — меч, топор, булава, кинжал",
+      "source": "Assets/Art/Characters/KayKit",
       "idle": "Idle",
       "walk": "Walking_A",
       "run": "Running_A",
@@ -26,6 +28,7 @@
     {
       "key": "sword_2h",
       "label": "Двуручное — большой меч, секира, молот",
+      "source": "Assets/Art/Characters/KayKit",
       "idle": "2H_Melee_Idle",
       "walk": "Walking_A",
       "run": "Running_A",
@@ -36,6 +39,7 @@
     {
       "key": "bow",
       "label": "Лук — стрелок",
+      "source": "Assets/Art/Characters/KayKit",
       "idle": "1H_Ranged_Aiming",
       "walk": "Walking_A",
       "run": "Running_A",
@@ -45,13 +49,14 @@
     },
     {
       "key": "magic",
-      "label": "Магия — посох, каст",
-      "idle": "Spellcasting",
-      "walk": "Walking_A",
-      "run": "Running_A",
-      "attack": "Spellcast_Shoot",
-      "death": "Death_A",
-      "hit": "Hit_A"
+      "label": "Магия — боевой маг, посох",
+      "source": "Assets/WizardPBR/Animations",
+      "idle": "Idle01",
+      "walk": "BattleWalkForward",
+      "run": "BattleRunForward",
+      "attack": "Attack01",
+      "death": "Die",
+      "hit": "GetHit"
     }
   ]
 }

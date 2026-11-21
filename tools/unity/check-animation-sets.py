@@ -22,22 +22,33 @@ import os
 import sys
 
 DEFAULT_SETS = "config/animation-sets.json"
-DEFAULT_INVENTORY = "docs/imports/clip-inventory-kaykit.json"
+DEFAULT_INVENTORY = "docs/imports/clip-inventory.json"
 
 # Набор обязан покрывать эти роли: без них моб не может ни стоять, ни идти,
 # ни драться, ни умирать. Отсутствие роли — ошибка, а не предупреждение.
 REQUIRED_ROLES = ("idle", "walk", "run", "attack", "death", "hit")
 
 
-def load_clips(path: str) -> set[str]:
+def load_inventory(path: str) -> dict[str, set[str]]:
+    """Карта «папка донора -> имена клипов в ней»."""
     with open(path, encoding="utf8") as handle:
         data = json.load(handle)
 
-    clips: set[str] = set()
+    by_source: dict[str, set[str]] = {}
     for model in data.get("models", []):
+        model_path = model["path"]
+        folder = model_path.rsplit("/", 1)[0]
+        names = by_source.setdefault(folder, set())
         for clip in model.get("clips", []):
-            clips.add(clip["name"])
-    return clips
+            names.add(clip["name"])
+    return by_source
+
+
+def all_clips(by_source: dict[str, set[str]]) -> set[str]:
+    result: set[str] = set()
+    for names in by_source.values():
+        result |= names
+    return result
 
 
 def main() -> int:
@@ -51,7 +62,9 @@ def main() -> int:
             print("ОШИБКА: нет файла " + path)
             return 2
 
-    clips = load_clips(args.inventory)
+    by_source = load_inventory(args.inventory)
+    everything = all_clips(by_source)
+
     with open(args.sets, encoding="utf8") as handle:
         data = json.load(handle)
 
@@ -70,6 +83,15 @@ def main() -> int:
             problems.append(f"{label}: ключ повторяется, второй набор недостижим")
         seen_keys.add(key)
 
+        source = entry.get("source", "")
+        if not source:
+            problems.append(f"{label}: нет поля 'source' — откуда брать клипы")
+            continue
+
+        # Клип обязан быть именно в этой папке. Иначе набор мечника тихо возьмёт
+        # удар посохом из другого пакета, и заметить это можно только в игре.
+        source_clips = by_source.get(source, set())
+
         for role in REQUIRED_ROLES:
             if role not in entry:
                 problems.append(f"{label}: нет роли '{role}'")
@@ -83,8 +105,12 @@ def main() -> int:
                 continue
 
             for name in names:
-                if name not in clips:
-                    problems.append(f"{label}: роль '{role}' -> нет клипа '{name}'")
+                if name not in everything:
+                    problems.append(f"{label}: роль '{role}' -> клипа '{name}' нет нигде")
+                elif name not in source_clips:
+                    problems.append(
+                        f"{label}: роль '{role}' -> клип '{name}' есть, но не в '{source}'"
+                    )
 
     if problems:
         print("НАБОРЫ НЕ ГОДНЫ:")
@@ -92,7 +118,7 @@ def main() -> int:
             print("  - " + problem)
         return 1
 
-    print(f"OK  наборов: {len(data.get('sets', []))}, все клипы найдены в инвентаре.")
+    print(f"OK  наборов: {len(data.get('sets', []))}, все клипы лежат в своих источниках.")
     return 0
 
 

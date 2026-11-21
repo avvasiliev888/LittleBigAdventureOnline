@@ -1,10 +1,349 @@
 {
  "models": [
   {
+   "path": "Assets/AllStarCharacterLibrary/Models/Characters/A03.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "Take 001",
+     "length": 0.033,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/Characters/Ninjas/Ninjas.FBX",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Take 001",
+     "length": 0.033,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/CollisionHelpers/FloorTile.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Take 001",
+     "length": 3.333,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/CollisionHelpers/RadialAngler.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Take 001",
+     "length": 3.333,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsFemale/BaseFemale.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Take 001",
+     "length": 0.033,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsFemale/BaseFemale@1HAttack.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HAttack",
+     "length": 0.7,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsFemale/BaseFemale@1HCombatIdle.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HCombatIdle",
+     "length": 1.833,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsFemale/BaseFemale@1HCombatRunF.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HCombatRunF",
+     "length": 0.633,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsFemale/BaseFemale@1HDeathA.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HDeathA",
+     "length": 1.8,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsFemale/BaseFemale@1HDeathB.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HDeathB",
+     "length": 2.2,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsFemale/BaseFemale@1HDeathC.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HDeathC",
+     "length": 1.867,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsFemale/BaseFemale@1HIdle.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HIdle",
+     "length": 1.667,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsFemale/BaseFemale@1HPain.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HPain",
+     "length": 0.5,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsFemale/BaseFemale@1HWalkF.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HWalkF",
+     "length": 1.133,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsFemale/Marina@SpinningAttackLunge.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "SpinningAttackLunge",
+     "length": 0.567,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/BaseMale.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Take 001",
+     "length": 0.033,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/BaseMale@1HAttack.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HAttack",
+     "length": 0.7,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/BaseMale@1HCombatIdle.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HCombatIdle",
+     "length": 1.133,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/BaseMale@1HCombatRunF.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HCombatRunF",
+     "length": 0.633,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/BaseMale@1HDeathA.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HDeathA",
+     "length": 1.8,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/BaseMale@1HDeathB.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HDeathB",
+     "length": 2.2,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/BaseMale@1HDeathC.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HDeathC",
+     "length": 1.867,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/BaseMale@1HIdle.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HIdle",
+     "length": 2.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/BaseMale@1HPain.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HPain",
+     "length": 0.5,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/BaseMale@1HStepBack.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HStepBack",
+     "length": 0.667,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/BaseMale@1HWalkF.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "1HWalkF",
+     "length": 1.1,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/SuperMale.FBX",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Take 001",
+     "length": 0.033,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/RootAnimsMale/SuperMale@KnockedBack.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "KnockedBack",
+     "length": 0.667,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/Standing Aim Idle 01.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "BowAim",
+     "length": 3.767,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/Standing Aim Recoil.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "BowShoot",
+     "length": 0.7,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/AllStarCharacterLibrary/Models/Standing Idle 01.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "BowIdle",
+     "length": 5.1,
+     "loop": true
+    }
+   ]
+  },
+  {
    "path": "Assets/Art/Characters/KayKit/Knight.fbx",
    "rig": "humanoid",
-   "avatarValid": true,
-   "clipCount": 76,
    "clips": [
     {
      "name": "1H_Melee_Attack_Chop",
@@ -391,8 +730,6 @@
   {
    "path": "Assets/Art/Characters/KayKit/Skeleton_Minion.fbx",
    "rig": "humanoid",
-   "avatarValid": true,
-   "clipCount": 95,
    "clips": [
     {
      "name": "1H_Melee_Attack_Chop",
@@ -874,8 +1211,6 @@
   {
    "path": "Assets/Art/Characters/KayKit/Skeleton_Rogue.fbx",
    "rig": "humanoid",
-   "avatarValid": true,
-   "clipCount": 95,
    "clips": [
     {
      "name": "1H_Melee_Attack_Chop",
@@ -1357,8 +1692,6 @@
   {
    "path": "Assets/Art/Characters/KayKit/Skeleton_Warrior.fbx",
    "rig": "humanoid",
-   "avatarValid": true,
-   "clipCount": 95,
    "clips": [
     {
      "name": "1H_Melee_Attack_Chop",
@@ -1833,6 +2166,369 @@
     {
      "name": "Walking_D_Skeletons",
      "length": 1.6,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/Attack01.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Attack01",
+     "length": 1,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/Attack02Maintain.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Attack02Maintain",
+     "length": 0.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/Attack02Start.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Attack02Start",
+     "length": 0.667,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/Attack03Maintain.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Attack03Maintain",
+     "length": 0.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/Attack03Start.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Attack03Start",
+     "length": 1.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/Attack04.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Attack04",
+     "length": 1.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/BattleRunForward.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "BattleRunForward",
+     "length": 0.8,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/BattleWalkBack.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "BattleWalkBack",
+     "length": 1.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/BattleWalkForward.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "BattleWalkForward",
+     "length": 1.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/BattleWalkLeft.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "BattleWalkLeft",
+     "length": 1.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/BattleWalkRight.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "BattleWalkRight",
+     "length": 1.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/DefendHit.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "DefendHit",
+     "length": 0.667,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/DefendMaintain.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "DefendMaintain",
+     "length": 0.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/DefendStart.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "DefendStart",
+     "length": 0.333,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/Die.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Die",
+     "length": 0.833,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/DieRecovery.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "DieRecovery",
+     "length": 1.5,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/Dizzy.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Dizzy",
+     "length": 1.667,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/GetHit.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "GetHit",
+     "length": 1,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/Idle01.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Idle01",
+     "length": 1.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/Idle02.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Idle02",
+     "length": 5.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/Idle03.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Idle03",
+     "length": 1.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/Interact.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Interact",
+     "length": 1.667,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/JumpAir.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "JumpAir",
+     "length": 0.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/JumpAirAttack.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "JumpAirAttack",
+     "length": 0.833,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/JumpEnd.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "JumpEnd",
+     "length": 0.833,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/JumpStart.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "JumpStart",
+     "length": 0.667,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/JumpUp.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "JumpUp",
+     "length": 0.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/JumpUpAttack.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "JumpUpAttack",
+     "length": 0.833,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/PickUp.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "PickUp",
+     "length": 1.667,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/PotionDrink.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "PotionDrink",
+     "length": 2.667,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/VictoryMaintain.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "VictoryMaintain",
+     "length": 1.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/VictoryStart.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "VictoryStart",
+     "length": 2.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/WizardPBR/Animations/WalkForward.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "WalkForward",
+     "length": 1.333,
      "loop": true
     }
    ]

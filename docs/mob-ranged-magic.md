@@ -124,6 +124,7 @@ run → walk   Speed < 3,2
 | `check.py --guard` | EXIT=0 |
 | `Probe` на копии | EXIT=0, `error CS` = **0**, START/END = 1/1 |
 | импорт тел | `entry set: red_warlord -> WizardBody h=2,45`, `ValidateMaterials: OK` |
+| сборка клиента | `unity-client/Builds/desktop`, **21.11.2026 13:03**, **121,0 МБ** |
 
 Новые тесты в `src/Tests/MobAiTests.cs`:
 

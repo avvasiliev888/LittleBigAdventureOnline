@@ -828,19 +828,21 @@ namespace Simulation.Core
                     return;
                 }
 
+                // Дальнобойный моб (KeepDistance > 0) держит дистанцию: отходит, когда цель подошла
+                // ближе выбранного зазора. Ближний бой (KeepDistance == 0) идёт сюда с нулём и
+                // ведёт себя ровно как раньше.
+                if (definition.KeepDistance > 0f && targetDistance < definition.KeepDistance)
+                {
+                    mob.AiState = MobAiState.Retreat;
+                    MoveMobAway(mob, target.Position, deltaTime);
+                    TryMobAttack(mob, definition, target, targetDistance);
+                    return;
+                }
+
                 if (targetDistance <= definition.AttackRange)
                 {
                     mob.AiState = MobAiState.Attack;
-                    if (_state.Tick >= mob.NextAttackTick)
-                    {
-                        mob.NextAttackTick = _state.Tick + ToTicks(definition.AttackSeconds);
-                        target.Hp -= definition.Damage;
-                        if (target.Hp <= 0)
-                        {
-                            Kill(target, mob);
-                        }
-                    }
-
+                    TryMobAttack(mob, definition, target, targetDistance);
                     return;
                 }
 
@@ -853,7 +855,8 @@ namespace Simulation.Core
 
             // Погоня без цели (цель умерла или вышла за leash) — домой. Патрулирующий моб не
             // «возвращается» на каждом шаге: его смещение от спавна — это и есть маршрут.
-            if (mob.AiState == MobAiState.Chase || mob.AiState == MobAiState.Attack)
+            if (mob.AiState == MobAiState.Chase || mob.AiState == MobAiState.Attack
+                || mob.AiState == MobAiState.Retreat)
             {
                 mob.AiState = MobAiState.Return;
                 if (MoveMobTowards(mob, mob.SpawnPosition, deltaTime))
@@ -991,6 +994,78 @@ namespace Simulation.Core
             }
 
             return arrived;
+        }
+
+        /// <summary>
+        /// Шаг от цели: дальнобойный моб пятится, сохраняя дистанцию. Направление берётся
+        /// зеркально <see cref="MoveMobTowards"/>, столкновения и steering учитываются теми же
+        /// правилами, поэтому моб не проходит сквозь камни и не застревает в стене.
+        /// </summary>
+        private void MoveMobAway(EntityState mob, Vector3 threat, float deltaTime)
+        {
+            var dx = mob.Position.X - threat.X;
+            var dz = mob.Position.Z - threat.Z;
+            var distance = MathF.Sqrt((dx * dx) + (dz * dz));
+            if (distance <= 0.0001f)
+            {
+                // Цель стоит вплотную: отходим по направлению патруля или на восток, но не
+                // остаёмся в неопределённости — иначе моб и цель навсегда делят одну точку.
+                dx = 1f;
+                dz = 0f;
+                distance = 1f;
+            }
+
+            var step = mob.MoveSpeed * deltaTime;
+            var side = mob.AiAvoidSide;
+            var direction = MobSteering.Resolve(
+                mob.Position,
+                new Vector3(mob.Position.X + ((dx / distance) * 2f), 0f, mob.Position.Z + ((dz / distance) * 2f)),
+                mob.Actor.CollisionRadius,
+                _config!.WorldColliders,
+                mob.Id,
+                ref side);
+            mob.AiAvoidSide = side;
+
+            if (direction.LengthSquared() <= 0.000001f)
+            {
+                return;
+            }
+
+            mob.Position = MovementCollision.Resolve(
+                mob.Position,
+                new Vector3(
+                    mob.Position.X + (direction.X * step),
+                    0f,
+                    mob.Position.Z + (direction.Z * step)),
+                mob.Actor.CollisionRadius,
+                _config!.Zones,
+                _config.WorldColliders,
+                BuildActorCircles(mob.Id),
+                mob.Id);
+        }
+
+        /// <summary>
+        /// Удар моба по цели с проверкой кулдауна. Вынесен из веток ИИ, чтобы дальнобойный моб
+        /// бил и во время отступления: дистанция удержания не должна превращаться в паузу в бою.
+        /// </summary>
+        private void TryMobAttack(EntityState mob, MobDefinition definition, EntityState target, float targetDistance)
+        {
+            if (targetDistance > definition.AttackRange)
+            {
+                return;
+            }
+
+            if (_state.Tick < mob.NextAttackTick)
+            {
+                return;
+            }
+
+            mob.NextAttackTick = _state.Tick + ToTicks(definition.AttackSeconds);
+            target.Hp -= definition.Damage;
+            if (target.Hp <= 0)
+            {
+                Kill(target, mob);
+            }
         }
 
         /// <summary>

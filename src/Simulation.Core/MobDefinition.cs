@@ -18,6 +18,9 @@ namespace Simulation.Core
         /// <summary>Радиус круга столкновения моба по умолчанию; значение приходит из JSON.</summary>
         public const float DefaultCollisionRadius = 0.6f;
 
+        /// <summary>Тип оружия по умолчанию: моб ближнего боя, если в конфиге поле не задано.</summary>
+        public const string DefaultWeaponType = "sword_1h";
+
         private readonly IReadOnlyList<Vector2> _spawns;
         private readonly IReadOnlyList<Vector2> _patrolPoints;
         private readonly List<MobLootEntry> _loot;
@@ -47,6 +50,8 @@ namespace Simulation.Core
         /// <param name="spawns">Точки спавна в мире; хотя бы одна.</param>
         /// <param name="loot">Таблица лута; пусто — только серебро.</param>
         /// <param name="collisionRadius">Радиус круга столкновения моба, мировые единицы; положительный.</param>
+        /// <param name="keepDistance">Дистанция удержания для дальнобойного моба; 0 — ближний бой, не больше AttackRange.</param>
+        /// <param name="weaponType">Тип оружия из конфига: sword_1h, bow, staff, sword_2h.</param>
         /// <exception cref="ArgumentOutOfRangeException">Если числовое значение вне допустимого диапазона.</exception>
         /// <exception cref="ArgumentException">Если ключ, имя или зона пусты, либо точки патруля некорректны.</exception>
         public MobDefinition(
@@ -73,7 +78,9 @@ namespace Simulation.Core
             IReadOnlyList<Vector2>? patrolPoints,
             IReadOnlyList<Vector2>? spawns,
             IReadOnlyList<MobLootEntry>? loot,
-            float collisionRadius = DefaultCollisionRadius)
+            float collisionRadius = DefaultCollisionRadius,
+            float keepDistance = 0f,
+            string weaponType = DefaultWeaponType)
         {
             if (id == 0)
             {
@@ -141,6 +148,24 @@ namespace Simulation.Core
                     nameof(leashRange),
                     leashRange,
                     "LeashRange моба должен быть конечным и не меньше AggroRange.");
+            }
+
+            // Дистанция отступления: дальнобойный моб держится на расстоянии и отходит, когда цель
+            // подходит вплотную. 0 означает «ближний бой»: поведение не меняется вообще.
+            if (!IsFinite(keepDistance) || keepDistance < 0f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(keepDistance),
+                    keepDistance,
+                    "KeepDistance моба должен быть конечным неотрицательным числом.");
+            }
+
+            if (keepDistance > attackRange)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(keepDistance),
+                    keepDistance,
+                    "KeepDistance моба не может быть больше AttackRange: иначе моб отходит дальше, чем достаёт его удар.");
             }
 
             if (!IsFinite(respawnSeconds) || respawnSeconds <= 0f)
@@ -221,6 +246,8 @@ namespace Simulation.Core
             MoveSpeed = moveSpeed;
             AttackRange = attackRange;
             AttackSeconds = attackSeconds;
+            KeepDistance = keepDistance;
+            WeaponType = string.IsNullOrWhiteSpace(weaponType) ? DefaultWeaponType : weaponType;
             AggroRange = aggroRange;
             LeashRange = leashRange;
             RespawnSeconds = respawnSeconds;
@@ -275,6 +302,26 @@ namespace Simulation.Core
 
         /// <summary>Интервал между ударами, с.</summary>
         public float AttackSeconds { get; }
+
+        /// <summary>
+        /// Дистанция, которую дальнобойный моб держит до цели, ед. мира.
+        /// 0 — моб ближнего боя: он подходит вплотную, как раньше.
+        /// </summary>
+        public float KeepDistance { get; }
+
+        /// <summary>
+        /// Тип оружия моба из конфига: <c>sword_1h</c>, <c>bow</c>, <c>sword_2h</c>, <c>staff</c>.
+        /// Клиент по нему выбирает снаряд (стрела, ледяной осколок) и позу атаки.
+        /// </summary>
+        public string WeaponType { get; }
+
+        /// <summary>
+        /// Дальний бой: моб бьёт снарядом, а не вплотную. Признак вычисляется из конфига,
+        /// а не из кода клиента, поэтому новый лук или посох не требует правки в Unity.
+        /// </summary>
+        public bool IsRanged =>
+            string.Equals(WeaponType, "bow", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(WeaponType, "staff", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>Радиус агрессии.</summary>
         public float AggroRange { get; }

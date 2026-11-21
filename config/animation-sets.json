@@ -54,7 +54,7 @@
       "idle": "Idle01",
       "walk": "BattleWalkForward",
       "run": "BattleRunForward",
-      "attack": "Attack01",
+      "attack": "Attack04",
       "death": "Die",
       "hit": "GetHit"
     }

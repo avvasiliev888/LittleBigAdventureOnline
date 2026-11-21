@@ -300,6 +300,78 @@ namespace Tests
             Assert.Equal(config.Mobs[1].ActorId, mob.ActorId);
         }
 
+        [Fact]
+        public void RangedMob_AttacksFromDistanceWithoutClosingIn()
+        {
+            // Дальнобойный моб бьёт с 10 м и не подходит вплотную: это и есть «маг атакует
+            // издалека». Порог 10 м и удержание 4 м — значения из config/mobs.json.
+            var config = TestWorld.Config(mobs: new[]
+            {
+                TestWorld.Mob(attackRange: 10f, keepDistance: 4f, weaponType: "staff", damage: 7,
+                    aggroRange: 14f, leashRange: 24f),
+            });
+            var player = Player(config, 8f, 0f);
+            var simulation = TestWorld.Simulation(config, player);
+            var mob = SpawnSingleMob(simulation);
+
+            TestWorld.Tick(simulation);
+
+            Assert.True(player.Hp < 100, "Дальнобойный моб должен попадать с 8 м, не подходя.");
+            Assert.Equal(MobAiState.Attack, mob.AiState);
+            var distance = Vector3.Distance(mob.Position, player.Position);
+            Assert.True(distance > 7f, "Моб не должен сокращать дистанцию, уже находясь в радиусе удара.");
+        }
+
+        [Fact]
+        public void RangedMob_RetreatsWhenTargetComesClose()
+        {
+            // Цель вплотную: моб пятится, но продолжает бить по кулдауну. Отступление не
+            // должно превращаться в паузу — иначе игрок в упоре безнаказанно убивает мага.
+            var config = TestWorld.Config(mobs: new[]
+            {
+                TestWorld.Mob(attackRange: 10f, keepDistance: 4f, weaponType: "staff", damage: 7,
+                    moveSpeed: 3f, aggroRange: 14f, leashRange: 24f),
+            });
+            var player = Player(config, 1f, 0f);
+            var simulation = TestWorld.Simulation(config, player);
+            var mob = SpawnSingleMob(simulation);
+
+            var startDistance = Vector3.Distance(mob.Position, player.Position);
+
+            // Несколько тиков: моб ещё в процессе отхода. Через 1,5 с он уже отойдёт за
+            // keepDistance и снова перейдёт в Attack — это правильное поведение, поэтому
+            // состояние Retreat проверяется именно в движении, а не в конце.
+            TestWorld.TickMany(simulation, 8);
+
+            Assert.Equal(MobAiState.Retreat, mob.AiState);
+            var endDistance = Vector3.Distance(mob.Position, player.Position);
+            Assert.True(endDistance > startDistance,
+                "Моб должен отходить от цели, подошедшей ближе keepDistance, а не стоять в упоре.");
+
+            // Удары по кулдауну не отменяются отступлением.
+            TestWorld.TickMany(simulation, 40);
+            Assert.True(player.Hp < 100, "Отступление не отменяет удары по кулдауну.");
+        }
+
+        [Fact]
+        public void MeleeMob_IgnoresRetreatWhenKeepDistanceIsZero()
+        {
+            // Регрессия: у ближнего моба keepDistance = 0, и он обязан вести себя как раньше —
+            // подойти вплотную и бить. Новое состояние Retreat его касаться не должно.
+            var config = TestWorld.Config(mobs: new[]
+            {
+                TestWorld.Mob(attackRange: 1.5f, damage: 5),
+            });
+            var player = Player(config, 3f, 0f);
+            var simulation = TestWorld.Simulation(config, player);
+            var mob = SpawnSingleMob(simulation);
+
+            TestWorld.TickMany(simulation, 40);
+
+            Assert.NotEqual(MobAiState.Retreat, mob.AiState);
+            Assert.True(player.Hp < 100, "Ближний моб должен дойти и ударить.");
+        }
+
         private static EntityState Player(SimulationConfig config, float x, float z)
         {
             return new EntityState(10, config.GetActor(TestWorld.PlayerActorId), new Vector3(x, 0f, z));

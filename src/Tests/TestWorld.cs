@@ -348,7 +348,9 @@ namespace Tests
             Vector2[]? patrol = null,
             Vector2[]? spawns = null,
             MobLootEntry[]? loot = null,
-            uint abilityId = PlayerAbilityId)
+            uint abilityId = PlayerAbilityId,
+            float keepDistance = 0f,
+            string weaponType = MobDefinition.DefaultWeaponType)
         {
             return new MobDefinition(
                 id,
@@ -373,7 +375,10 @@ namespace Tests
                 patrolPauseSeconds,
                 patrol ?? Array.Empty<Vector2>(),
                 spawns ?? new[] { new Vector2(0f, 0f) },
-                loot);
+                loot,
+                MobDefinition.DefaultCollisionRadius,
+                keepDistance,
+                weaponType);
         }
 
         public static MobLootEntry MobLoot(uint itemId, int minQuantity, int maxQuantity, float chance = 1f)

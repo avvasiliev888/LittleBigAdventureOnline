@@ -47,6 +47,11 @@ namespace Albion.Client
             public WeaponVisuals Weapons;
             public HealthBar HealthBar;
             public bool IsMob;
+            /// <summary>
+            /// Определение моба из конфига: по нему выбирается снаряд (стрела или ледяной
+            /// осколок) и поза атаки. Пусто у игроков и у мобов без записи в конфиге.
+            /// </summary>
+            public MobDefinition MobDefinition;
             public Vector3 LastPosition;
             public bool HasPosition;
             public bool WasDead;
@@ -343,6 +348,7 @@ namespace Albion.Client
                 {
                     Root = root,
                     IsMob = isMob,
+                    MobDefinition = isMob ? _content?.FindMobByActorId(entity.ActorId) : null,
                     Visual = isMob ? null : root.GetComponent<WarriorVisual>(),
                     MobVisual = isMob ? root.GetComponent<FantasyVisuals>() : null,
                     Character = root.GetComponentInChildren<CharacterVisuals>(true),
@@ -644,11 +650,17 @@ namespace Albion.Client
         /// Starts the one-shot attack animation on the closest mob when the local player takes
         /// damage. Mob attacks are server-side; the current protocol has no explicit attack event.
         /// </summary>
+        /// <summary>
+        /// Проигрывает удар мобов, нанёсших урон игроку.
+        ///
+        /// В снапшоте нет id атакующего, поэтому раньше жест получали все мобы в радиусе
+        /// 3,5 м — при дальнобойном мобе это давало «руки дёргаются у всех, кроме стрелка».
+        /// Теперь радиус берётся из конфига самого моба: ударить мог только тот, чей
+        /// <see cref="MobDefinition.AttackRange"/> накрывает игрока. Дальнобойный моб при этом
+        /// ещё и выпускает снаряд, иначе урон приходит из ниоткуда.
+        /// </summary>
         private void PlayMobAttackNear(Vector3 playerPosition)
         {
-            // Snapshot v8 has no attacker id. Play the swing on every mob that is close enough
-            // to have dealt the damage; picking only the closest could animate another mob and
-            // leave the actual attacker in Idle (observed in the 30 s bot run).
             var candidates = 0;
             var played = 0;
             foreach (var pair in _entities)
@@ -661,10 +673,27 @@ namespace Albion.Client
                 }
 
                 candidates++;
-                if (Vector3.Distance(candidate.Root.position, playerPosition) <= 3.5f)
+
+                // Радиус удара из конфига; для мобов без записи в конфиге — прежние 3,5 м.
+                var reach = candidate.MobDefinition != null
+                    ? candidate.MobDefinition.AttackRange + 0.5f
+                    : 3.5f;
+
+                var distance = Vector3.Distance(candidate.Root.position, playerPosition);
+                if (distance > reach)
                 {
-                    candidate.Character.PlayAttack();
-                    played++;
+                    continue;
+                }
+
+                candidate.Character.PlayAttack();
+                played++;
+
+                // Снаряд летит только для дальнего боя: вплотную стрелять нечем.
+                if (candidate.MobDefinition != null && candidate.MobDefinition.IsRanged && distance > 2.5f)
+                {
+                    var origin = AttackOrigin(candidate);
+                    ProjectileVfx.IceShard(origin, playerPosition + (Vector3.up * 1.0f), 0.25f);
+                    FrostVfx.ChargeAt(origin);
                 }
             }
 

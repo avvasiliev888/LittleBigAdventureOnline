@@ -840,6 +840,8 @@ namespace Shared
             var corpseSeconds = RequireFloat(dto, label, "corpseSeconds");
             var patrolPauseSeconds = OptionalFloat(dto, label, "patrolPauseSeconds", 0f);
             var collisionRadius = OptionalFloat(dto, label, "collisionRadius", MobDefinition.DefaultCollisionRadius);
+            var keepDistance = OptionalFloat(dto, label, "keepDistance", 0f);
+            var weaponType = OptionalString(dto, label, "weaponType", MobDefinition.DefaultWeaponType);
 
             var spawnDtos = RequireObjectArray(dto, label, "spawns");
             var spawns = ToPoints(spawnDtos, label + ".spawns");
@@ -892,7 +894,9 @@ namespace Shared
                     patrol,
                     spawns,
                     loot,
-                    collisionRadius);
+                    collisionRadius,
+                    keepDistance,
+                    weaponType);
             }
             catch (ArgumentException exception)
             {
@@ -1215,6 +1219,23 @@ namespace Shared
         private static string RequireString(Dictionary<string, object?> dto, string label, string field)
         {
             var value = RequireValue(dto, label, field);
+            if (value is string text && !string.IsNullOrWhiteSpace(text))
+            {
+                return text;
+            }
+
+            throw new ConfigValidationException(
+                label + ": поле '" + field + "' должно быть непустой строкой.");
+        }
+
+        private static string OptionalString(
+            Dictionary<string, object?> dto, string label, string field, string fallback)
+        {
+            if (!dto.TryGetValue(field, out var value) || value == null)
+            {
+                return fallback;
+            }
+
             if (value is string text && !string.IsNullOrWhiteSpace(text))
             {
                 return text;

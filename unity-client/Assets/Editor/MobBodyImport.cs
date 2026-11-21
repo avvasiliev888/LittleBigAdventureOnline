@@ -541,11 +541,20 @@ namespace Albion.Editor
                 machine.defaultState = idle;
             }
 
-            AddLocomotion(machine, states, "idle", "walk", 0.1f, true);
-            AddLocomotion(machine, states, "walk", "idle", 0.1f, false);
-            AddLocomotion(machine, states, "walk", "run", 3.2f, true);
-            AddLocomotion(machine, states, "run", "walk", 3.2f, false);
-            AddLocomotion(machine, states, "run", "idle", 0.1f, false);
+            // Переходы строятся ТОЛЬКО из конкретных состояний. Раньше они шли из AnyState,
+            // и тогда смена скорости выбивала моба из атаки: Speed пишется каждый кадр, а
+            // AnyState-переход срабатывает и из Attack — жест обрывался на первом же кадре.
+            //
+            // Пороги walk/run разнесены с зазором. Прежние 3,2/3,2 при moveSpeed 3,2 стояли
+            // ровно на скорости моба: она колеблется вокруг порога, оба перехода срабатывают
+            // по очереди, и каждый перезапускает клип с нуля — это и было «шаг начинается
+            // заново, не закончившись».
+            AddLocomotion(machine, states, "idle", "walk", 0.15f, true);
+            AddLocomotion(machine, states, "walk", "idle", 0.10f, false);
+            AddLocomotion(machine, states, "walk", "run", WalkToRunSpeed, true);
+            AddLocomotion(machine, states, "run", "walk", RunToWalkSpeed, false);
+            AddLocomotion(machine, states, "idle", "run", WalkToRunSpeed, true);
+            AddLocomotion(machine, states, "run", "idle", 0.10f, false);
 
             AddExit(states, "attack", "idle", 0.9f);
             AddExit(states, "hit", "idle", 0.8f);
@@ -554,6 +563,15 @@ namespace Albion.Editor
             report.AppendLine("controller saved: " + controllerPath + " states=" + states.Count);
             return controller;
         }
+
+        /// <summary>
+        /// Скорость, выше которой начинается бег (3,6), и ниже которой снова шаг (3,2).
+        /// Зазор в 0,4 м/с — это и есть гистерезис: прежние пороги 3,2/3,2 стояли ровно на
+        /// moveSpeed моба, и скорость, колеблясь вокруг порога, переключала состояния каждый
+        /// кадр. Каждое переключение перезапускало клип с нуля — «шаг начинается заново».
+        /// </summary>
+        private const float WalkToRunSpeed = 3.6f;
+        private const float RunToWalkSpeed = 3.2f;
 
         private static void AddLocomotion(
             AnimatorStateMachine machine,
@@ -568,10 +586,12 @@ namespace Albion.Editor
                 return;
             }
 
-            var transition = machine.AddAnyStateTransition(target);
+            // Переход из конкретного состояния, а не из AnyState: AnyState-переход выбивает
+            // моба из атаки и из реакции на удар, потому что Speed пишется каждый кадр.
+            var transition = source.AddTransition(target);
             transition.hasExitTime = false;
-            transition.duration = 0.1f;
-            transition.canTransitionToSelf = false;
+            transition.duration = 0.14f;
+            transition.hasFixedDuration = true;
             transition.AddCondition(greater
                 ? AnimatorConditionMode.Greater : AnimatorConditionMode.Less, threshold, "Speed");
         }

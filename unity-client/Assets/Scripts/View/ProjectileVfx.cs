@@ -12,6 +12,12 @@ namespace Albion.Client
         private const float ArrowSpeed = 34f;
         private const float OrbSpeed = 18f;
 
+        /// <summary>
+        /// Осколок летит заметно медленнее шара: на дистанции 10 м у игрока есть время
+        /// увидеть бросок и среагировать. Урон всё равно наносится в момент жеста.
+        /// </summary>
+        private const float ShardSpeed = 24f;
+
         private Vector3 _from;
         private Vector3 _to;
         private float _speed = ArrowSpeed;
@@ -19,6 +25,7 @@ namespace Albion.Client
         private float _age;
         private float _duration = 1f;
         private Color _impactColor = Color.white;
+        private bool _isShard;
 
         /// <summary>Запускает стрелу от руки стрелка к цели.</summary>
         public static void Arrow(Vector3 from, Vector3 to, float delay)
@@ -32,7 +39,16 @@ namespace Albion.Client
             Spawn(from, to, delay, isOrb: true);
         }
 
-        private static void Spawn(Vector3 from, Vector3 to, float delay, bool isOrb)
+        /// <summary>
+        /// Ледяной осколок мага: гранёная глыба льда с морозным шлейфом. Задержка нужна,
+        /// чтобы снаряд вылетал в момент броска, а не одновременно с началом замаха.
+        /// </summary>
+        public static void IceShard(Vector3 from, Vector3 to, float delay)
+        {
+            Spawn(from, to, delay, isOrb: true, isShard: true);
+        }
+
+        private static void Spawn(Vector3 from, Vector3 to, float delay, bool isOrb, bool isShard = false)
         {
             // В EditMode-проверках эффект не создаётся: он не должен попадать в редактируемую сцену.
             if (!Application.isPlaying)
@@ -51,7 +67,7 @@ namespace Albion.Client
                 direction = Vector3.forward;
             }
 
-            var root = new GameObject(isOrb ? "Magic orb" : "Arrow");
+            var root = new GameObject(isShard ? "Ice shard" : isOrb ? "Magic orb" : "Arrow");
             root.transform.position = from;
             root.transform.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
 
@@ -59,13 +75,20 @@ namespace Albion.Client
             projectile._from = from;
             projectile._to = to;
             projectile._delay = Mathf.Max(0f, delay);
-            projectile._speed = isOrb ? OrbSpeed : ArrowSpeed;
-            projectile._impactColor = isOrb
-                ? new Color(0.55f, 0.45f, 1f)
-                : new Color(0.95f, 0.93f, 0.78f);
+            projectile._speed = isShard ? ShardSpeed : isOrb ? OrbSpeed : ArrowSpeed;
+            projectile._isShard = isShard;
+            projectile._impactColor = isShard
+                ? new Color(0.62f, 0.90f, 1f)
+                : isOrb
+                    ? new Color(0.55f, 0.45f, 1f)
+                    : new Color(0.95f, 0.93f, 0.78f);
 
             // +Z — направление полёта, поэтому снаряд строится вдоль локальной оси Z.
-            if (isOrb)
+            if (isShard)
+            {
+                BuildIceShard(root.transform, projectile._impactColor);
+            }
+            else if (isOrb)
             {
                 BuildOrb(root.transform, projectile._impactColor);
             }
@@ -144,6 +167,63 @@ namespace Albion.Client
             trail.receiveShadows = false;
         }
 
+        /// <summary>
+        /// Гранёная ледяная глыба: вытянутое ядро, две встречные пирамиды-шипа и морозный
+        /// шлейф. Форма читается как лёд, а не как шар: у неё есть направление и острые грани.
+        /// </summary>
+        private static void BuildIceShard(Transform parent, Color color)
+        {
+            var core = new GameObject("Shard core").transform;
+            core.SetParent(parent, false);
+            core.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            core.localScale = new Vector3(0.16f, 0.44f, 0.16f);
+            core.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.Cylinder;
+            AddRenderer(core.gameObject, ProceduralMaterials.Glow(new Color(0.55f, 0.86f, 1f)));
+
+            // Носок осколка: конус смотрит вперёд по +Z и задаёт направление полёта.
+            var tip = new GameObject("Shard tip").transform;
+            tip.SetParent(parent, false);
+            tip.localPosition = new Vector3(0f, 0f, 0.26f);
+            tip.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            tip.localScale = new Vector3(0.20f, 0.34f, 0.20f);
+            tip.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.Cone;
+            AddRenderer(tip.gameObject, ProceduralMaterials.Glow(new Color(0.90f, 0.98f, 1f)));
+
+            var tail = new GameObject("Shard tail").transform;
+            tail.SetParent(parent, false);
+            tail.localPosition = new Vector3(0f, 0f, -0.24f);
+            tail.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+            tail.localScale = new Vector3(0.15f, 0.26f, 0.15f);
+            tail.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.Cone;
+            AddRenderer(tail.gameObject, ProceduralMaterials.Glow(new Color(0.30f, 0.60f, 0.95f)));
+
+            // Три ребра по кругу: без них осколок выглядит гладким цилиндром.
+            for (var i = 0; i < 3; i++)
+            {
+                var rib = new GameObject("Shard rib").transform;
+                rib.SetParent(parent, false);
+                rib.localRotation = Quaternion.Euler(0f, i * 120f, 0f);
+                rib.localPosition = Quaternion.Euler(0f, i * 120f, 0f) * new Vector3(0f, 0f, 0.06f);
+                rib.localScale = new Vector3(0.05f, 0.30f, 0.05f);
+                rib.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.Box;
+                AddRenderer(rib.gameObject, ProceduralMaterials.Glow(new Color(0.72f, 0.93f, 1f)));
+            }
+
+            var light = parent.gameObject.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = color;
+            light.range = 4.5f;
+            light.intensity = 2.2f;
+
+            var trail = parent.gameObject.AddComponent<TrailRenderer>();
+            trail.time = 0.30f;
+            trail.startWidth = 0.26f;
+            trail.endWidth = 0f;
+            trail.sharedMaterial = ProceduralMaterials.Glow(new Color(0.45f, 0.80f, 1f));
+            trail.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            trail.receiveShadows = false;
+        }
+
         private static void AddRenderer(GameObject target, Material material)
         {
             var renderer = target.AddComponent<MeshRenderer>();
@@ -162,7 +242,10 @@ namespace Albion.Client
 
             var flight = Mathf.Clamp01((_age - _delay) / Mathf.Max(0.05f, _duration - _delay));
             // Небольшая дуга: снаряд не идёт по идеально прямой, но и не улетает вверх.
-            var arc = 4f * flight * (1f - flight) * Mathf.Clamp(Vector3.Distance(_from, _to) * 0.05f, 0f, 0.6f);
+            // Ледяной осколок летит по прямой — тяжёлая глыба не должна планировать.
+            var arc = _isShard
+                ? 0f
+                : 4f * flight * (1f - flight) * Mathf.Clamp(Vector3.Distance(_from, _to) * 0.05f, 0f, 0.6f);
             var position = Vector3.Lerp(_from, _to, flight) + (Vector3.up * arc);
             transform.position = position;
 
@@ -170,6 +253,12 @@ namespace Albion.Client
             if (direction.sqrMagnitude > 0.0001f)
             {
                 transform.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
+            }
+
+            // Осколок медленно вращается вокруг оси полёта: лёд блестит гранями.
+            if (_isShard)
+            {
+                transform.Rotate(Vector3.forward, 260f * Time.deltaTime, Space.Self);
             }
 
             if (_age >= _delay + Mathf.Max(0.05f, _duration - _delay))
@@ -214,6 +303,13 @@ namespace Albion.Client
             if (impact != null)
             {
                 Destroy(impact, 1.2f);
+            }
+
+            // Ледяной осколок даёт отдельную вспышку инея: кольцо по земле и морозный свет
+            // читаются с любой камеры, чего обычные искры не дают.
+            if (_isShard)
+            {
+                FrostVfx.Burst(_to);
             }
         }
 

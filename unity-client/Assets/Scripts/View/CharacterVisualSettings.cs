@@ -252,7 +252,17 @@ namespace Albion.Client
                     // off the floor — the character appeared to hover with tucked legs.
                     if (IsMountedEquipment(skin.transform)) continue;
                     skin.enabled = true;
-                    skin.BakeMesh(mesh, false);
+
+                    // Bake WITH scale. The third argument is not cosmetic: measured 21.11.2026 on
+                    // the Battle Wizard, whose FBX imports at lossyScale 0,01 because it was
+                    // authored in centimetres.
+                    //   BakeMesh(mesh, false) -> nativeHeight 0,0197 for a 2,25 m body, so the
+                    //     game applied scale 124: the model filled the screen with stretched
+                    //     polygons and the body itself became invisible.
+                    //   BakeMesh(mesh, true)  -> nativeHeight 1,97, and the knight is bit-identical
+                    //     at 2,3145 both ways because its lossyScale is 1.
+                    // Verified across four variants; only this one is correct for both packs.
+                    skin.BakeMesh(mesh, true);
                     foreach (var vertex in mesh.vertices)
                     {
                         var point = root.InverseTransformPoint(skin.transform.TransformPoint(vertex));

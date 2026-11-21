@@ -610,6 +610,17 @@ namespace Albion.Client
 
             if (combo.Length == 0) return attackState;
             var state = combo[_attackIndex % combo.Length];
+
+            // The combos name the warrior's clips ("Attack"), but an imported mob's controller
+            // names states after its own clips (Attack01, Spellcast_Shoot). Playing a state that
+            // is absent does nothing at all — PlayState returns silently — so the mob would swing
+            // nothing. Fall back to the attack state this prefab actually declares.
+            if (animator != null && animator.runtimeAnimatorController != null
+                && !string.IsNullOrEmpty(state) && !animator.HasState(0, Animator.StringToHash(state)))
+            {
+                return attackState;
+            }
+
             _attackIndex++;
             return state;
         }

@@ -315,6 +315,15 @@ namespace Albion.Editor
                     ?? instance.AddComponent<CharacterVisuals>();
                 visuals.BindSockets(animator);
 
+                // The state names must match THIS controller. CharacterVisuals defaults to
+                // "Idle"/"Locomotion"/"Attack", which do not exist in a controller built from a
+                // set, so Animator.Play resolves to nothing and the mob stands in bind pose. Found
+                // 21.11.2026 on the wizard prefab: idleState=Idle while the controller has Idle01.
+                if (controller != null)
+                {
+                    ApplyStateNames(visuals, clips, report);
+                }
+
                 var prefabPath = GeneratedFolder + "/" + bodyName + ".prefab";
                 if (AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath) != null)
                 {
@@ -340,6 +349,33 @@ namespace Albion.Editor
             {
                 UnityEngine.Object.DestroyImmediate(instance);
             }
+        }
+
+        /// <summary>
+        /// Writes the controller's own clip names into CharacterVisuals.
+        ///
+        /// CharacterVisuals resolves an animator state by name at runtime, so the prefab must
+        /// carry the names of the clips it actually owns. Its defaults ("Idle", "Locomotion",
+        /// "Attack") belong to the warrior's hand-built controller and resolve to nothing here —
+        /// Animator.Play on a missing state is silent, and the mob stands in bind pose forever.
+        /// </summary>
+        private static void ApplyStateNames(
+            CharacterVisuals visuals,
+            Dictionary<string, AnimationClip> clips,
+            System.Text.StringBuilder report)
+        {
+            string Name(string role) =>
+                clips.TryGetValue(role, out var clip) ? clip.name : null;
+
+            visuals.SetStateNames(Name("idle"), Name("walk"), Name("run"),
+                Name("attack"), Name("hit"), Name("death"));
+
+            report.AppendLine("state names: idle=" + (Name("idle") ?? "-")
+                + " walk=" + (Name("walk") ?? "-")
+                + " run=" + (Name("run") ?? "-")
+                + " attack=" + (Name("attack") ?? "-")
+                + " hit=" + (Name("hit") ?? "-")
+                + " death=" + (Name("death") ?? "-"));
         }
 
         /// <summary>

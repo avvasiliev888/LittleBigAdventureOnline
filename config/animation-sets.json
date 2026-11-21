@@ -1,0 +1,57 @@
+{
+  "_comment": "Наборы анимаций по типу оружия. Один набор обслуживает много бойцов: замах меча одинаков у мечника, разбойника и скелета. Проверяется tools/unity/check-animation-sets.py против реального инвентаря клипов.",
+  "_source": "KayKit (Assets/Art/Characters/KayKit) — 76-95 клипов в одном FBX, риг Humanoid, поэтому любое тело с Humanoid получает эти клипы.",
+  "_roles": "idle, walk, run, attack, death, hit — шесть ролей, которых достаточно мобу.",
+  "sets": [
+    {
+      "key": "unarmed",
+      "label": "Без оружия — звери, скелеты, монахи",
+      "idle": "Unarmed_Idle",
+      "walk": "Walking_A",
+      "run": "Running_A",
+      "attack": "Unarmed_Melee_Attack_Punch_A",
+      "death": "Death_A",
+      "hit": "Hit_A"
+    },
+    {
+      "key": "sword_1h",
+      "label": "Одноручное — меч, топор, булава, кинжал",
+      "idle": "Idle",
+      "walk": "Walking_A",
+      "run": "Running_A",
+      "attack": "1H_Melee_Attack_Chop",
+      "death": "Death_A",
+      "hit": "Hit_A"
+    },
+    {
+      "key": "sword_2h",
+      "label": "Двуручное — большой меч, секира, молот",
+      "idle": "2H_Melee_Idle",
+      "walk": "Walking_A",
+      "run": "Running_A",
+      "attack": "2H_Melee_Attack_Chop",
+      "death": "Death_B",
+      "hit": "Hit_B"
+    },
+    {
+      "key": "bow",
+      "label": "Лук — стрелок",
+      "idle": "1H_Ranged_Aiming",
+      "walk": "Walking_A",
+      "run": "Running_A",
+      "attack": "1H_Ranged_Shoot",
+      "death": "Death_A",
+      "hit": "Hit_A"
+    },
+    {
+      "key": "magic",
+      "label": "Магия — посох, каст",
+      "idle": "Spellcasting",
+      "walk": "Walking_A",
+      "run": "Running_A",
+      "attack": "Spellcast_Shoot",
+      "death": "Death_A",
+      "hit": "Hit_A"
+    }
+  ]
+}

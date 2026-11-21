@@ -743,9 +743,14 @@ namespace Albion.Client
 
         private Transform CreateMob(uint actorId)
         {
-            var zone = _content?.FindMobByActorId(actorId)?.ZoneKey;
-            var imported = _mobVisualSettings?.Create(_root, actorId, zone);
+            var mob = _content?.FindMobByActorId(actorId);
+
+            // The visual is looked up by the mob's own key, not by its zone. A zone key gave one
+            // look per zone, so a second mob in the same zone silently wore the first one's body.
+            // The zone is still passed to the primitive fallback, which colours by zone.
+            var imported = _mobVisualSettings?.Create(_root, actorId, mob?.Key);
             if (imported != null) return imported;
+            var zone = mob?.ZoneKey;
             var root = FantasyVisuals.CreateMob(_root, actorId, zone);
             HealthBar.Attach(root, zone == "red" ? 2.95f : zone == "yellow" ? 2.05f : 1.8f);
             return root;

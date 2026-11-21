@@ -64,13 +64,16 @@ namespace Albion.Editor
 
             settings.Entries = new[]
             {
-                MobEntry("blue", "Skeleton_Minion", 1.55f),
-                MobEntry("yellow", "Skeleton_Rogue", 1.95f),
-                MobEntry("red", "Skeleton_Warrior", 2.45f),
+                // Keyed by the mob's own key from config/mobs.json. A zone key limited the whole
+                // world to one look per zone, which is exactly the limit the import pipeline exists
+                // to remove — see docs/mob-visual-registry-options.md, variant 1.
+                MobEntry("blue_scavenger", "Skeleton_Minion", 1.55f),
+                MobEntry("yellow_bandit", "Skeleton_Rogue", 1.95f),
+                MobEntry("red_warlord", "Skeleton_Warrior", 2.45f),
             };
             EditorUtility.SetDirty(settings);
             AssetDatabase.SaveAssets();
-            Debug.Log("[kaykit] Mob visuals configured: blue=Minion, yellow=Rogue, red=Warrior.");
+            Debug.Log("[kaykit] Mob visuals configured by mob key: scavenger=Minion, bandit=Rogue, warlord=Warrior.");
         }
 
         [MenuItem("Albion/Art/Validate KayKit Setup")]
@@ -146,14 +149,14 @@ namespace Albion.Editor
             return null;
         }
 
-        private static MobVisualSettings.Entry MobEntry(string zone, string prefabName, float height)
+        private static MobVisualSettings.Entry MobEntry(string mobKey, string prefabName, float height)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
                 CharacterRoot + "/" + prefabName + ".prefab");
             if (prefab == null) Debug.LogError("[kaykit] Mob prefab missing: " + prefabName);
             return new MobVisualSettings.Entry
             {
-                ZoneKey = zone,
+                MobKey = mobKey,
                 Prefab = prefab,
                 Height = height,
                 Yaw = 0f,

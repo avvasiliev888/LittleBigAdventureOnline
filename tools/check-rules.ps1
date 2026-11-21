@@ -117,6 +117,17 @@ if (Test-Path 'AGENT.md') {
     $violations.Add('AGENT.md — DSH загружает только AGENTS.md; правила в AGENT.md не работают. Содержание переносить в docs/rules.md.')
 }
 
+# --- 6. Наборы анимаций ссылаются на существующие клипы ----------------
+# Опечатка в имени клипа не даёт ошибки нигде: Unity оставит состояние без
+# анимации, моб замрёт в T-позе, и виноватой сочтут «кривую модель». Проверка
+# идёт по инвентарю, снятому из Unity, а не по догадкам о именах.
+if (Test-Path 'tools/unity/check-animation-sets.py') {
+    $setsOutput = & python tools/unity/check-animation-sets.py 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $violations.Add('Наборы анимаций: ' + (($setsOutput | Select-Object -First 3) -join ' | '))
+    }
+}
+
 # --- Отчёт -------------------------------------------------------------
 if ($violations.Count -eq 0) {
     if (-not $Quiet) {

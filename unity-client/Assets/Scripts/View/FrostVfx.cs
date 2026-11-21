@@ -193,46 +193,37 @@ namespace Albion.Client
         /// Морозный туман. Particles Lit вместо простых точек: у мягких частиц есть затухание
         /// на пересечении с геометрией, иначе дымка режется о пол прямой линией.
         /// </summary>
+        /// <summary>
+        /// Морозная дымка у земли. Раньше это было 34 билборда размером до 1,1 м с
+        /// непрозрачной заливкой <c>Glow</c>: у шейдера нет UV-формы, поэтому каждая частица
+        /// рисовалась КВАДРАТОМ, а вместе они накрывали персонажа белым пятном. Оставлен
+        /// один слой мелких осколков — у них есть геометрия, они не закрывают модель.
+        /// </summary>
         private static void SpawnMist(Transform parent)
         {
-            var mist = new GameObject("Frost mist");
-            mist.transform.SetParent(parent, false);
+            for (var i = 0; i < 10; i++)
+            {
+                var angle = (i / 10f) * Mathf.PI * 2f;
+                var radius = Random.Range(0.3f, 1.1f);
 
-            var system = mist.AddComponent<ParticleSystem>();
+                var mote = new GameObject("Frost mote").transform;
+                mote.SetParent(parent, false);
+                mote.localPosition = new Vector3(
+                    Mathf.Cos(angle) * radius,
+                    Random.Range(0.05f, 0.5f),
+                    Mathf.Sin(angle) * radius);
+                mote.localScale = Vector3.one * Random.Range(0.02f, 0.05f);
+                mote.gameObject.AddComponent<MeshFilter>().sharedMesh =
+                    ProceduralMeshLibrary.CrystalVariant(i + 41);
 
-            var main = system.main;
-            main.duration = 0.4f;
-            main.loop = false;
-            main.startLifetime = new ParticleSystem.MinMaxCurve(0.6f, 1.3f);
-            main.startSpeed = new ParticleSystem.MinMaxCurve(0.6f, 2.0f);
-            main.startSize = new ParticleSystem.MinMaxCurve(0.35f, 1.1f);
-            main.startColor = new ParticleSystem.MinMaxGradient(
-                new Color(0.62f, 0.86f, 1f, 0.55f),
-                new Color(0.28f, 0.52f, 0.9f, 0.25f));
-            main.maxParticles = 60;
-            main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.gravityModifier = -0.08f;
+                var renderer = mote.gameObject.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = IceMaterials.Mote;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
 
-            var emission = system.emission;
-            emission.enabled = false;
-
-            var shape = system.shape;
-            shape.enabled = true;
-            shape.shapeType = ParticleSystemShapeType.Sphere;
-            shape.radius = 0.4f;
-
-            var sizeOverLife = system.sizeOverLifetime;
-            sizeOverLife.enabled = true;
-            sizeOverLife.size = new ParticleSystem.MinMaxCurve(
-                1f, AnimationCurve.EaseInOut(0f, 0.55f, 1f, 1.35f));
-
-            var renderer = mist.GetComponent<ParticleSystemRenderer>();
-            renderer.renderMode = ParticleSystemRenderMode.Billboard;
-            renderer.sharedMaterial = ProceduralMaterials.Glow(new Color(0.42f, 0.72f, 1f, 0.6f));
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
-
-            system.Emit(34);
+                var fade = mote.gameObject.AddComponent<IceFadeMote>();
+                fade.Configure(0.4f + (i * 0.04f), 0.9f);
+            }
         }
 
         /// <summary>Холодный свет вспышки: короткий, но он освещает пол и лицо игрока.</summary>
@@ -483,6 +474,38 @@ namespace Albion.Client
             _material.SetColor("_SurfaceColor", new Color(0.66f, 0.88f, 1f) * fade);
             _material.SetColor("_RimColor", new Color(0.80f, 0.96f, 1f) * fade);
             _material.SetFloat("_Opacity", 0.30f * fade);
+        }
+    }
+
+    /// <summary>Мелкий осколок дымки: всплывает, вращается и сжимается в ноль.</summary>
+    public sealed class IceFadeMote : MonoBehaviour, IceAnimator
+    {
+        private float _lifetime;
+        private float _scale;
+        private float _age;
+
+        public void Configure(float lifetime, float scale)
+        {
+            _lifetime = Mathf.Max(0.1f, lifetime);
+            _scale = scale;
+            transform.localScale = Vector3.one * scale * 0.6f;
+        }
+
+        private void Update()
+        {
+            Advance(Time.deltaTime);
+        }
+
+        public void Advance(float deltaTime)
+        {
+            _age += deltaTime;
+            var t = Mathf.Clamp01(_age / _lifetime);
+
+            transform.localPosition += Vector3.up * (0.35f * deltaTime);
+            transform.Rotate(Vector3.up, 200f * deltaTime, Space.Self);
+
+            // Сжимается к нулю: осколок исчезает, а не пропадает щелчком.
+            transform.localScale = Vector3.one * Mathf.Lerp(_scale * 0.6f, 0f, t * t);
         }
     }
 

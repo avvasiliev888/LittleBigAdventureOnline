@@ -359,13 +359,15 @@ namespace Albion.Client
                 };
                 _entities[entity.Id] = state;
 
-                // Посох дальнобойному мобу: ApplyWeapon мобов не обслуживает, и маг делал жест
-                // пустой рукой — снаряд вылетал из воздуха.
-                if (state.MobDefinition != null && state.MobDefinition.IsRanged
-                    && state.Character != null && state.Staff == null)
-                {
-                    state.Staff = IceStaff.Attach(state.Character);
-                }
+                TryAttachStaff(state);
+            }
+
+            // Маг уже был в кадре без посоха — пробуем снова. При первом кадре
+            // RightHandSocket мог быть ещё не разрешён, и один-единственный вызов
+            // навсегда оставлял мага с пустой рукой.
+            if (state.Staff == null)
+            {
+                TryAttachStaff(state);
             }
 
             // Marks the entity as present this frame, so RetireMissingEntities leaves it alone.
@@ -617,7 +619,7 @@ namespace Albion.Client
             // а не в кулаке. EquippedTransform у мобов пуст — оружия им не выдаётся.
             if (state.Staff != null)
             {
-                var gem = state.Staff.transform.Find("Staff gem");
+                var gem = state.Staff.transform.Find("Rod gem");
                 if (gem != null)
                 {
                     return gem.position;
@@ -830,6 +832,27 @@ namespace Albion.Client
             float.IsFinite(value.x) && float.IsFinite(value.y) && float.IsFinite(value.z);
 
         private Transform CreateCharacter(uint entityId) => _visualSettings.Create(_root, entityId);
+
+        /// <summary>
+        /// Выдаёт посох дальнобойному мобу. Повторяется каждый кадр, пока посоха нет:
+        /// <see cref="CharacterVisuals.RightHandSocket"/> разрешает кость руки лениво и при
+        /// создании объекта может вернуть null. Прежний одиночный вызов оставлял мага
+        /// с пустой рукой навсегда.
+        /// </summary>
+        private static void TryAttachStaff(EntityVisual state)
+        {
+            if (state.Staff != null || state.MobDefinition == null || !state.MobDefinition.IsRanged)
+            {
+                return;
+            }
+
+            if (state.Character == null)
+            {
+                return;
+            }
+
+            state.Staff = IceStaff.Attach(state.Character);
+        }
 
         private Transform CreateMob(uint actorId)
         {

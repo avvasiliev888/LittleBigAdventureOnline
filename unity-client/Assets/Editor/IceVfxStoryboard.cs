@@ -208,11 +208,18 @@ namespace Albion.Editor
             hand.SetParent(mage.transform, false);
             hand.localPosition = new Vector3(0.40f, 1.34f, 0.30f);
 
-            var staff = IceStaff.Attach(null);
+            var staff = IceStaff.Build();
             if (staff != null)
             {
                 staff.transform.SetParent(hand, false);
             }
+
+            // Проверка крепления к РУКЕ, а не к пустышке: берём настоящий префаб моба и
+            // смотрим, что посох встал и что сокет руки разрешился.
+            CheckStaffAttachment();
+
+            Debug.Log("[ice-vfx] посох=" + (staff != null) + " деталей="
+                + (staff != null ? staff.transform.childCount : 0));
 
             var gem = hand.position + new Vector3(0f, 0.30f, 0.18f);
             var impact = new Vector3(0.5f, 1.0f, 3.6f);
@@ -235,6 +242,42 @@ namespace Albion.Editor
             Debug.Log("[ice-vfx] компонентов эффекта: " + animators.Count);
             LogGrounding();
             return camera;
+        }
+
+        /// <summary>
+        /// Проверяет, что посох цепляется к кости руки на НАСТОЯЩЕМ префабе мага. Без этого
+        /// «посоха нет в руках» ловится только глазами в игре.
+        /// </summary>
+        private static void CheckStaffAttachment()
+        {
+            var settings = Resources.Load<MobVisualSettings>("Characters/MobVisuals");
+            if (settings == null)
+            {
+                Debug.Log("[ice-vfx] staff check: MobVisuals не найден");
+                return;
+            }
+
+            var root = new GameObject("Staff check mob").transform;
+            var instance = settings.Create(root, 9999u, "red_warlord");
+            if (instance == null)
+            {
+                Debug.Log("[ice-vfx] staff check: red_warlord не отображается");
+                Object.DestroyImmediate(root.gameObject);
+                return;
+            }
+
+            var character = instance.GetComponentInChildren<CharacterVisuals>(true);
+            var socket = character != null ? character.RightHandSocket : null;
+            var staff = character != null ? IceStaff.Attach(character) : null;
+            var gem = staff != null ? staff.transform.Find("Rod gem") : null;
+
+            Debug.Log("[ice-vfx] staff check: character=" + (character != null)
+                + " socket=" + (socket != null ? socket.name : "NULL")
+                + " staff=" + (staff != null)
+                + " parent=" + (staff != null ? staff.transform.parent.name : "-")
+                + " gem=" + (gem != null));
+
+            Object.DestroyImmediate(root.gameObject);
         }
 
         /// <summary>

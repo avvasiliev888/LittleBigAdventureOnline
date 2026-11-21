@@ -23,8 +23,18 @@ namespace Albion.Client
                 return null;
             }
 
-            var root = new GameObject("Ice staff");
+            var root = Build();
             root.transform.SetParent(socket, false);
+            return root;
+        }
+
+        /// <summary>
+        /// Собирает посох без привязки к руке. Нужен раскадровке и отладке: там персонажа нет,
+        /// и прежний <see cref="Attach"/> с null на входе молча возвращал null.
+        /// </summary>
+        public static GameObject Build()
+        {
+            var root = new GameObject("Ice rod");
             // Древко вдоль руки: рукоять в ладони, кристалл вверху и вперёд.
             root.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
             root.transform.localPosition = Vector3.zero;
@@ -48,38 +58,38 @@ namespace Albion.Client
             var shaft = new GameObject("Haft").transform;
             shaft.SetParent(parent, false);
             shaft.localRotation = Quaternion.Euler(-90f, 0f, 0f);
-            shaft.localScale = new Vector3(0.045f, 0.46f, 0.045f);
+            shaft.localScale = new Vector3(0.055f, 0.62f, 0.055f);
             shaft.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.Cylinder;
             shaft.gameObject.AddComponent<MeshRenderer>().sharedMaterial =
-                ProceduralMaterials.Lit(new Color(0.26f, 0.20f, 0.16f));
+                ProceduralMaterials.Lit(new Color(0.42f, 0.33f, 0.24f));
 
             // Обмотка рукояти: тёмный цилиндр чуть шире древка.
             var grip = new GameObject("Grip").transform;
             grip.SetParent(parent, false);
             grip.localRotation = Quaternion.Euler(-90f, 0f, 0f);
-            grip.localPosition = new Vector3(0f, -0.12f, 0f);
-            grip.localScale = new Vector3(0.055f, 0.09f, 0.055f);
+            grip.localPosition = new Vector3(0f, -0.16f, 0f);
+            grip.localScale = new Vector3(0.068f, 0.12f, 0.068f);
             grip.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.Cylinder;
             grip.gameObject.AddComponent<MeshRenderer>().sharedMaterial =
-                ProceduralMaterials.Lit(new Color(0.16f, 0.13f, 0.12f));
+                ProceduralMaterials.Lit(new Color(0.22f, 0.18f, 0.16f));
 
             // Навершие-держатель кристалла: короткий конус вверх.
             var cap = new GameObject("Gem holder").transform;
             cap.SetParent(parent, false);
-            cap.localPosition = new Vector3(0f, -0.46f, 0f);
-            cap.localScale = new Vector3(0.075f, 0.10f, 0.075f);
+            cap.localPosition = new Vector3(0f, -0.62f, 0f);
+            cap.localScale = new Vector3(0.09f, 0.13f, 0.09f);
             cap.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.Cone;
             cap.gameObject.AddComponent<MeshRenderer>().sharedMaterial =
-                ProceduralMaterials.Lit(new Color(0.32f, 0.34f, 0.38f));
+                ProceduralMaterials.Lit(new Color(0.55f, 0.62f, 0.70f));
         }
 
         /// <summary>Кристалл на конце: то же преломляющее стекло, что и у снаряда.</summary>
         private static Transform BuildGem(Transform parent)
         {
-            var gem = new GameObject("Staff gem").transform;
+            var gem = new GameObject("Rod gem").transform;
             gem.SetParent(parent, false);
-            gem.localPosition = new Vector3(0f, -0.62f, 0f);
-            gem.localScale = Vector3.one * 0.16f;
+            gem.localPosition = new Vector3(0f, -0.84f, 0f);
+            gem.localScale = Vector3.one * 0.26f;
             gem.gameObject.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshLibrary.IceCrystal;
 
             var renderer = gem.gameObject.AddComponent<MeshRenderer>();

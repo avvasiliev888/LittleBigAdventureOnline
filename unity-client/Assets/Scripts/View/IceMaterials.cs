@@ -22,8 +22,8 @@ namespace Albion.Client
         public static Material Shard => _shard != null ? _shard : _shard = Create("Ice shard", material =>
         {
             SetColor(material, "_DeepColor", new Color(0.08f, 0.28f, 0.68f, 1f));
-            SetColor(material, "_SurfaceColor", new Color(0.52f, 0.84f, 1.00f, 1f));
-            SetColor(material, "_RimColor", new Color(0.70f, 0.93f, 1.00f, 1f));
+            SetColor(material, "_SurfaceColor", new Color(0.36f, 0.74f, 1.00f, 1f));
+            SetColor(material, "_RimColor", new Color(0.50f, 0.87f, 1.00f, 1f));
             SetFloat(material, "_Opacity", 0.62f);
             SetFloat(material, "_RefractionStrength", 0.18f);
             SetFloat(material, "_NoiseScale", 8f);
@@ -37,8 +37,8 @@ namespace Albion.Client
         public static Material Burst => _burst != null ? _burst : _burst = Create("Ice burst", material =>
         {
             SetColor(material, "_DeepColor", new Color(0.10f, 0.34f, 0.76f, 1f));
-            SetColor(material, "_SurfaceColor", new Color(0.62f, 0.90f, 1.00f, 1f));
-            SetColor(material, "_RimColor", new Color(0.82f, 0.97f, 1.00f, 1f));
+            SetColor(material, "_SurfaceColor", new Color(0.34f, 0.72f, 1.00f, 1f));
+            SetColor(material, "_RimColor", new Color(0.48f, 0.86f, 1.00f, 1f));
             SetFloat(material, "_Opacity", 0.72f);
             SetFloat(material, "_RefractionStrength", 0.12f);
             SetFloat(material, "_NoiseScale", 14f);

@@ -455,7 +455,34 @@ namespace Albion.Editor
             string bodyName,
             System.Text.StringBuilder report)
         {
+            // First, try to find a prefab in the package root that has a SkinnedMeshRenderer with the same number of material slots.
+            // This preserves the authored material distribution for multi-material bodies.
+            if (!string.IsNullOrEmpty(packageRoot))
+            {
+                var prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { packageRoot });
+                foreach (var guid in prefabGuids)
+                {
+                    var path = AssetDatabase.GUIDToAssetPath(guid);
+                    var packPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    if (packPrefab == null) continue;
+
+                    var packSMR = packPrefab.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                    if (packSMR == null) continue;
+
+                    foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
+                    {
+                        if (!(renderer is SkinnedMeshRenderer smr)) continue;
+                        if (smr.sharedMaterials.Length != packSMR.sharedMaterials.Length) continue;
+
+                        smr.sharedMaterials = packSMR.sharedMaterials;
+                        report.AppendLine($"materials from pack prefab: {packPrefab.name}, slots={smr.sharedMaterials.Length}");
+                        return;
+                    }
+                }
+            }
+
             var currentRoot = packageRoot;
+
             for (var depth = 0; depth < 3 && !HasMaterialsHere(currentRoot); depth++)
             {
                 currentRoot = Path.GetDirectoryName(currentRoot);

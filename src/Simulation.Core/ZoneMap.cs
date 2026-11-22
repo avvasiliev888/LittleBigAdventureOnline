@@ -520,6 +520,51 @@ namespace Simulation.Core
                     + ", суммарная площадь зон " + zonesArea.ToString("0.###", CultureInfo.InvariantCulture)
                     + ". Покройте мир зонами без разрывов и пересечений.");
             }
+
+            var xEdges = new List<float>();
+            for (var i = 0; i < _zones.Length; i++)
+            {
+                xEdges.Add(_zones[i].MinX);
+                xEdges.Add(_zones[i].MaxX);
+            }
+            xEdges.Sort();
+
+            for (var i = 0; i < xEdges.Count - 1; i++)
+            {
+                var x1 = xEdges[i];
+                var x2 = xEdges[i + 1];
+                if (x2 <= x1) continue;
+
+                var stripZIntervals = new List<(float Min, float Max)>();
+                for (var j = 0; j < _zones.Length; j++)
+                {
+                    var z = _zones[j];
+                    if (z.MinX <= x1 && z.MaxX >= x2)
+                    {
+                        stripZIntervals.Add((z.MinZ, z.MaxZ));
+                    }
+                }
+                stripZIntervals.Sort((a, b) => a.Min.CompareTo(b.Min));
+
+                var coveredZ = MinZ;
+                for (var j = 0; j < stripZIntervals.Count; j++)
+                {
+                    var interval = stripZIntervals[j];
+                    if (interval.Min > coveredZ) break;
+                    if (interval.Max > coveredZ)
+                    {
+                        coveredZ = interval.Max;
+                    }
+                }
+
+                if (coveredZ < MaxZ)
+                {
+                    throw new ArgumentException(
+                        "Зоны не покрывают мир целиком: обнаружен разрыв в покрытии по Z на полосе X=[" 
+                        + x1.ToString("0.###", CultureInfo.InvariantCulture) + ", " 
+                        + x2.ToString("0.###", CultureInfo.InvariantCulture) + "].");
+                }
+            }
         }
     }
 }

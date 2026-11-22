@@ -190,3 +190,90 @@ namespace Tests
   `pwsh -File tools/tandem/gates.ps1 -Task T-002 -SkipUnity` даёт шаг test „покрытие 100% ».
 - Размер: 1 новый файл тестов (~30 строк) + 3 удалённых блока в одном файле.
 - Зависимости: нет.
+
+## T-003 — `ValidateCoverage` должен проверять замощение, а не площадь
+
+- [x] статус: сделано конвейером (22.11.2026, PASS ревью, ветка `agent/T-003`, ждёт «принято»)
+- Цель: `new ZoneMap(zones)` бросает `ArgumentException` («не покрывают мир») на конфиге со
+  щелью тоньше допуска площади, при этом действующие зоны (`config/zones.json`,
+  `ZoneFixture.ThreeZones()`) грузятся без исключения.
+- Замер 23.11.2026 (проба в `src/Tests`, после замера удалена): мир 20×20, зоны
+  `a = [0..10]×[0..20]`, `b = [10.0001..20]×[0..20]`. `new ZoneMap(zones)` **не бросает**:
+  площадь мира 400, сумма зон 399.998, допуск `max(1e-4, 400·1e-5) = 0.004`, недостача
+  0.002 проходит. При этом `map.TryGetZone(new Vector3(10.00005f, 0f, 5f), out _)` даёт
+  **false** — точка в щели бесхозна. Валидатор утверждает «покрыто», а `TryGetZone` этого
+  не подтверждает.
+- Почему это не косметика: на инварианте «валидный конфиг покрывает мир целиком» T-002
+  удалил проверку зоны в `ApplyTeleport` (`Simulation.cs:363–366`) и оставил комментарий,
+  что `ValidateCoverage` гарантирует покрытие. Гарантия ложна, пока допуск площади конечен:
+  любая щель тоньше `tolerance / длина` проходит.
+- Файлы (только эти): `src/Simulation.Core/ZoneMap.cs` (`ValidateCoverage` и, при желании,
+  один приватный хелпер ниже неё) и `src/Tests/ZoneMapTests.cs` (два теста).
+- Что сделать — заменить проверку площади проверкой замощения полосами по X:
+
+  1. Проверку площади с допуском можно оставить как быстрый отсев, но **не** как
+     единственное условие покрытия.
+  2. Собери все X-границы зон (`MinX`, `MaxX`), отсортируй, убери точные повторы.
+  3. Для каждой полосы `[e[i], e[i+1]]`, где `e[i] < e[i+1]`:
+     - собери Z-интервалы `[MinZ..MaxZ]` всех зон, у которых `MinX <= e[i]` и `MaxX >= e[i+1]`;
+     - отсортируй интервалы по `MinZ`, веди `covered = MinZ` мира (`ComputeBounds()` уже
+       выполнен до `ValidateCoverage()` — конструктор, строки 81–85);
+     - интервал принимается, если `interval.MinZ <= covered`; тогда
+       `covered = Math.Max(covered, interval.MaxZ)`;
+     - если `interval.MinZ > covered` — разрыв внутри полосы, бросок;
+     - после последнего интервала `covered` должен достичь `MaxZ` мира.
+  4. Если хоть одна полоса не покрыта по Z целиком — `ArgumentException` с тем же текстом
+     «Зоны не покрывают мир целиком: …».
+  5. Сравнения координат — точные (float, пришедшие из одного JSON-числа, равны бит в бит).
+     Допуск не расширять: именно конечный допуск и есть баг.
+
+- Тесты (код проверен по формулировке, см. замер выше):
+
+```csharp
+[Fact]
+public void SliverGapBetweenZones_Throws()
+{
+    var zones = new[]
+    {
+        new ZoneConfig(1, "a", ZoneKind.Yellow, 0f, 0f, 10f, 20f, true, false, 0.1f, 60f, 1, 2),
+        new ZoneConfig(2, "b", ZoneKind.Yellow, 10.0001f, 0f, 20f, 20f, true, false, 0.1f, 60f, 1, 2),
+    };
+
+    var exception = Assert.Throws<ArgumentException>(() => new ZoneMap(zones));
+
+    Assert.Contains("не покрывают мир", exception.Message);
+}
+
+[Fact]
+public void StaggeredZones_CoveredByTwoZonesInStrip()
+{
+    var zones = new[]
+    {
+        new ZoneConfig(1, "a", ZoneKind.Blue, 0f, 0f, 10f, 20f, false, false, 0.1f, 0f, 1, 2),
+        new ZoneConfig(2, "b", ZoneKind.Yellow, 10f, 0f, 20f, 10f, true, false, 0.1f, 60f, 1, 2),
+        new ZoneConfig(3, "c", ZoneKind.Red, 10f, 10f, 20f, 20f, true, false, 0f, 90f, 3, 4),
+    };
+
+    var map = new ZoneMap(zones);
+
+    Assert.Equal(20f, map.MaxX);
+    Assert.Equal(20f, map.MaxZ);
+}
+```
+
+- Ограничения: не менять `ValidateUniqueZones`, `ValidateNoOverlaps`, `Contains`, `TryGetZone`,
+  `IsAdjacentOnX/Z`, `GateTolerance`; не трогать `config/zones.json` и `Simulation.cs`;
+  не понижать `Threshold`, не добавлять `-SkipCoverage`, не отключать тесты.
+- Критерии приёмки: `pwsh -File tools/tandem/gates.ps1 -Task T-003` → `ok=true`; новый
+  `SliverGapBetweenZones_Throws` зелёный; `ConfigTests` и `ZoneFixture`-тесты зелёные
+  (действующие зоны грузятся); `git diff --stat` — только `ZoneMap.cs` и `ZoneMapTests.cs`.
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-003` (build → test → arch → boundaries → Unity).
+- Промпт для gemma: «Прочитай `## T-003` в `docs/plan_for_gemma.md` целиком. `ValidateCoverage`
+  в `src/Simulation.Core/ZoneMap.cs:506` сравнивает только площади с допуском `max(1e-4,
+  boxArea·1e-5)` и пропускает щель тоньше допуска: валидатор говорит „покрыто“, а `TryGetZone`
+  для точки в щели возвращает false. Замени проверку площади проверкой замощения полосами по X
+  по алгоритму из плана, добавь два теста из плана в `src/Tests/ZoneMapTests.cs`. Действующие
+  зоны (`config/zones.json`, `ZoneFixture.ThreeZones()`) должны грузиться без исключения.
+  Допуск не расширять, ничего другого не менять.»
+- Размер: ~35 строк в `ValidateCoverage` + 2 теста.
+- Зависимости: нет.

@@ -66,6 +66,37 @@ namespace Tests
         }
 
         [Fact]
+        public void SliverGapBetweenZones_Throws()
+        {
+            var zones = new[]
+            {
+                new ZoneConfig(1, "a", ZoneKind.Yellow, 0f, 0f, 10f, 20f, true, false, 0.1f, 60f, 1, 2),
+                new ZoneConfig(2, "b", ZoneKind.Yellow, 10.0001f, 0f, 20f, 20f, true, false, 0.1f, 60f, 1, 2),
+            };
+
+            var exception = Assert.Throws<ArgumentException>(() => new ZoneMap(zones));
+
+            Assert.Contains("не покрывают мир", exception.Message);
+        }
+
+        [Fact]
+        public void StaggeredZones_CoveredByTwoZonesInStrip()
+        {
+            var zones = new[]
+            {
+                new ZoneConfig(1, "a", ZoneKind.Blue, 0f, 0f, 10f, 20f, false, false, 0.1f, 0f, 1, 2),
+                new ZoneConfig(2, "b", ZoneKind.Yellow, 10f, 0f, 20f, 10f, true, false, 0.1f, 60f, 1, 2),
+                new ZoneConfig(3, "c", ZoneKind.Red, 10f, 10f, 20f, 20f, true, false, 0f, 90f, 3, 4),
+            };
+
+            var map = new ZoneMap(zones);
+
+            Assert.Equal(20f, map.MaxX);
+            Assert.Equal(20f, map.MaxZ);
+        }
+
+
+        [Fact]
         public void DuplicateZoneId_Throws()
         {
             var zones = new[]

@@ -24,8 +24,7 @@
 // Возврат: {done, stopped, reason, tasks:[...], report, build}
 
 const cfg = args || {};
-const tasks = (cfg.tasks || []).filter(t => t && t && t.id);
-const prompts = cfg.prompts || {};
+const tasks = (cfg.tasks || []).filter(t => t && t.id);
 const plannerModel = (cfg.model && cfg.model.planner) || "deepseek-v4-flash";
 const executorModel = (cfg.model && cfg.model.executor) || "ois-gemma-4-26B";
 const provider = cfg.provider || "openai";
@@ -57,7 +56,7 @@ function budgetOk() {
 const EXEC_SCHEMA = {
   type: "object",
   properties: {
-    status: { enum: ["done", "blocked"] },
+    status: { type: "string", enum: ["done", "blocked"] },
     branch: { type: "string" },
     summary: { type: "string" },
     changed_files: { type: "array", items: { type: "string" } },
@@ -72,9 +71,9 @@ const EXEC_SCHEMA = {
 const REVIEW_SCHEMA = {
   type: "object",
   properties: {
-    verdict: { enum: ["PASS", "FAIL"] },
+    verdict: { type: "string", enum: ["PASS", "FAIL"] },
     must_fix: { type: "array", items: { type: "string" } },
-    risk: { enum: ["low", "medium", "high"] },
+    risk: { type: "string", enum: ["low", "medium", "high"] },
     notes: { type: "string" },
   },
   required: ["verdict", "risk", "notes", "must_fix"],
@@ -119,7 +118,7 @@ function execPrompt(t, attempt, mustFix, diagnosis) {
     "=== ЗАДАЧА ===",
     taskBlock(t),
     "",
-    `Ветка: agent/${t.id} (создай её от main, если ещё нет: git checkout main && git checkout -b agent/${t.id}).`,
+    `Ветка: agent/${t.id} (создай её от ${cfg.baseBranch || "main"}: git checkout ${cfg.baseBranch || "main"} && git checkout -b agent/${t.id}). Не пушь её.`,
     "Быстрые гейты: pwsh -File tools/tandem/gates.ps1 -Task " + t.id + " -SkipUnity",
     "Unity-гейт ты НЕ запускаешь — его запустит конвейер после ревью.",
   ];
@@ -210,7 +209,7 @@ for (const t of tasks) {
       "=== ЧТО СДЕЛАЛ ИСПОЛНИТЕЛЬ ===",
       JSON.stringify(lastExec, null, 2),
       "",
-      "Сам получи diff: git diff main -- <файлы задачи> (или git diff --stat).",
+      `Сам получи diff: git diff ${cfg.baseBranch || "main"} -- <файлы задачи> (или git diff --stat). Если база иная — спроси у себя: ветка сейчас agent/${t.id}.`,
       "Проверь по списку из своей роли. Ответ — только JSON по схеме.",
     ].join("\n"),
     { model: plannerModel, provider: provider, label: `${t.id} reviewer`, schema: REVIEW_SCHEMA }
@@ -263,7 +262,7 @@ for (const t of tasks) {
   phase(`Гейт Unity ${t.id}`);
   const full = await agent(
     [
-      prompts.gatekeeper || "Запусти гейты и верни JSON.",
+      "Ты гейт-раннер конвейера «Тандем»: только запускаешь гейты и возвращаешь их JSON.",
       "",
       `Выполни: pwsh -File tools/tandem/gates.ps1 -Task ${t.id}`,
       "Ничего не правь. Верни ровно результат гейтов по схеме: ok, failed_step, tail.",

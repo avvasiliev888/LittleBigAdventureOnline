@@ -3,7 +3,11 @@
 # Отправляет текст в чат из .agent/telegram.json. По умолчанию молчит, пока нет
 # .agent/away (пользователь за компьютером — писать ему в телефон незачем).
 #
-# Таймаут 10 с, 2 попытки: Invoke-RestMethod -> curl.exe -> node.
+# Порядок попыток: node -> curl.exe -> Invoke-RestMethod.
+# Замерено 22.11.2026 на этом хосте: api.telegram.org НЕ отвечает ни из
+# Invoke-RestMethod, ни из curl.exe (таймаут), а node отвечает и доставляет.
+# Поэтому node первым — иначе каждая отправка ждала бы ~20 с и уходила в fallback.
+#
 # Полный провал пишется строкой в docs/reports/tandem.log, скрипт НЕ падает.
 # Токен никогда не печатается.
 #
@@ -46,9 +50,7 @@ if (-not (Test-Path $secretFile)) {
     exit 0
 }
 
-try {
-    $cfg = Get-Content $secretFile -Raw | ConvertFrom-Json
-}
+try { $cfg = Get-Content $secretFile -Raw | ConvertFrom-Json }
 catch {
     Write-Log "error .agent/telegram.json не читается как JSON"
     if (-not $Quiet) { "error: telegram.json битый" }
@@ -65,39 +67,19 @@ if (-not $token -or -not $chatId) {
 
 $sent = $false
 $how = ""
+$failures = @()
 
-# --- 1. Invoke-RestMethod
-for ($attempt = 1; $attempt -le 2 -and -not $sent; $attempt++) {
-    try {
-        $body = @{ chat_id = $chatId; text = $Text; disable_web_page_preview = $true }
-        $resp = Invoke-RestMethod -Uri "https://api.telegram.org/bot$token/sendMessage" `
-            -Method Post -Body $body -TimeoutSec 10 -ErrorAction Stop
-        if ($resp.ok) { $sent = $true; $how = "Invoke-RestMethod" }
-    }
-    catch {
-        if ($attempt -lt 2) { Start-Sleep -Seconds 2 }
-    }
+function Mask-Reason {
+    param([string]$Msg)
+    if (-not $Msg) { return "" }
+    return ($Msg -replace [regex]::Escape($token), "<token>").Substring(0, [Math]::Min(140, ($Msg -replace [regex]::Escape($token), "<token>").Length))
 }
 
-# --- 2. curl.exe
-if (-not $sent) {
-    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
-    if ($curl) {
-        try {
-            $out = & curl.exe -s -m 10 -X POST "https://api.telegram.org/bot$token/sendMessage" `
-                --data-urlencode "chat_id=$chatId" --data-urlencode "text=$Text" 2>&1
-            if ($out -match '"ok":\s*true') { $sent = $true; $how = "curl" }
-        }
-        catch { }
-    }
-}
-
-# --- 3. node
-if (-not $sent) {
-    $node = Get-Command node -ErrorAction SilentlyContinue
-    if ($node) {
-        $scriptPath = Join-Path $env:TEMP "tandem-notify.js"
-        $js = @'
+# --- 1. node (на этом хосте — единственный работающий путь)
+$node = Get-Command node -ErrorAction SilentlyContinue
+if ($node) {
+    $scriptPath = Join-Path $env:TEMP "tandem-notify.js"
+    $js = @'
 const https = require("https");
 const token = process.env.TG_TOKEN, chat = process.env.TG_CHAT, text = process.env.TG_TEXT;
 const data = JSON.stringify({chat_id: chat, text: text, disable_web_page_preview: true});
@@ -108,17 +90,51 @@ req.on("error", () => process.exit(1));
 req.on("timeout", () => { req.destroy(); process.exit(1); });
 req.write(data); req.end();
 '@
+    try {
+        Set-Content -Path $scriptPath -Value $js -Encoding UTF8
+        $env:TG_TOKEN = $token
+        $env:TG_CHAT = $chatId
+        $env:TG_TEXT = $Text
+        & node $scriptPath 2>$null
+        if ($LASTEXITCODE -eq 0) { $sent = $true; $how = "node" }
+        else { $failures += "node: exit $LASTEXITCODE" }
+    }
+    catch { $failures += "node: " + (Mask-Reason $_.Exception.Message) }
+    finally {
+        Remove-Item Env:TG_TOKEN, Env:TG_CHAT, Env:TG_TEXT -ErrorAction SilentlyContinue
+        Remove-Item $scriptPath -Force -ErrorAction SilentlyContinue
+    }
+}
+else { $failures += "node: нет в PATH" }
+
+# --- 2. curl.exe
+if (-not $sent) {
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
         try {
-            Set-Content -Path $scriptPath -Value $js -Encoding UTF8
-            $env:TG_TOKEN = $token
-            $env:TG_CHAT = $chatId
-            $env:TG_TEXT = $Text
-            & node $scriptPath
-            if ($LASTEXITCODE -eq 0) { $sent = $true; $how = "node" }
-            Remove-Item Env:TG_TOKEN, Env:TG_CHAT, Env:TG_TEXT -ErrorAction SilentlyContinue
-            Remove-Item $scriptPath -Force -ErrorAction SilentlyContinue
+            $out = & curl.exe -s -m 10 -X POST "https://api.telegram.org/bot$token/sendMessage" `
+                --data-urlencode "chat_id=$chatId" --data-urlencode "text=$Text" 2>&1
+            if ($out -match '"ok":\s*true') { $sent = $true; $how = "curl" }
+            else { $failures += "curl: ответ без ok" }
         }
-        catch { }
+        catch { $failures += "curl: " + (Mask-Reason $_.Exception.Message) }
+    }
+    else { $failures += "curl: нет в PATH" }
+}
+
+# --- 3. Invoke-RestMethod
+if (-not $sent) {
+    for ($attempt = 1; $attempt -le 2 -and -not $sent; $attempt++) {
+        try {
+            $body = @{ chat_id = $chatId; text = $Text; disable_web_page_preview = $true }
+            $resp = Invoke-RestMethod -Uri "https://api.telegram.org/bot$token/sendMessage" `
+                -Method Post -Body $body -TimeoutSec 10 -ErrorAction Stop
+            if ($resp.ok) { $sent = $true; $how = "Invoke-RestMethod" }
+        }
+        catch {
+            $failures += ("irm#" + $attempt + ": " + (Mask-Reason $_.Exception.Message))
+            if ($attempt -lt 2) { Start-Sleep -Seconds 2 }
+        }
     }
 }
 
@@ -127,7 +143,7 @@ if ($sent) {
     if (-not $Quiet) { "sent via $how" }
 }
 else {
-    Write-Log "fail  все три способа не сработали: $($Text -replace "`n", " ")"
+    Write-Log ("fail  все способы не сработали [" + ($failures -join " | ") + "]: " + ($Text -replace "`n", " "))
     if (-not $Quiet) { "fail: см. docs/reports/tandem.log" }
 }
 exit 0

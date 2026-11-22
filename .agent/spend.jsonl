@@ -2,3 +2,7 @@
 {"ts":"2026-11-22T15:18:24+03:00","task":"T-001","role":"architect","model":"deepseek-v4-flash","in":15800,"out":1500,"cache_in":12000,"usd":0.0058}
 {"ts":"2026-11-22T15:20:41+03:00","task":"T-001","role":"gate","model":"deepseek-v4-flash","usd":0.003,"estimated":true,"note":"unity-gates: токены не измерены"}
 {"ts":"2026-11-22T15:20:41+03:00","task":"T-001","role":"gate","model":"deepseek-v4-flash","usd":0.003,"estimated":true,"note":"build-windows: токены не измерены"}
+{"ts":"2026-11-22T16:52:04+03:00","task":"T-002","role":"reviewer","model":"deepseek-v4-flash","usd":0.0067,"estimated":true,"note":"T-002 reviewer: токены не измерены"}
+{"ts":"2026-11-22T16:52:04+03:00","task":"T-002","role":"gate","model":"deepseek-v4-flash","usd":0.003,"estimated":true,"note":"unity-gates: токены не измерены"}
+{"ts":"2026-11-22T16:52:04+03:00","task":"T-002","role":"gate","model":"deepseek-v4-flash","usd":0.003,"estimated":true,"note":"build-windows: токены не измерены"}
+{"ts":"2026-11-22T16:52:04+03:00","task":"T-002","role":"architect","model":"deepseek-v4-flash","usd":0.004,"estimated":true,"note":"report: токены не измерены"}

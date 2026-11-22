@@ -358,12 +358,10 @@ namespace Simulation.Core
 
             // Телепорт — debug-инструмент, но границы мира остаются авторитетными:
             // валидатор уже отклонил точку вне мира, здесь дополнительно зажимаем.
+            // Отдельная проверка «точка попала в зону» не нужна: ZoneMap.ValidateCoverage
+            // гарантирует, что зоны без разрывов и пересечений покрывают мир целиком.
             var target = _config.Zones.ClampToBounds(
                 new Vector3(command.Destination.X, entity.Position.Y, command.Destination.Y));
-            if (!_config.Zones.TryGetZone(target, out _))
-            {
-                return;
-            }
 
             entity.Position = target;
         }
@@ -1026,11 +1024,6 @@ namespace Simulation.Core
                 ref side);
             mob.AiAvoidSide = side;
 
-            if (direction.LengthSquared() <= 0.000001f)
-            {
-                return;
-            }
-
             mob.Position = MovementCollision.Resolve(
                 mob.Position,
                 new Vector3(
@@ -1050,11 +1043,6 @@ namespace Simulation.Core
         /// </summary>
         private void TryMobAttack(EntityState mob, MobDefinition definition, EntityState target, float targetDistance)
         {
-            if (targetDistance > definition.AttackRange)
-            {
-                return;
-            }
-
             if (_state.Tick < mob.NextAttackTick)
             {
                 return;

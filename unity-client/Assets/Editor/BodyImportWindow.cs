@@ -110,6 +110,12 @@ namespace Albion.Editor
             }
 
             mobIndex = EditorGUILayout.Popup("Моб (ключ)", mobIndex, mobKeys);
+            
+            var sourceFbxPath = sourceFbx != null ? AssetDatabase.GetAssetPath(sourceFbx) : "";
+            if (sourceFbxPath.EndsWith(".prefab") || sourceFbxPath.EndsWith(".mat"))
+            {
+                EditorGUILayout.HelpBox("Выберите модель (.fbx/.obj), а не префаб или материал.", UnityEditor.MessageType.Error);
+            }
             sourceFbx = (GameObject)EditorGUILayout.ObjectField("FBX тела", sourceFbx, typeof(GameObject), false);
 
             if (sourceFbx != null)
@@ -122,7 +128,7 @@ namespace Albion.Editor
 
                 if (string.IsNullOrEmpty(packageRoot))
                 {
-                    packageRoot = Path.GetDirectoryName(fbxPath);
+                    packageRoot = FindMaterialFolder(fbxPath);
                 }
             }
 
@@ -133,19 +139,27 @@ namespace Albion.Editor
             EditorGUILayout.HelpBox(
                 "Подгонка под collisionRadius: см. Jobs, WizardBody = 2.45.",
                 UnityEditor.MessageType.None);
-
-            using (new EditorGUI.DisabledScope(mobKeys.Length == 0 || sourceFbx == null))
-            {
-                if (GUILayout.Button("Импорт", GUILayout.Height(28f)))
-                {
-                    RunImport();
-                }
-            }
-
             EditorGUILayout.Space();
+            using (new EditorGUI.DisabledScope(mobKeys.Length == 0 || sourceFbx == null)) 
+            { 
+                if (GUILayout.Button("Импорт", GUILayout.Height(28f))) RunImport(); 
+            }
             scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.MinHeight(180f));
             EditorGUILayout.TextArea(report, GUILayout.ExpandHeight(true));
             EditorGUILayout.EndScrollView();
+        }
+
+        private string FindMaterialFolder(string fbxPath)
+        {
+            var current = Path.GetDirectoryName(fbxPath);
+            for (int i = 0; i < 3; i++)
+            {
+                if (string.IsNullOrEmpty(current)) break;
+                if (AssetDatabase.IsValidFolder(current + "/Materials")) return current;
+                if (Directory.GetFiles(Path.GetFullPath(current), "*.mat").Length > 0) return current;
+                current = Path.GetDirectoryName(current);
+            }
+            return Path.GetDirectoryName(fbxPath);
         }
 
         private void RunImport()

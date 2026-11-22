@@ -28,3 +28,4 @@
 {"ts":"2026-11-22T20:50:31+03:00","task":"T-006","role":"reviewer","model":"deepseek-v4-flash","usd":0.0067,"estimated":true,"note":"T-006 reviewer: токены не измерены, вызов n=28"}
 {"ts":"2026-11-22T20:51:05+03:00","task":"T-006","role":"debugger","model":"deepseek-v4-flash","usd":0.009,"estimated":true,"note":"T-006 debugger: токены не измерены, вызов n=29"}
 {"ts":"2026-11-22T20:52:40+03:00","task":"T-006","role":"architect","model":"deepseek-v4-flash","usd":0.004,"estimated":true,"note":"report: токены не измерены, вызов n=30"}
+{"ts":"2026-11-22T23:00:31+03:00","task":"T-009","role":"reviewer","model":"deepseek-v4-flash","usd":0.004,"estimated":true,"note":"T-009 reviewer: вызов повис на 16 мин, прогон снят, правки доделаны архитектором"}

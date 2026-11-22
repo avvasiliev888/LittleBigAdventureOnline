@@ -54,4 +54,5 @@ function run(scenario, extra) {
   await run("unity-fail");
   await run("pass-but-no-build-budget", { capCalls: 2 });
   await run("empty-tasks", { tasks: [] });
+  await run("review-skip", { tasks: [{ id: "T-PROBE", title: "проба", body: "тело", review: false }] });
 })();

@@ -29,3 +29,7 @@
 {"ts":"2026-11-22T20:51:05+03:00","task":"T-006","role":"debugger","model":"deepseek-v4-flash","usd":0.009,"estimated":true,"note":"T-006 debugger: токены не измерены, вызов n=29"}
 {"ts":"2026-11-22T20:52:40+03:00","task":"T-006","role":"architect","model":"deepseek-v4-flash","usd":0.004,"estimated":true,"note":"report: токены не измерены, вызов n=30"}
 {"ts":"2026-11-22T23:00:31+03:00","task":"T-009","role":"reviewer","model":"deepseek-v4-flash","usd":0.004,"estimated":true,"note":"T-009 reviewer: вызов повис на 16 мин, прогон снят, правки доделаны архитектором"}
+{"ts":"2026-11-22T23:18:40+03:00","task":"T-007","role":"reviewer","model":"deepseek-v4-flash","usd":0.005,"estimated":true,"note":"T-007 reviewer: токены не измерены, вызов n=32"}
+{"ts":"2026-11-22T23:19:05+03:00","task":"T-007","role":"gate","model":"deepseek-v4-flash","usd":0.003,"estimated":true,"note":"T-007 unity-gates: токены не измерены, вызов n=33"}
+{"ts":"2026-11-22T23:19:20+03:00","task":"T-007","role":"gate","model":"deepseek-v4-flash","usd":0.003,"estimated":true,"note":"build-windows: токены не измерены, вызов n=34"}
+{"ts":"2026-11-22T23:20:40+03:00","task":"T-007","role":"architect","model":"deepseek-v4-flash","usd":0.004,"estimated":true,"note":"report: токены не измерены, вызов n=35"}

@@ -1,0 +1,12 @@
+{
+  "body": "LowPolyWarrior",
+  "mobKey": "blue_scavenger",
+  "set": "sword_1h",
+  "prefab": "Assets/Art/Characters/Generated/LowPolyWarrior.prefab",
+  "controller": "Assets/Art/Characters/Generated/LowPolyWarriorController.controller",
+  "states": 6,
+  "albedo": false,
+  "materials_ok": true,
+  "ok": true,
+  "error": null
+}

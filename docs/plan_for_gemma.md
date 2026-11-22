@@ -526,7 +526,14 @@ public void StaggeredZones_CoveredByTwoZonesInStrip()
 
 ## T-006 — Окно импорта: поля и кнопка «Импорт»
 
-- [ ] статус: ожидает
+- [x] статус: сделано 22.11.2026, ждёт «принято». Первый прогон конвейера провалился честно:
+  три попытки, ревью FAIL, отладчик, ПК-билд пропущен (`done=false`) — и нашёл **две ошибки
+  в коде этого плана**: `CS0104 MessageType` неоднозначен из-за `using Shared;` (теперь
+  `UnityEditor.MessageType`) и `parsed["sets"]` без `TryGetValue` (теперь безопасно).
+  После правки `gates.ps1 -Task T-006` → `ok=true`, Unity-компиляция 15,1 с. Кнопка «Импорт»
+  в batchmode не нажимается — путь импорта проверен через тот же `ImportBody` в T-005
+  (CLI, `EXIT=0`); нажатие остаётся ручной проверкой заказчика.
+  Отчёт: `docs/reports/t-006-окно-импорта-тела.md`
 - Цель: `Albion/Mobs/Import Body (Wizard)` открывает окно, в котором выбор тела и нажатие
   «Импорт» дают готовый префаб, контроллер и запись в `MobVisuals.asset` без правки кода.
 - Файлы: `unity-client/Assets/Editor/BodyImportWindow.cs` (новый, единственный файл задачи
@@ -615,7 +622,9 @@ namespace Albion.Editor
             }
 
             var parsed = MiniJson.Parse(File.ReadAllText(SetsPath)) as Dictionary<string, object>;
-            if (parsed == null || !(parsed["sets"] is List<object> list))
+            if (parsed == null
+                || !parsed.TryGetValue("sets", out var setsValue)
+                || !(setsValue is List<object> list))
             {
                 return Array.Empty<string>();
             }
@@ -640,13 +649,13 @@ namespace Albion.Editor
             EditorGUILayout.HelpBox(
                 "Окно только вызывает MobBodyImport.ImportBody: префаб, контроллер и запись "
                 + "в MobVisuals.asset делает он.",
-                MessageType.None);
+                UnityEditor.MessageType.None);
 
             if (mobKeys.Length == 0)
             {
                 EditorGUILayout.HelpBox(
                     "В MobVisuals.asset нет ни одного моба — импорт недоступен.",
-                    MessageType.Warning);
+                    UnityEditor.MessageType.Warning);
             }
 
             mobIndex = EditorGUILayout.Popup("Моб (ключ)", mobIndex, mobKeys);
@@ -672,7 +681,7 @@ namespace Albion.Editor
             height = EditorGUILayout.FloatField("Высота", height);
             EditorGUILayout.HelpBox(
                 "Подгонка под collisionRadius: см. Jobs, WizardBody = 2.45.",
-                MessageType.None);
+                UnityEditor.MessageType.None);
 
             using (new EditorGUI.DisabledScope(mobKeys.Length == 0 || sourceFbx == null))
             {
@@ -787,6 +796,12 @@ namespace Albion.Editor
   4. `MiniJson.Parse` возвращает `Dictionary<string, object>`; ключи наборов лежат в массиве
      `sets` (`parsed["sets"] as List<object>`), у элемента поле `key`.
   5. Класс — в namespace `Albion.Editor` (как `MobBodyImport`), `MobVisualSettings` — в `Albion.Client`.
+  6. **`MessageType` писать только как `UnityEditor.MessageType`** (замер 22.11.2026, CS0104):
+     в проекте есть `Shared.MessageType`, поэтому `using Shared;` (нужен для `MiniJson`) делает
+     неквалифицированное `MessageType` неоднозначным и Unity-компиляция падает. `dotnet build`
+     этого не видит — клиент Unity в решение не входит, — поэтому «build зелёный» здесь ничего не значит.
+  7. `parsed["sets"]` не индексировать напрямую: `Reload()` вызывается из `OnEnable`, и при
+     отсутствии ключа `KeyNotFoundException` не даст открыть окно. Только `TryGetValue`.
 - Ограничения: `MobBodyImport` не править; `Jobs` не трогать; конфиги не менять; AssetDatabase
   операции делает `ImportBody`/вызывающий, окно только передаёт аргументы; не добавлять
   собственных проверок материалов.
@@ -806,8 +821,19 @@ namespace Albion.Editor
 
 ## T-007 — Первый прогон: Low Poly Warrior на существующем мобе
 
-- [ ] статус: ожидает; решено заказчиком 22.11.2026: ключ `blue_scavenger`, набор `sword_1h`,
-  Height `2.45`
+- [ ] статус: **заблокирована** (замер 22.11.2026): пака нет в проекте — каталог
+  `unity-client/Assets/asoliddev - Low Poly Fantasy Warrior/` отсутствует (поиск по всему
+  `Assets` и по всему диску не нашёл ни `.fbx`, ни папки), есть только превью
+  `docs/imports/bodies/Low Poly Warrior.png`. `bodies.json` — вывод классификатора по
+  когда-то виденным файлам, а не гарантия, что файл на месте. Нужно: импортировать пакет
+  в проект (Asset Store → Import) либо назвать реальный путь.
+  Решено заказчиком 22.11.2026: ключ `blue_scavenger`, набор `sword_1h`, Height `2.45`.
+  Порядок: сначала **T-009** (текстуры и папка пакета), затем T-007.
+- Именование альбедо (проверить первым делом, когда пакет появится): у WizardPBR текстуры
+  называются `AlbedoWizardBody.png` (префикс `Albedo`), а фолбэк ищет по имени материала
+  (`M_WizardBody` → `wizardbody`) и `name + "_texture"` — такое имя он не находит. Записать
+  фактические имена файлов пака и, если они не совпадают с `albedo|diffuse|basecolor`,
+  добавить их в поиск (T-009 расширяет его до ключевых слов).
 - Цель: тело `Low Poly Warrior` из пака `Assets/asoliddev - Low Poly Fantasy Warrior/` проходит
   A–F одной командой CLI и получает вердикт `ok=true`.
 - Файлы: генерируемые ассеты (`Assets/Art/Characters/...`, `.../Generated/*.prefab`,
@@ -903,3 +929,75 @@ namespace Albion.Editor
   не меняй. Готово, когда `gates.ps1 -Task T-008 -SkipUnity` зелёный.»
 - Размер: ~60 строк в одном файле.
 - Зависимости: нет (идёт до T-006/T-007).
+## T-009 — Тело без текстуры не должно проходить молча; поиск альбедо по имени файла
+
+- [ ] статус: ожидает; идёт **до T-007** (провал окна 22.11.2026 показал причину)
+- Замер 22.11.2026 (прогон окна на `blue_scavenger`/`WizardBody`, отчёт в чате окна):
+  ```
+  mob=blue_scavenger set=magic height=2,05
+  package has no materials: Assets\Art\Characters\Generated
+  controller saved: ... states=6
+  prefab saved: Assets/Art/Characters/Generated/WizardBody.prefab
+  FAILED: InvalidOperationException: Mob prefab has no textured body material: WizardBody
+  ```
+  Что произошло: окно получило объект из `Assets/Art/Characters/Generated`, подставило его папку
+  как `packageRoot`, `AssignPackageAlbedo` не нашёл там материалов (сообщил в отчёт и **продолжил**),
+  префаб собрался на **безтекстурном** `M_lambert1.mat` (guid `2fdfb0de…`), а `M_WizardBody.mat`
+  (у него `_BaseMap` и `_MainTex` = `AlbedoWizardBody.png`, guid `a28c785b…`) остался не привязан.
+  Валидатор упал уже после сохранения префаба — работа сделана и выброшена.
+- Второй дефект, найденный по коду: **три разных определения «текстурный материал»**
+  - `MobBodyImport.HasAlbedo` — `_BaseMap` **или** `_MainTex` (строки 476–480);
+  - `ArtMaterialUtility.AlbedoProperties` — `_BaseMap`, `_MainTex`, `_BaseColorMap`, `_Albedo` (строка 18);
+  - `MobVisualSettings.ValidateMaterials` — **только** `_BaseMap` (строки 98–101).
+  Материал Standard-шейдера с одним `_MainTex` проходит импорт и падает на валидаторе.
+- Третий дефект: фолбэк `ArtMaterialUtility.AssignFallbackAlbedo` (строки 108–130) ищет текстуру
+  по ключу = имя материала (`M_WizardBody` → `wizardbody`) или `wizardbody_texture`. В пакете
+  WizardPBR файл называется `AlbedoWizardBody.png` — по такому ключу не находится.
+- Файлы: `unity-client/Assets/Scripts/View/MobVisualSettings.cs`,
+  `unity-client/Assets/Editor/MobBodyImport.cs`, `unity-client/Assets/Editor/ArtMaterialUtility.cs`,
+  `unity-client/Assets/Editor/BodyImportWindow.cs`
+- Что сделать:
+  1. **Одно определение.** Вынести в `ArtMaterialUtility` публичный
+     `public static bool HasAlbedo(Material material)` ровно по списку `AlbedoProperties`
+     (`_BaseMap`, `_MainTex`, `_BaseColorMap`, `_Albedo`) и использовать его в трёх местах:
+     `MobVisualSettings.ValidateMaterials`, `MobBodyImport.AssignPackageAlbedo`/`HasAlbedo`,
+     `BodyImportWindow`. Приватный `HasAlbedo` в `MobBodyImport` удалить (не дублировать).
+  2. **Поиск папки пакета.** В `AssignPackageAlbedo`: если в `packageRoot` нет ни одного `.mat`,
+     подниматься вверх по дереву (родитель, дед — не глубже 3 уровней) и брать первую папку,
+     где материалы есть; в отчёт писать «packageRoot: <было> → <стало>» либо
+     `package has no materials` и **бросать** `InvalidOperationException` с подсказкой
+     «укажите папку пакета, где лежат .mat; папка Generated для этого не подходит» — до сборки
+     префаба, а не после.
+  3. **Поиск текстуры по имени файла.** Если материала с альбедо в пакете нет, искать
+     `.png/.tga/.jpg` в `packageRoot` (рекурсивно), у которых имя (без расширения, в нижнем
+     регистре) содержит `albedo`, `diffuse`, `basecolor`, `base_color` или `_base`, и присваивать
+     найденную текстуру в `_BaseMap` (и в `_MainTex`, если свойство есть) подобранному материалу;
+     при нескольких кандидатах предпочитать тот, в чьём имени есть `bodyName` (без учёта регистра
+     и без `M_`). Всё записывать в отчёт: какие файлы найдены, что выбрано и почему.
+  4. **Окно.** `BodyImportWindow`: `PackageRoot` по умолчанию — ближайшая папка-предок выбранного
+     файла, где `AssetDatabase.FindAssets("t:Material", new[]{folder})` непуст (не глубже 3 уровней);
+     `SourceFbx` принимать только для путей `.fbx/.FBX/.obj/.OBJ`, иначе явная ошибка
+     «выберите модель, а не префаб/материал»; пересчитывать `PackageRoot` при смене объекта,
+     не затирая ручную правку.
+- Ограничения: не менять имена существующих материалов и текстуры; не трогать конфиги и `Jobs`;
+  валидатор остаётся единственным «судьёй» — просто с общим определением текстуры; ADR-005 не нарушать.
+- Критерии приёмки:
+  1. `pwsh -File tools/tandem/gates.ps1 -Task T-009` → `ok=true`.
+  2. Прогон окна/CLI на `WizardPBR` с `-packageRoot Assets/WizardPBR` → префаб ссылается на
+     материал с `_BaseMap` = `AlbedoWizardBody.png`, `ValidateMaterials()` не бросает, вердикт
+     `"albedo": true`.
+  3. Ошибочный путь (`-packageRoot Assets/Art/Characters/Generated`) → **ошибка до сборки префаба**
+     с подсказкой про папку пакета, а не «no textured body material» после сохранения.
+  4. Материал с альбедо только в `_MainTex` проходит `ValidateMaterials` (проверить на
+     материале Standard-шейдера) — определения больше не расходятся.
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-009`; прогоны CLI из критериев.
+- Промпт для gemma: «Почини работу с альбедо: одно определение `HasAlbedo` в `ArtMaterialUtility`
+  (свойства `_BaseMap`, `_MainTex`, `_BaseColorMap`, `_Albedo`) и его использование в
+  `MobVisualSettings.ValidateMaterials`, `MobBodyImport`, `BodyImportWindow`. В
+  `AssignPackageAlbedo` — подниматься вверх по дереву до папки с `.mat` (не глубже 3 уровней),
+  а если материалов нет — бросать исключение с подсказкой до сборки префаба. Если материала
+  с текстурой нет, искать текстуру по ключевым словам `albedo|diffuse|basecolor|base_color|_base`,
+  предпочитая имя с `bodyName`. В окне: `PackageRoot` — ближайшая папка с материалами,
+  `SourceFbx` только `.fbx/.obj`. Готово, когда `gates.ps1 -Task T-009 -SkipUnity` зелёный.»
+- Размер: ~120 строк в четырёх файлах.
+- Зависимости: T-004/T-005 (готово).

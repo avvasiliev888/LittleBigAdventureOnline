@@ -1148,3 +1148,48 @@ namespace Albion.Editor
   цвета пакета и `gates.ps1 -Task T-011` зелёный.»
 - Размер: ~90 строк в двух файлах.
 - Зависимости: T-007 (ветка `agent/T-007`), T-009 (готово).
+## T-013 — Импорт не должен оставлять битую ссылку на префаб (моб одевал процедурного волка)
+
+- [ ] статус: ожидает; найдено по жалобе заказчика 23.11.2026 («в синей зоне волки вместо Warrior»)
+- Замеры 23.11.2026 (новый лог клиента, билд 00:48):
+  ```
+  [mob] actor=101 key=blue_scavenger expected=<none> -> primitive fallback, zone=blue
+  [mob] actor=102 key=yellow_bandit  expected=Skeleton_Rogue height=1,95 mesh=… avatar=…
+  [mob] actor=103 key=red_warlord    expected=WizardBody    height=2,45 mesh=… avatar=…
+  ```
+  `expected=<none>` означает, что `MobVisualSettings.Find`/`Create` не нашли запись или у неё
+  `Prefab == null`; `UnityView.CreateMob` уходит в резервный путь, а `FantasyVisuals.CreateMob`
+  строит **процедурного волка** (для красной зоны — голема). Отсюда «собаки» в стартовой зоне.
+  Корневая причина (замер по файлам): в `MobVisuals.asset` у `blue_scavenger` стояла ссылка
+  `{fileID: 5204452140323384066, guid: 092f3bb8…}`, но объекта с таким id в
+  `LowPolyWarrior.prefab` **нет** (корневой GameObject — `5291887348217133432`). Unity молча
+  превращает такую ссылку в `null`. У `red_warlord` id живой (`5990088983646062280` есть в
+  `WizardBody.prefab`) — поэтому маг работал. Ручное исправление id и пересборка (билд 00:57)
+  вернули тело; ссылка проверена скриптом (`Ref: ok`).
+- Файлы: `unity-client/Assets/Editor/MobBodyImport.cs`, `tools/unity/mob-visuals-check.ps1`
+- Что сделать:
+  1. В `MobBodyImport` после `PrefabUtility.SaveAsPrefabAsset` + `AssetDatabase.SaveAssets`
+     **перечитать запись с диска**: загрузить `MobVisualSettings` через
+     `AssetDatabase.LoadAssetAtPath<MobVisualSettings>(MobVisualsPath)`, взять в ней запись по
+     `mobKey` и присвоить `entry.Prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath)`
+     (свежий ассет даёт актуальный id), затем сохранить ассет ещё раз.
+  2. После сохранения **проверить**: у каждой записи `Prefab != null`, у префаба есть
+     `CharacterVisuals` и `SkinnedMeshRenderer`; иначе
+     `throw new InvalidOperationException("stale prefab reference for mob key " + key + ": перезапишите MobVisuals")`.
+  3. В `tools/unity/mob-visuals-check.ps1` колонка `Ref` уже проверяет, что `fileID` из записи
+     существует в префабе — оставить и упомянуть в отчёте как средство диагностики.
+- Критерии приёмки:
+  1. После прогона CLI для `blue_scavenger` скрипт `pwsh -File tools/unity/mob-visuals-check.ps1`
+     показывает `Ref: ok` у всех трёх записей.
+  2. Повторный прогон CLI **дважды подряд** не ломает ссылку (второй прогон пересохраняет
+     префаб с новым корневым id — запись обязана обновиться).
+  3. `verdict.json` — `ok: true`; `pwsh -File tools/tandem/gates.ps1 -Task T-013` → `ok=true`.
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-013`; прогоны CLI из критериев.
+- Промпт для gemma: «В `MobBodyImport` после сохранения префаба и ассетов перечитай
+  `MobVisuals` с диска и присвой записи моба `Prefab` из
+  `AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath)`, затем сохрани ассет. Добавь проверку:
+  `Prefab != null`, есть `CharacterVisuals` и `SkinnedMeshRenderer`, иначе бросай
+  `InvalidOperationException("stale prefab reference for mob key …")`. Готово, когда два прогона
+  CLI подряд оставляют `Ref: ok` в `tools/unity/mob-visuals-check.ps1`.»
+- Размер: ~40 строк в одном файле.
+- Зависимости: T-007, T-011 (готово).

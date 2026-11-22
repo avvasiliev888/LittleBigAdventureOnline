@@ -178,6 +178,16 @@ namespace Albion.Client
             }
         }
 
+        /// <summary>Prefab name and requested height for a mob key, for diagnostics.</summary>
+        public string Describe(string mobKey, out float height)
+        {
+            height = 0f;
+            var entry = Find(mobKey);
+            if (entry == null || entry.Prefab == null) return "<none>";
+            height = entry.Height;
+            return entry.Prefab.name;
+        }
+
         private Entry Find(string mobKey)
         {
             if (Entries == null || string.IsNullOrEmpty(mobKey)) return null;

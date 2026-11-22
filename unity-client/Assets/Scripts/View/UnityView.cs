@@ -857,12 +857,31 @@ namespace Albion.Client
         private Transform CreateMob(uint actorId)
         {
             var mob = _content?.FindMobByActorId(actorId);
+            var mobKey = mob?.Key;
+            var expected = "<no-settings>";
+            var requestedHeight = 0f;
+            if (_mobVisualSettings != null)
+            {
+                expected = _mobVisualSettings.Describe(mobKey, out requestedHeight);
+            }
 
             // The visual is looked up by the mob's own key, not by its zone. A zone key gave one
             // look per zone, so a second mob in the same zone silently wore the first one's body.
             // The zone is still passed to the primitive fallback, which colours by zone.
-            var imported = _mobVisualSettings?.Create(_root, actorId, mob?.Key);
-            if (imported != null) return imported;
+            var imported = _mobVisualSettings?.Create(_root, actorId, mobKey);
+            if (imported != null)
+            {
+                // A mob that wears the wrong body is indistinguishable from a broken one, so the
+                // resolved key, the expected prefab and the real mesh/avatar are logged together.
+                var animator = imported.GetComponentInChildren<Animator>(true);
+                var avatar = animator != null && animator.avatar != null ? animator.avatar.name : "<none>";
+                var skinned = imported.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                var mesh = skinned != null && skinned.sharedMesh != null ? skinned.sharedMesh.name : "<none>";
+                Debug.Log($"[mob] actor={actorId} key={mobKey ?? "?"} expected={expected} height={requestedHeight:0.00} mesh={mesh} avatar={avatar}");
+                return imported;
+            }
+
+            Debug.Log($"[mob] actor={actorId} key={mobKey ?? "?"} expected={expected} -> primitive fallback, zone={mob?.ZoneKey ?? "?"}");
             var zone = mob?.ZoneKey;
             var root = FantasyVisuals.CreateMob(_root, actorId, zone);
             HealthBar.Attach(root, zone == "red" ? 2.95f : zone == "yellow" ? 2.05f : 1.8f);

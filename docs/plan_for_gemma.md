@@ -822,7 +822,8 @@ namespace Albion.Editor
 
 ## T-007 — Первый прогон: Low Poly Warrior на существующем мобе
 
-- [ ] статус: **готова к запуску, ждёт T-009**. Пакет импортирован заказчиком 22.11.2026 в
+- [x] статус: **сделано конвейером** (22.11.2026, PASS ревью, риск medium, ветка `agent/T-007`,
+  ждёт «принято»; отчёт `docs/reports/t-007-low-poly-warrior.md`). Пакет импортирован заказчиком 22.11.2026 в
   `unity-client/Assets/asoliddev - Low Poly Fantasy Warrior/` (37 файлов). Замеры по нему:
   - `Models/Low Poly Warrior.fbx` (2 054 092 Б), `Models/Low Poly Warrior.fbx.meta` есть;
   - `Prefabs/Low Poly Warrior.prefab` — в пакете есть свой префаб, но он не импортный: риг и
@@ -1073,3 +1074,60 @@ namespace Albion.Editor
   Инварианты T-008 не менять. Готово, когда проба зелёная и `gates.ps1 -Task T-010` зелёный.»
 - Размер: ~80 строк в трёх файлах.
 - Зависимости: T-008 (готово).
+## T-011 — Цвета материалов пака должны доехать до тела (T-007 собрал серого человечка)
+
+- [ ] статус: ожидает; идёт после T-007, блокирует «принято» по T-007
+- Замеры 22.11.2026 (прогон T-007, ветка `agent/T-007` @ `a2c7241`):
+  - `docs/imports/LowPolyWarrior/verdict.json`: `"ok": true`, `"states": 6`,
+    `"materials_ok": true`, **`"albedo": false`**;
+  - лог `docs/reports/logs/t007-import.log`: `flat colour body: True`,
+    `no authored body material found in Assets/asoliddev - Low Poly Fantasy Warrior`,
+    `prefab saved: ...`;
+  - префаб `Assets/Art/Characters/Generated/LowPolyWarrior.prefab` — 1 `SkinnedMeshRenderer`,
+    **10 слотов**, все материалы `M_1 … M_shulders` с `_BaseColor: {r: 0.8, g: 0.8, b: 0.8}`;
+  - пакетный префаб `Prefabs/Low Poly Warrior.prefab` — тот же меш, **10 слотов**, и они
+    раскрашены автором: `steel 2` (0,592/0,596/0,608), `leather` (0,565/0,416/0,329),
+    `skin 1` (0,776/0,671/0,612), `hair black` (0,088/0,054/0,035), `leather 5`, `leather 2`,
+    `leather 6` — 7 разных материалов на 10 слотов.
+  Вывод: `AssignPackageAlbedo` искал материал **по имени** (`LowPolyWarrior`, `HasAlbedo`), не
+  нашёл (пакет безтекстурный, имена слотов FBX — `1`, `2`, `belt`, `skin`…), вернулся молча,
+  и тело получило дефолтный серый URP Lit. Моб функционален, но визуально пустой —
+  цель фичи «полностью настроенный префаб с рабочими материалами» не достигнута.
+- Второй дефект: валидатор T-009 принимает плоское тело по «цвет ≠ белый», а дефолт URP Lit
+  0.8 — не белый, поэтому **серый человек проходит** проверку. Нужен запрет на 0.8-дефолт.
+- Файлы: `unity-client/Assets/Editor/MobBodyImport.cs`,
+  `unity-client/Assets/Scripts/View/MobVisualSettings.cs`
+- Что сделать:
+  1. **Материалы из префаба пакета.** В `AssignPackageAlbedo` первым делом искать в
+     `packageRoot/Prefabs` префаб с `SkinnedMeshRenderer`, у которого число слотов совпадает
+     с числом слотов тела; если найден — присвоить его `sharedMaterials` **по индексу слота**
+     (меш один и тот же, порядок слотов сохраняется) вместо поиска по имени. В отчёт:
+     `materials from pack prefab: <name>, slots=<n>`. Меш проверять по `m_Mesh`/`sharedMesh`
+     (совпадение или общий источник), чтобы не подставить материалы чужого тела.
+  2. Остальные пути (совпадение имён → поиск текстуры по ключевым словам) сохранить как
+     фолбэки **после** префаба пакета.
+  3. **Валидатор.** `AllowFlatColour` не должен пропускать цвет, равный дефолту URP Lit
+     `(0,8; 0,8; 0,8)` (допуск 0,02 по каналам): такой материал означает «цвет не перенесён».
+     Текст ошибки: «материал тела остался дефолтным (0.8) — цвета пакета не перенесены».
+  4. Убрать создание неиспользуемых дублей материалов без префикса `M_` в
+     `Assets/Art/Characters/<Body>/Materials/` (в T-007 их создано 13: `1.mat`, `belt.mat`,
+     `skin.mat`…), либо объяснить в отчёте, откуда они и почему нужны.
+- Критерии приёмки:
+  1. Повторный прогон CLI для `blue_scavenger` / `-packageRoot "Assets/asoliddev - Low Poly
+     Fantasy Warrior"` → в префабе `LowPolyWarrior.prefab` у 10 слотов `_BaseColor` принимают
+     значения пакета: есть `skin 1` (0,776/0,671/0,612), `hair black` (0,088/0,054/0,035),
+     `steel 2` (~0,592/0,596/0,608), `leather` (0,565/0,416/0,329) — не менее 4 разных цветов.
+  2. `verdict.json` — `"ok": true`, `"materials_ok": true`; запись `blue_scavenger` в
+     `MobVisuals.asset` сохраняет `Height: 2.45`.
+  3. Тело с дефолтным 0.8 (собранное до фикса) валидатор **не** пропускает.
+  4. `pwsh -File tools/tandem/gates.ps1 -Task T-011` → `ok=true`.
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-011`; CLI-прогон из критерия 1.
+- Промпт для gemma: «В `MobBodyImport.AssignPackageAlbedo` сначала бери материалы из префаба
+  пакета: найди в `packageRoot/Prefabs` префаб с `SkinnedMeshRenderer` с тем же числом слотов,
+  что у тела, и присвой его `sharedMaterials` по индексу слота; в отчёт пиши
+  `materials from pack prefab: <name>, slots=<n>`. В `MobVisualSettings.ValidateMaterials`
+  не считай плоским тело, у которого цвет равен дефолту URP Lit (0,8; 0,8; 0,8). Убери создание
+  дублей материалов без префикса `M_`. Готово, когда после прогона CLI у 10 слотов префаба
+  цвета пакета и `gates.ps1 -Task T-011` зелёный.»
+- Размер: ~90 строк в двух файлах.
+- Зависимости: T-007 (ветка `agent/T-007`), T-009 (готово).

@@ -21,7 +21,15 @@
 //   capCalls  : number (opt, по умолч. 60) — жёсткий лимит платных вызовов
 //   mode      : "tools" | "patch" (opt) — patch = gemma только генерирует патч
 //
-// Возврат: {done, stopped, reason, tasks:[...], report, build}
+// Возврат: {done, stopped, reason, tasks:[...], decisions:[...], build, report}
+//
+// ИНВАРИАНТЫ (T-008, после разбора провала 22.11.2026):
+//   1. Каждая задача ОБЯЗАНА попасть в `tasks` результата (нет пропусков).
+//   2. ПК-билд запускается только при полном успехе: все задачи со статусом "pass".
+//   3. `done` true только при том же условии — «успех» никогда не врёт.
+//   4. Ревью-FAIL повторяет исполнителя (раньше `continue` уходил во внешний цикл
+//      и задача молча выбрасывалась, а `done` оставался true).
+//   5. Журнал решений по каждой задаче уходит в отчёт (`decisions`).
 
 const cfg = args || {};
 const tasks = (cfg.tasks || []).filter(t => t && t.id);
@@ -40,6 +48,16 @@ const callLog = [];
 function paidCall(role, label) {
   paidCalls++;
   callLog.push({ n: paidCalls, role: role, label: label });
+}
+
+// Журнал решений (инвариант 5): по каждой задаче — попытка, вердикт, решение.
+// Пишется агентом отчёта в docs/reports/logs/, потому что у скрипта нет fs.
+const decisions = [];
+function decide(taskId, text, extra) {
+  const entry = Object.assign({ task: taskId, attempt: extra && extra.attempt, decision: text }, extra || {});
+  decisions.push(entry);
+  log(`${taskId}: ${text}`);
+  return entry;
 }
 
 // Промпты ролей передаются ПУТЯМИ, а не текстом: вызывающий агент не обязан
@@ -149,6 +167,10 @@ function execPrompt(t, attempt, mustFix, diagnosis) {
 
 phase("План");
 log(`Фича: ${cfg.feature || "без имени"}; задач: ${tasks.length}; режим: ${mode}; бюджет: ${paidCalls}/${capCalls}`);
+if (!tasks.length) {
+  // Пустой список — это не успех: иначе «всё прошло» без единой задачи (так и было 22.11.2026).
+  log("ВНИМАНИЕ: список задач пуст — прогон считается неуспешным");
+}
 
 const results = [];
 let stopped = null;
@@ -156,17 +178,56 @@ let reportText = "";
 let buildInfo = null;
 
 for (const t of tasks) {
-  if (!budgetOk()) { stopped = "budget"; break; }
+  if (!budgetOk()) { stopped = "budget"; decide(t.id, "stop:budget"); break; }
   phase(`Задача ${t.id}`);
 
   let attempts = 0;
-  let gatesOk = false;
   let mustFix = [];
   let diagnosis = "";
   let lastExec = null;
   let lastReview = null;
+  let settled = null;
 
-  while (attempts < maxAttempts + 1) {
+  // ЦИКЛ ЗАДАЧИ: сюда возвращаются повторы после ревью и после провала гейтов.
+  // Раньше ревью-FAIL делал `continue` вне этого цикла — и терял задачу целиком.
+  while (!settled && !stopped) {
+    if (attempts >= maxAttempts + 1) {
+      if (lastReview && lastReview.verdict === "FAIL") {
+        // --- отладчик ---
+        if (!budgetOk()) { stopped = "budget"; decide(t.id, "stop:budget"); break; }
+        paidCall("debugger", `${t.id} debugger`);
+        phase(`Отладка ${t.id}`);
+        const dbg = await agent(
+          [
+            rolePrompt("debugger"),
+            "Ты отладчик конвейера «Тандем». Диагноз и план, ≤15 строк кода.",
+            "",
+            "=== ЗАДАЧА ===",
+            taskBlock(t),
+            "",
+            "=== ИСПОЛНИТЕЛЬ ===",
+            JSON.stringify(lastExec, null, 2),
+            "",
+            "=== РЕВЬЮ ===",
+            JSON.stringify(lastReview, null, 2),
+            "",
+            "Прочитай полные логи из docs/reports/logs/ и релевантный код. Дай диагноз и план.",
+          ].join("\n"),
+          { model: plannerModel, provider: provider, label: `${t.id} debugger` }
+        );
+        diagnosis = dbg || "";
+        settled = { status: "needs-human-debug", attempts: attempts, exec: lastExec, review: lastReview, diagnosis: diagnosis };
+        stopped = "debug";
+        decide(t.id, "stop:debug", { attempt: attempts });
+        break;
+      }
+
+      settled = { status: "gate-fail", attempts: attempts, exec: lastExec };
+      stopped = "gate-fail";
+      decide(t.id, "stop:gate-fail", { attempt: attempts });
+      break;
+    }
+
     attempts++;
     log(`${t.id}: попытка ${attempts}`);
 
@@ -179,117 +240,106 @@ for (const t of tasks) {
     executorCalls++;
 
     if (!exec) {
-      log(`${t.id}: исполнитель не вернул результат — считаем провалом`);
       mustFix = ["исполнитель не вернул структурированный ответ"];
+      decide(t.id, "retry:exec-null", { attempt: attempts });
       continue;
     }
     lastExec = exec;
     if (exec.status === "blocked") {
-      log(`${t.id}: исполнитель сообщил blocked: ${exec.summary}`);
+      settled = { status: "blocked", attempts: attempts, exec: lastExec };
       stopped = "blocked";
+      decide(t.id, "stop:blocked", { attempt: attempts });
       break;
     }
-    if (exec.gates_ok) { gatesOk = true; break; }
+    if (!exec.gates_ok) {
+      mustFix = [`гейт «${exec.failed_step || "build"}» падает: ${(exec.log_tail || "").slice(-600)}`];
+      decide(t.id, "retry:gates", { attempt: attempts, step: exec.failed_step || "build" });
+      continue;
+    }
 
-    log(`${t.id}: гейты упали на шаге ${exec.failed_step || "?"}`);
-    mustFix = [`гейт «${exec.failed_step || "build"}» падает: ${(exec.log_tail || "").slice(-600)}`];
-  }
+    // --- ревью ---
+    if (!budgetOk()) { stopped = "budget"; decide(t.id, "stop:budget"); break; }
+    paidCall("reviewer", `${t.id} reviewer`);
+    phase(`Ревью ${t.id}`);
+    const review = await agent(
+      [
+        rolePrompt("reviewer"),
+        "Ты ревьюер конвейера «Тандем». Ответ строго JSON по схеме.",
+        "",
+        "=== ЗАДАЧА ===",
+        taskBlock(t),
+        "",
+        "=== ЧТО СДЕЛАЛ ИСПОЛНИТЕЛЬ ===",
+        JSON.stringify(lastExec, null, 2),
+        "",
+        `Сам получи diff: git diff ${cfg.baseBranch || "main"} -- <файлы задачи> (или git diff --stat). Ветка сейчас agent/${t.id}.`,
+        "Проверь по списку из своей роли. Ответ — только JSON по схеме.",
+      ].join("\n"),
+      { model: plannerModel, provider: provider, label: `${t.id} reviewer`, schema: REVIEW_SCHEMA }
+    );
+    lastReview = review;
 
-  if (stopped === "blocked" || !gatesOk) {
-    results.push({ id: t.id, status: stopped === "blocked" ? "blocked" : "gate-fail", attempts, exec: lastExec });
-    if (stopped !== "blocked") stopped = "gate-fail";
-    break;
-  }
-
-  // --- ревью ---
-  if (!budgetOk()) { stopped = "budget"; break; }
-  paidCall("reviewer", `${t.id} reviewer`);
-  phase(`Ревью ${t.id}`);
-  const review = await agent(
-    [
-      rolePrompt("reviewer"),
-      "Ты ревьюер конвейера «Тандем». Ответ строго JSON по схеме.",
-      "",
-      "=== ЗАДАЧА ===",
-      taskBlock(t),
-      "",
-      "=== ЧТО СДЕЛАЛ ИСПОЛНИТЕЛЬ ===",
-      JSON.stringify(lastExec, null, 2),
-      "",
-      `Сам получи diff: git diff ${cfg.baseBranch || "main"} -- <файлы задачи> (или git diff --stat). Если база иная — спроси у себя: ветка сейчас agent/${t.id}.`,
-      "Проверь по списку из своей роли. Ответ — только JSON по схеме.",
-    ].join("\n"),
-    { model: plannerModel, provider: provider, label: `${t.id} reviewer`, schema: REVIEW_SCHEMA }
-  );
-  lastReview = review;
-
-  if (!review) {
-    results.push({ id: t.id, status: "review-error", attempts, exec: lastExec });
-    stopped = "review-error";
-    break;
-  }
-
-  if (review.verdict === "FAIL") {
-    log(`${t.id}: FAIL — ${review.must_fix.join("; ")}`);
-    if (attempts >= maxAttempts + 1) {
-      // --- отладчик ---
-      if (!budgetOk()) { stopped = "budget"; break; }
-      paidCall("debugger", `${t.id} debugger`);
-      phase(`Отладка ${t.id}`);
-      const dbg = await agent(
-        [
-          rolePrompt("debugger"),
-          "Ты отладчик конвейера «Тандем». Диагноз и план, ≤15 строк кода.",
-          "",
-          "=== ЗАДАЧА ===",
-          taskBlock(t),
-          "",
-          "=== ИСПОЛНИТЕЛЬ ===",
-          JSON.stringify(lastExec, null, 2),
-          "",
-          "=== РЕВЬЮ ===",
-          JSON.stringify(lastReview, null, 2),
-          "",
-          "Прочитай полные логи из docs/reports/logs/ и релевантный код. Дай диагноз и план.",
-        ].join("\n"),
-        { model: plannerModel, provider: provider, label: `${t.id} debugger` }
-      );
-      diagnosis = dbg || "";
-      results.push({ id: t.id, status: "needs-human-debug", attempts, exec: lastExec, review: lastReview, diagnosis });
-      stopped = "debug";
+    if (!review) {
+      settled = { status: "review-error", attempts: attempts, exec: lastExec };
+      stopped = "review-error";
+      decide(t.id, "stop:review-error", { attempt: attempts });
       break;
     }
-    mustFix = review.must_fix;
-    continue;
+
+    if (review.verdict === "FAIL") {
+      mustFix = review.must_fix || [];
+      decide(t.id, "retry:review-fail", { attempt: attempts, must_fix: mustFix });
+      continue; // повтор исполнителя ВНУТРИ цикла задачи
+    }
+
+    // --- PASS по ревью: полный гейт с Unity ---
+    if (!budgetOk()) { stopped = "budget"; decide(t.id, "stop:budget"); break; }
+    paidCall("gate", `${t.id} unity-gates`);
+    phase(`Гейт Unity ${t.id}`);
+    const full = await agent(
+      [
+        "Ты гейт-раннер конвейера «Тандем»: только запускаешь гейты и возвращаешь их JSON.",
+        "",
+        `Выполни: pwsh -File tools/tandem/gates.ps1 -Task ${t.id}`,
+        "Ничего не правь. Верни ровно результат гейтов по схеме: ok, failed_step, tail.",
+        "Если Unity.exe запущен — не убивай его, верни ok=false и failed_step=unity с объяснением в tail.",
+      ].join("\n"),
+      { model: plannerModel, provider: provider, label: `${t.id} gates`, schema: GATE_SCHEMA }
+    );
+
+    if (!full || !full.ok) {
+      settled = { status: "unity-fail", attempts: attempts, exec: lastExec, review: lastReview, gates: full };
+      stopped = "unity-fail";
+      decide(t.id, "stop:unity-fail", { attempt: attempts });
+      break;
+    }
+
+    settled = { status: "pass", attempts: attempts, exec: lastExec, review: lastReview, gates: full };
+    decide(t.id, "pass", { attempt: attempts });
   }
 
-  // --- PASS: полный гейт с Unity ---
-  if (!budgetOk()) { stopped = "budget"; break; }
-  paidCall("gate", `${t.id} unity-gates`);
-  phase(`Гейт Unity ${t.id}`);
-  const full = await agent(
-    [
-      "Ты гейт-раннер конвейера «Тандем»: только запускаешь гейты и возвращаешь их JSON.",
-      "",
-      `Выполни: pwsh -File tools/tandem/gates.ps1 -Task ${t.id}`,
-      "Ничего не правь. Верни ровно результат гейтов по схеме: ok, failed_step, tail.",
-      "Если Unity.exe запущен — не убивай его, верни ok=false и failed_step=unity с объяснением в tail.",
-    ].join("\n"),
-    { model: plannerModel, provider: provider, label: `${t.id} gates`, schema: GATE_SCHEMA }
-  );
-
-  if (!full || !full.ok) {
-    results.push({ id: t.id, status: "unity-fail", attempts, exec: lastExec, review: lastReview, gates: full });
-    stopped = "unity-fail";
-    break;
+  if (settled) {
+    results.push(Object.assign({ id: t.id }, settled));
   }
-
-  results.push({ id: t.id, status: "pass", attempts, exec: lastExec, review: lastReview, gates: full });
-  log(`${t.id}: PASS (попыток: ${attempts})`);
+  if (stopped) break;
 }
 
-// --- финал: ПК-билд и отчёт ---
-if (!stopped) {
+// Инвариант 1: ни одна задача не может молча исчезнуть.
+const seen = new Set(results.map(r => r.id));
+for (const t of tasks) {
+  if (!seen.has(t.id)) {
+    results.push({ id: t.id, status: "missing" });
+  }
+}
+
+// Инвариант 3: «успех» = каждая задача прошла и остановок не было.
+const allPass = tasks.length > 0
+  && results.length === tasks.length
+  && results.every(r => r.status === "pass");
+const runOk = stopped === null && allPass;
+
+// Инвариант 2: финальная фаза — только при полном успехе.
+if (runOk) {
   phase("ПК-билд");
   if (budgetOk()) {
     paidCall("gate", "build-windows");
@@ -303,49 +353,63 @@ if (!stopped) {
       { model: plannerModel, provider: provider, label: "build-windows", schema: BUILD_SCHEMA }
     );
   }
+} else {
+  buildInfo = { ok: false, skipped: true, error: "ПК-билд пропущен: не все задачи прошли (" + (stopped || "нет статуса pass") + ")" };
+  log("ПК-билд пропущен: не все задачи прошли");
+}
 
-  if (budgetOk()) {
-    paidCall("architect", "report");
-    phase("Отчёт");
-    reportText = await agent(
-      [
-        rolePrompt("architect"),
-        "Ты архитектор конвейера «Тандем». Напиши отчёт по шаблону.",
-        "",
-        `Фича: ${cfg.feature || ""}`,
-        "Результаты задач:",
-        JSON.stringify(results, null, 2),
-        "Билд:",
-        JSON.stringify(buildInfo, null, 2),
-        "",
-        "Платные вызовы этого прогона (журнал конвейера):",
-        JSON.stringify(callLog, null, 2),
-        "",
-        // Имя файла отчёта: только [0-9a-zа-яё-], иначе NTFS/WSL падают на ':' и '('
-        // (замер 22.11.2026: имя с двоеточием → EINVAL, отчёт записался с урезанным именем).
-        "Напиши отчёт по шаблону docs/reports/_template.md в файл docs/reports/" +
-          (cfg.feature || "feature")
-            .toLowerCase()
-            .replace(/[^0-9a-zа-яё]+/g, "-")
-            .replace(/^-+|-+$/g, "")
-            .slice(0, 60)
-            .replace(/-+$/g, "") + ".md",
-        "Обнови чекбоксы задач в docs/plan_for_gemma.md на [x] для задач со статусом pass.",
-        "Допиши в .agent/spend.jsonl ПО СТРОКЕ НА КАЖДЫЙ вызов из журнала выше.",
-        "Точных токенов у тебя нет — ставь \"estimated\": true и usd как оценку по .agent/config.json;",
-        "не выдумывай точность, счётчик вызовов в конвейере важнее оценки денег.",
-        "Верни короткое резюме отчёта текстом.",
-      ].join("\n"),
-      { model: plannerModel, provider: provider, label: "report" }
-    );
-  }
+// Отчёт пишется всегда, чтобы провал был разобран, а не потерян.
+if (budgetOk()) {
+  paidCall("architect", "report");
+  phase("Отчёт");
+  reportText = await agent(
+    [
+      rolePrompt("architect"),
+      "Ты архитектор конвейера «Тандем». Напиши отчёт по шаблону.",
+      "",
+      `Фича: ${cfg.feature || ""}`,
+      `Итог прогона: done=${runOk}, stopped=${stopped || "null"}`,
+      "Результаты задач:",
+      JSON.stringify(results, null, 2),
+      "Билд:",
+      JSON.stringify(buildInfo, null, 2),
+      "Журнал решений по задачам (инварианты T-008):",
+      JSON.stringify(decisions, null, 2),
+      "",
+      "Платные вызовы этого прогона (журнал конвейера):",
+      JSON.stringify(callLog, null, 2),
+      "",
+      // Имя файла отчёта: только [0-9a-zа-яё-], иначе NTFS/WSL падают на ':' и '('
+      // (замер 22.11.2026: имя с двоеточием → EINVAL, отчёт записался с урезанным именем).
+      "Напиши отчёт по шаблону docs/reports/_template.md в файл docs/reports/" +
+        (cfg.feature || "feature")
+          .toLowerCase()
+          .replace(/[^0-9a-zа-яё]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 60)
+          .replace(/-+$/g, "") + ".md",
+      "Дополнительно сохрани журнал решений как есть в docs/reports/logs/tandem-" +
+        (cfg.feature || "feature").toLowerCase().replace(/[^0-9a-zа-яё]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) +
+        "-decisions.json (JSON-массив из блока «Журнал решений»).",
+      "Обнови чекбоксы задач в docs/plan_for_gemma.md на [x] ТОЛЬКО для задач со статусом pass;",
+      "если прогон неуспешен — не переключай ни один чекбокс и напиши в отчёте «фича не сделана».",
+      "Допиши в .agent/spend.jsonl ПО СТРОКЕ НА КАЖДЫЙ вызов из журнала выше.",
+      "Точных токенов у тебя нет — ставь \"estimated\": true и usd как оценку по .agent/config.json;",
+      "не выдумывай точность, счётчик вызовов в конвейере важнее оценки денег.",
+      "Верни короткое резюме отчёта текстом.",
+    ].join("\n"),
+    { model: plannerModel, provider: provider, label: "report" }
+  );
 }
 
 return {
-  done: !stopped,
+  done: runOk,
   stopped: stopped,
-  reason: stopped ? "конвейер остановлен: " + stopped : "все задачи прошли",
+  reason: runOk
+    ? "все задачи прошли"
+    : "конвейер остановлен: " + (stopped || "не все задачи получили статус pass"),
   tasks: results,
+  decisions: decisions,
   build: buildInfo,
   report: reportText,
   paidCalls: paidCalls,

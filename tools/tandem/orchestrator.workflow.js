@@ -34,6 +34,13 @@ const mode = cfg.mode || "tools";
 
 let paidCalls = (cfg.spend && cfg.spend.calls) || 0;
 let executorCalls = 0;
+// Журнал платных вызовов: уходит архитектору в промпт отчёта, чтобы в
+// spend.jsonl попала строка НА КАЖДЫЙ вызов, а не только на те, что он вспомнил.
+const callLog = [];
+function paidCall(role, label) {
+  paidCalls++;
+  callLog.push({ n: paidCalls, role: role, label: label });
+}
 
 // Промпты ролей передаются ПУТЯМИ, а не текстом: вызывающий агент не обязан
 // читать их целиком (экономия контекста), роль читает себя сама.
@@ -196,7 +203,7 @@ for (const t of tasks) {
 
   // --- ревью ---
   if (!budgetOk()) { stopped = "budget"; break; }
-  paidCalls++;
+  paidCall("reviewer", `${t.id} reviewer`);
   phase(`Ревью ${t.id}`);
   const review = await agent(
     [
@@ -227,7 +234,7 @@ for (const t of tasks) {
     if (attempts >= maxAttempts + 1) {
       // --- отладчик ---
       if (!budgetOk()) { stopped = "budget"; break; }
-      paidCalls++;
+      paidCall("debugger", `${t.id} debugger`);
       phase(`Отладка ${t.id}`);
       const dbg = await agent(
         [
@@ -258,7 +265,7 @@ for (const t of tasks) {
 
   // --- PASS: полный гейт с Unity ---
   if (!budgetOk()) { stopped = "budget"; break; }
-  paidCalls++;
+  paidCall("gate", `${t.id} unity-gates`);
   phase(`Гейт Unity ${t.id}`);
   const full = await agent(
     [
@@ -285,7 +292,7 @@ for (const t of tasks) {
 if (!stopped) {
   phase("ПК-билд");
   if (budgetOk()) {
-    paidCalls++;
+    paidCall("gate", "build-windows");
     buildInfo = await agent(
       [
         "Собери Windows-плеер и проверь результат.",
@@ -298,7 +305,7 @@ if (!stopped) {
   }
 
   if (budgetOk()) {
-    paidCalls++;
+    paidCall("architect", "report");
     phase("Отчёт");
     reportText = await agent(
       [
@@ -311,10 +318,15 @@ if (!stopped) {
         "Билд:",
         JSON.stringify(buildInfo, null, 2),
         "",
+        "Платные вызовы этого прогона (журнал конвейера):",
+        JSON.stringify(callLog, null, 2),
+        "",
         "Напиши отчёт по шаблону docs/reports/_template.md в файл docs/reports/" +
           (cfg.feature || "feature").replace(/\s+/g, "-").toLowerCase() + ".md",
         "Обнови чекбоксы задач в docs/plan_for_gemma.md на [x] для задач со статусом pass.",
-        "Допиши строки в .agent/spend.jsonl (по строке на платный вызов; usd по .agent/config.json).",
+        "Допиши в .agent/spend.jsonl ПО СТРОКЕ НА КАЖДЫЙ вызов из журнала выше.",
+        "Точных токенов у тебя нет — ставь \"estimated\": true и usd как оценку по .agent/config.json;",
+        "не выдумывай точность, счётчик вызовов в конвейере важнее оценки денег.",
         "Верни короткое резюме отчёта текстом.",
       ].join("\n"),
       { model: plannerModel, provider: provider, label: "report" }

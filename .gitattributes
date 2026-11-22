@@ -50,3 +50,6 @@
 *.otf filter=lfs diff=lfs merge=lfs -text
 
 # Unity: *.meta трекаются обычным git (решение оператора), в .gitignore не попадают
+
+# shell-скрипты — всегда LF (иначе WSL-заглушка bash падает на `set -o pipefail`, а Git Bash/Linux работают)
+*.sh text eol=lf

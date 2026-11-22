@@ -78,3 +78,48 @@
 - Размер: 1 файл, ≤10 строк.
 - Зависимости: нет.
 
+## T-002 — Закрыть 6 непокрытых строк `Simulation`, чтобы гейт покрытия стал зелёным
+
+- [ ] статус: ожидает
+- Цель: `pwsh -File tools/tandem/gates.ps1 -Task T-002` даёт **ok=true целиком**,
+  то есть `dotnet test` с `/p:Threshold=100` по `[Simulation.Core]Simulation.Core.Simulation`
+  проходит. Замер 22.11.2026: 480 тестов зелёные, покрытие 98,97% (585 строк, 6 непокрытых).
+- Файлы: только `src/Tests/*.cs` (один новый файл или существующие `TeleportTests.cs`,
+  `MobAiTests.cs` — на выбор исполнителя).
+- Контекст, шесть конкретных строк `src/Simulation.Core/Simulation.cs`:
+  1. `365` — `ApplyTeleport`: после `ClampToBounds` точка не попала ни в одну зону,
+     телепорт отменяется. Достижимо: `ZoneFixture.ThreeZones()` покрывает X до 20,
+     а мир шире — телепорт в X≈25 остаётся в мире, но вне зон.
+  2. `1013–1015` — `MoveMobAway`: цель стоит вплотную (`distance <= 0.0001`), берётся
+     запасное направление `dx=1, dz=0, distance=1`.
+  3. `1031` — `MoveMobAway`: `MobSteering.Resolve` вернул нулевой вектор, шаг пропускается.
+  4. `1055` — `TryMobAttack`: `targetDistance > definition.AttackRange`, удара нет
+     (вызывается и из ветки отступления дальнобойного моба).
+- Ограничения: `src/Simulation.Core/**` **не менять вообще** — дыра закрывается тестами,
+  а не правкой кода. Не понижать `Threshold`, не добавлять `-SkipCoverage`, не удалять
+  и не «упрощать» прод-код, чтобы строки исчезли. Если какая-то из строк 2–4 недостижима
+  через публичный API — остановиться и написать `blocked` с причиной, а не выдумывать
+  тест, который её не исполняет.
+- Критерии приёмки: `gates.ps1` (полный, с покрытием) → `ok=true`, шаг `test` —
+  `exit 0, покрытие 100%`; `git diff -- src/Simulation.Core` пуст; тестов стало больше
+  480; имена тестов описывают сценарий (например
+  `Teleport_OutOfEveryZone_DoesNotMovePlayer`).
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-002` (build → test с покрытием →
+  arch → boundaries → Unity).
+- Промпт для gemma:
+  «Покрытие `Simulation.Core` 98,97%, порог в CI 100%, поэтому тест-шаг красный.
+  Добавь тесты в `src/Tests`, которые исполнят ровно шесть строк в
+  `src/Simulation.Core/Simulation.cs`: 365 (`ApplyTeleport` — точка внутри мира, но вне
+  всех зон), 1013–1015 и 1031 (`MoveMobAway` — моб вплотную к цели и моб, которому
+  steering не даёт направления), 1055 (`TryMobAttack` — цель дальше `AttackRange`).
+  Опирайся на существующие фикстуры: `ZoneFixture` (три зоны, X до 20), `TestWorld`
+  (`Config`, `Simulation`, `Tick`, `TickMany`, `Mob(attackRange:, keepDistance:,
+  weaponType:"staff")`), образец дальнобойного моба — `MobAiTests.RangedMob_RetreatsWhenTargetComesClose`.
+  Файлы `src/Simulation.Core/**` не трогай, порог покрытия не меняй, тесты не отключай.
+  Проверяй `pwsh -File tools/tandem/gates.ps1 -Task T-002 -SkipUnity` до зелёного
+  тест-шага. В конце покажи имена добавленных тестов и строку покрытия из лога.»
+- Размер: 1 файл (максимум 2), ~6 тестов, ≤120 строк.
+- Зависимости: нет (но перед запуском конвейера `main` должен содержать выровненный
+  `gates.ps1` — он уже там с коммита `5e47c53`).
+
+

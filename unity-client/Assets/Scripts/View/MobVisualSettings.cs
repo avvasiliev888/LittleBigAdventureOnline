@@ -125,7 +125,14 @@ namespace Albion.Client
                                     ? material.GetColor("_Color") 
                                     : Color.white;
                             
-                            if (color.r < 0.99f || color.g < 0.99f || color.b < 0.99f)
+                            var isWhite = color.r > 0.99f && color.g > 0.99f && color.b > 0.99f;
+                            // URP Lit default: a body left at 0.8 means the pack colours were not
+                            // transferred, and accepting it would silently ship a grey mannequin.
+                            var isUrpDefault = Mathf.Abs(color.r - 0.8f) < 0.02f
+                                && Mathf.Abs(color.g - 0.8f) < 0.02f
+                                && Mathf.Abs(color.b - 0.8f) < 0.02f;
+
+                            if (!isWhite && !isUrpDefault)
                             {
                                 hasAlbedo = true;
                             }

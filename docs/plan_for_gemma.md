@@ -1193,3 +1193,24 @@ namespace Albion.Editor
   CLI подряд оставляют `Ref: ok` в `tools/unity/mob-visuals-check.ps1`.»
 - Размер: ~40 строк в одном файле.
 - Зависимости: T-007, T-011 (готово).
+## T-012 — Диагностика тела моба: лог `[mob]`, скрипт проверки связей, исправленная ссылка
+
+- [x] статус: принято 23.11.2026, слито в `main` (`346dc33`). Найдено по жалобе «в синей зоне волки вместо Warrior».
+- Симптом и замер: клиент показывал в стартовой (синей) зоне **процедурного волка**. Лог
+  `[mob] actor=101 key=blue_scavenger expected=<none> -> primitive fallback, zone=blue` показал,
+  что `MobVisualSettings.Create` вернул null и сработал резервный путь `FantasyVisuals.CreateMob`
+  (он строит волка, для красной зоны — голема). Корневая причина по файлам: в
+  `MobVisuals.asset` у `blue_scavenger` стояла ссылка `fileID: 5204452140323384066`, но такого
+  объекта в `LowPolyWarrior.prefab` нет (корень — `5291887348217133432`): префаб пересохранялся,
+  id сменился, Unity молча читает битую ссылку как `null`.
+- Что сделано:
+  1. `UnityView.CreateMob` + `MobVisualSettings.Describe`: лог
+     `[mob] actor=… key=… expected=… height=… mesh=… avatar=…`, а при провале —
+     `-> primitive fallback, zone=…`.
+  2. `tools/unity/mob-visuals-check.ps1`: разбирает `MobVisuals.asset`, разрешает GUID префаба,
+     меша и аватара в пути и проверяет колонкой `Ref`, что `fileID` из записи **есть** в префабе.
+  3. Ссылка `blue_scavenger` исправлена на живой root id; замер после правки: у всех трёх
+     записей `Ref: ok`, в игре — `[mob] actor=101 … mesh=body avatar=LowPolyWarriorAvatar`.
+- Чем проверено: `pwsh -File tools/unity/mob-visuals-check.ps1` → три `Ref: ok`; лог клиента
+  билда 00:57; заказчик подтвердил «Воины на месте, всё работает».
+- Постоянная защита — задача T-013 (импортёр перечитывает запись с диска и падает на битой ссылке).

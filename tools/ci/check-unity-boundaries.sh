@@ -31,7 +31,8 @@ else
 fi
 
 echo "== 2. View/Input не двигают объекты сами (только позиция из снапшота) =="
-if grep -RInE --include='*.cs' 'transform\.(position[[:space:]]*\+=|Translate\()' "$UNITY_SCRIPTS/View" "$UNITY_SCRIPTS/Input" 2>/dev/null; then
+# Визуальные частицы (*Vfx.cs) не являются игровым состоянием и двигаются локально для эффектов.
+if grep -RInE --include='*.cs' 'transform\.(position[[:space:]]*\+=|Translate\()' "$UNITY_SCRIPTS/View" "$UNITY_SCRIPTS/Input" 2>/dev/null | grep -vE '/([A-Za-z0-9_]+)Vfx\.cs:'; then
     fail "логика движения в View/Input (transform.position += / Translate)"
 else
     echo "ok: прямого движения в View/Input нет"

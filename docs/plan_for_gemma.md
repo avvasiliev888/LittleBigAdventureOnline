@@ -50,7 +50,7 @@
 
 ## T-001 — Узаконить движение частиц в проверке границ
 
-- [ ] статус: ожидает
+- [x] статус: pass (гейты и ревью PASS, отчёт `docs/reports/vfx-boundary-gate.md`; ждёт «принято»)
 - Цель: `bash tools/ci/check-unity-boundaries.sh` снова даёт exit 0 на `main`, при этом
   правило 2 продолжает ловить движение в обычных View-скриптах.
 - Файлы: `tools/ci/check-unity-boundaries.sh`

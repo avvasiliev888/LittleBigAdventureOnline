@@ -526,7 +526,8 @@ public void StaggeredZones_CoveredByTwoZonesInStrip()
 
 ## T-006 — Окно импорта: поля и кнопка «Импорт»
 
-- [x] статус: сделано 22.11.2026, ждёт «принято». Первый прогон конвейера провалился честно:
+- [x] статус: принято 22.11.2026, слито в main (`3152889`); окно проверено заказчиком вручную.
+  Первый прогон конвейера провалился честно:
   три попытки, ревью FAIL, отладчик, ПК-билд пропущен (`done=false`) — и нашёл **две ошибки
   в коде этого плана**: `CS0104 MessageType` неоднозначен из-за `using Shared;` (теперь
   `UnityEditor.MessageType`) и `parsed["sets"]` без `TryGetValue` (теперь безопасно).
@@ -821,19 +822,26 @@ namespace Albion.Editor
 
 ## T-007 — Первый прогон: Low Poly Warrior на существующем мобе
 
-- [ ] статус: **заблокирована** (замер 22.11.2026): пака нет в проекте — каталог
-  `unity-client/Assets/asoliddev - Low Poly Fantasy Warrior/` отсутствует (поиск по всему
-  `Assets` и по всему диску не нашёл ни `.fbx`, ни папки), есть только превью
-  `docs/imports/bodies/Low Poly Warrior.png`. `bodies.json` — вывод классификатора по
-  когда-то виденным файлам, а не гарантия, что файл на месте. Нужно: импортировать пакет
-  в проект (Asset Store → Import) либо назвать реальный путь.
+- [ ] статус: **готова к запуску, ждёт T-009**. Пакет импортирован заказчиком 22.11.2026 в
+  `unity-client/Assets/asoliddev - Low Poly Fantasy Warrior/` (37 файлов). Замеры по нему:
+  - `Models/Low Poly Warrior.fbx` (2 054 092 Б), `Models/Low Poly Warrior.fbx.meta` есть;
+  - `Prefabs/Low Poly Warrior.prefab` — в пакете есть свой префаб, но он не импортный: риг и
+    клипы берём из FBX через `ImportBody`;
+  - **текстур нет ни одной** (0 файлов `.png/.tga/.jpg/.psd`), 10 материалов на Standard-шейдере
+    с `_MainTex: {fileID: 0}` и намеренными цветами (`skin 1` 0,776/0,671/0,612, `leather`
+    0,565/0,416/0,329, `hair black` 0,088/0,054/0,035…). Поэтому валидатор обязан пропускать
+    плоское тело — это делает **T-009** (`AllowFlatColour`), без неё T-007 упадёт на
+    «no textured body material» по определению;
+  - клипы: `pose.controller` — поза пакета, для набора `sword_1h` берём клипы из
+    `Assets/StreamingAssets/Config/animation-sets.json`, как у остальных тел.
   Решено заказчиком 22.11.2026: ключ `blue_scavenger`, набор `sword_1h`, Height `2.45`.
-  Порядок: сначала **T-009** (текстуры и папка пакета), затем T-007.
-- Именование альбедо (проверить первым делом, когда пакет появится): у WizardPBR текстуры
-  называются `AlbedoWizardBody.png` (префикс `Albedo`), а фолбэк ищет по имени материала
-  (`M_WizardBody` → `wizardbody`) и `name + "_texture"` — такое имя он не находит. Записать
-  фактические имена файлов пака и, если они не совпадают с `albedo|diffuse|basecolor`,
-  добавить их в поиск (T-009 расширяет его до ключевых слов).
+  Порядок: сначала **T-009** (плоское тело, папка пакета, единое «есть альбедо»), затем T-007.
+- Команда прогона (после T-009):
+  `Unity.exe -batchmode -executeMethod Albion.Editor.MobBodyImport.ImportFromCommandLine
+  -mobKey blue_scavenger -sourceFbx "Assets/asoliddev - Low Poly Fantasy Warrior/Models/Low Poly Warrior.fbx"
+  -packageRoot "Assets/asoliddev - Low Poly Fantasy Warrior" -bodyName LowPolyWarrior
+  -set sword_1h -height 2.45 -quit -logFile -`
+
 - Цель: тело `Low Poly Warrior` из пака `Assets/asoliddev - Low Poly Fantasy Warrior/` проходит
   A–F одной командой CLI и получает вердикт `ok=true`.
 - Файлы: генерируемые ассеты (`Assets/Art/Characters/...`, `.../Generated/*.prefab`,
@@ -929,75 +937,76 @@ namespace Albion.Editor
   не меняй. Готово, когда `gates.ps1 -Task T-008 -SkipUnity` зелёный.»
 - Размер: ~60 строк в одном файле.
 - Зависимости: нет (идёт до T-006/T-007).
-## T-009 — Тело без текстуры не должно проходить молча; поиск альбедо по имени файла
 
-- [ ] статус: ожидает; идёт **до T-007** (провал окна 22.11.2026 показал причину)
-- Замер 22.11.2026 (прогон окна на `blue_scavenger`/`WizardBody`, отчёт в чате окна):
-  ```
-  mob=blue_scavenger set=magic height=2,05
-  package has no materials: Assets\Art\Characters\Generated
-  controller saved: ... states=6
-  prefab saved: Assets/Art/Characters/Generated/WizardBody.prefab
-  FAILED: InvalidOperationException: Mob prefab has no textured body material: WizardBody
-  ```
-  Что произошло: окно получило объект из `Assets/Art/Characters/Generated`, подставило его папку
-  как `packageRoot`, `AssignPackageAlbedo` не нашёл там материалов (сообщил в отчёт и **продолжил**),
-  префаб собрался на **безтекстурном** `M_lambert1.mat` (guid `2fdfb0de…`), а `M_WizardBody.mat`
-  (у него `_BaseMap` и `_MainTex` = `AlbedoWizardBody.png`, guid `a28c785b…`) остался не привязан.
-  Валидатор упал уже после сохранения префаба — работа сделана и выброшена.
-- Второй дефект, найденный по коду: **три разных определения «текстурный материал»**
-  - `MobBodyImport.HasAlbedo` — `_BaseMap` **или** `_MainTex` (строки 476–480);
-  - `ArtMaterialUtility.AlbedoProperties` — `_BaseMap`, `_MainTex`, `_BaseColorMap`, `_Albedo` (строка 18);
-  - `MobVisualSettings.ValidateMaterials` — **только** `_BaseMap` (строки 98–101).
-  Материал Standard-шейдера с одним `_MainTex` проходит импорт и падает на валидаторе.
-- Третий дефект: фолбэк `ArtMaterialUtility.AssignFallbackAlbedo` (строки 108–130) ищет текстуру
-  по ключу = имя материала (`M_WizardBody` → `wizardbody`) или `wizardbody_texture`. В пакете
-  WizardPBR файл называется `AlbedoWizardBody.png` — по такому ключу не находится.
+## T-009 — Плоское тело без текстуры законно; папка пакета и единое «есть альбедо»
+
+- [ ] статус: ожидает; идёт **до T-007**
+- Замеры 22.11.2026, после того как заказчик импортировал пакет Low Poly Warrior:
+  - в пакете `Assets/asoliddev - Low Poly Fantasy Warrior` **ноль** файлов изображений
+    (`.png/.tga/.jpg/.psd` — 0 из 37 файлов);
+  - 10 материалов, все на Standard-шейдере (`m_Shader: {fileID: 46…}`), у всех
+    `_MainTex: {m_Texture: {fileID: 0}}` — текстуры нет ни у одного;
+  - цвета заданы намеренно и разные: `skin 1` (0,776 0,671 0,612), `leather` (0,565 0,416 0,329),
+    `hair black` (0,088 0,054 0,035), `gray 1` (0,299 0,299 0,299), `steel 2` (0,592 0,596 0,608).
+  Вывод: это стилизованный пакет «чистых цветов». Требование текстуры альбедо делает его
+  неимпортируемым **по определению** — искать текстуру негде.
+- Замер провала окна (тогда же): `package has no materials: Assets\Art\Characters\Generated`
+  → префаб собрался на безтекстурном `M_lambert1.mat` → `FAILED: Mob prefab has no textured
+  body material: WizardBody` уже после сохранения префаба. Настоящий `M_WizardBody.mat`
+  (`_BaseMap` = `AlbedoWizardBody.png`) привязан не был.
+- Три разных определения «текстурный материал»: `MobBodyImport.HasAlbedo` — `_BaseMap` или
+  `_MainTex`; `ArtMaterialUtility.AlbedoProperties` — `_BaseMap/_MainTex/_BaseColorMap/_Albedo`;
+  `MobVisualSettings.ValidateMaterials` — только `_BaseMap`. Материал с одним `_MainTex`
+  проходит импорт и падает на валидаторе.
+- Цвет в конверсии не теряется: `ArtMaterialUtility.CopyColor` берёт `_BaseColor`, иначе `_Color`
+  (проверено по коду, строка ~180) — плоское тело доедет до URP Lit своим цветом.
 - Файлы: `unity-client/Assets/Scripts/View/MobVisualSettings.cs`,
   `unity-client/Assets/Editor/MobBodyImport.cs`, `unity-client/Assets/Editor/ArtMaterialUtility.cs`,
   `unity-client/Assets/Editor/BodyImportWindow.cs`
 - Что сделать:
-  1. **Одно определение.** Вынести в `ArtMaterialUtility` публичный
-     `public static bool HasAlbedo(Material material)` ровно по списку `AlbedoProperties`
-     (`_BaseMap`, `_MainTex`, `_BaseColorMap`, `_Albedo`) и использовать его в трёх местах:
-     `MobVisualSettings.ValidateMaterials`, `MobBodyImport.AssignPackageAlbedo`/`HasAlbedo`,
-     `BodyImportWindow`. Приватный `HasAlbedo` в `MobBodyImport` удалить (не дублировать).
-  2. **Поиск папки пакета.** В `AssignPackageAlbedo`: если в `packageRoot` нет ни одного `.mat`,
-     подниматься вверх по дереву (родитель, дед — не глубже 3 уровней) и брать первую папку,
-     где материалы есть; в отчёт писать «packageRoot: <было> → <стало>» либо
-     `package has no materials` и **бросать** `InvalidOperationException` с подсказкой
-     «укажите папку пакета, где лежат .mat; папка Generated для этого не подходит» — до сборки
-     префаба, а не после.
-  3. **Поиск текстуры по имени файла.** Если материала с альбедо в пакете нет, искать
-     `.png/.tga/.jpg` в `packageRoot` (рекурсивно), у которых имя (без расширения, в нижнем
-     регистре) содержит `albedo`, `diffuse`, `basecolor`, `base_color` или `_base`, и присваивать
-     найденную текстуру в `_BaseMap` (и в `_MainTex`, если свойство есть) подобранному материалу;
-     при нескольких кандидатах предпочитать тот, в чьём имени есть `bodyName` (без учёта регистра
-     и без `M_`). Всё записывать в отчёт: какие файлы найдены, что выбрано и почему.
-  4. **Окно.** `BodyImportWindow`: `PackageRoot` по умолчанию — ближайшая папка-предок выбранного
-     файла, где `AssetDatabase.FindAssets("t:Material", new[]{folder})` непуст (не глубже 3 уровней);
-     `SourceFbx` принимать только для путей `.fbx/.FBX/.obj/.OBJ`, иначе явная ошибка
-     «выберите модель, а не префаб/материал»; пересчитывать `PackageRoot` при смене объекта,
-     не затирая ручную правку.
-- Ограничения: не менять имена существующих материалов и текстуры; не трогать конфиги и `Jobs`;
-  валидатор остаётся единственным «судьёй» — просто с общим определением текстуры; ADR-005 не нарушать.
+  1. **Единое «есть альбедо».** `public static bool HasAlbedo(Material)` в `ArtMaterialUtility`
+     по списку `AlbedoProperties`; использовать в `MobVisualSettings.ValidateMaterials`,
+     `MobBodyImport` (приватный `HasAlbedo` удалить, не дублировать) и в окне.
+  2. **Флаг плоского тела.** В `MobVisualSettings.Entry` добавить `public bool AllowFlatColour;`
+     (по умолчанию `false`, старые записи не меняются). Импорт ставит `true`, когда в папке
+     пакета **нет ни одного** файла изображений (`*.png/.tga/.jpg/.psd` рекурсивно), и пишет
+     в отчёт `flat colour body: true/false`.
+  3. **Валидатор.** Тело годно, если материал имеет альбедо (`HasAlbedo`) **или**
+     (`entry.AllowFlatColour` и цвет ≠ белый: `_BaseColor`/`_Color`, любой канал < 0,99).
+     `M_lambert1` мага (0,5 0,5 0,5) без флага остаётся провалом — защита от «серого по умолчанию»
+     сохраняется. Сообщение об ошибке дополнить: «если пакет без текстур — выставьте AllowFlatColour».
+     Белая эмиссия запрещена, как раньше.
+  4. **Папка пакета.** В `AssignPackageAlbedo`: если в `packageRoot` нет `.mat`, подниматься вверх
+     (родитель, не глубже 3 уровней) до папки с материалами; если и там нет —
+     `throw new InvalidOperationException("в папке пакета нет материалов: <путь>; укажите папку с .mat (Generated не подходит)")`
+     **до** сборки префаба, а не после.
+  5. **Фолбэк по имени файла** (для паков, где текстуры есть, но материал-альбедо не находится):
+     искать `.png/.tga/.jpg` с ключевыми словами `albedo|diffuse|basecolor|base_color|_base`,
+     предпочитая имя с `bodyName`; присваивать в `_BaseMap` и `_MainTex`; писать в отчёт.
+  6. **Окно.** `SourceFbx` принимает только `.fbx/.obj` (иначе ошибка «выберите модель, а не
+     префаб/материал»); `PackageRoot` по умолчанию — ближайшая вверх папка с материалами.
+- Ограничения: не менять имена существующих материалов; конфиги и `Jobs` не трогать;
+  `Protocol.Version` не поднимать; валидатор остаётся единственным судьёй.
 - Критерии приёмки:
   1. `pwsh -File tools/tandem/gates.ps1 -Task T-009` → `ok=true`.
-  2. Прогон окна/CLI на `WizardPBR` с `-packageRoot Assets/WizardPBR` → префаб ссылается на
-     материал с `_BaseMap` = `AlbedoWizardBody.png`, `ValidateMaterials()` не бросает, вердикт
-     `"albedo": true`.
-  3. Ошибочный путь (`-packageRoot Assets/Art/Characters/Generated`) → **ошибка до сборки префаба**
-     с подсказкой про папку пакета, а не «no textured body material» после сохранения.
-  4. Материал с альбедо только в `_MainTex` проходит `ValidateMaterials` (проверить на
-     материале Standard-шейдера) — определения больше не расходятся.
-- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-009`; прогоны CLI из критериев.
-- Промпт для gemma: «Почини работу с альбедо: одно определение `HasAlbedo` в `ArtMaterialUtility`
-  (свойства `_BaseMap`, `_MainTex`, `_BaseColorMap`, `_Albedo`) и его использование в
-  `MobVisualSettings.ValidateMaterials`, `MobBodyImport`, `BodyImportWindow`. В
-  `AssignPackageAlbedo` — подниматься вверх по дереву до папки с `.mat` (не глубже 3 уровней),
-  а если материалов нет — бросать исключение с подсказкой до сборки префаба. Если материала
-  с текстурой нет, искать текстуру по ключевым словам `albedo|diffuse|basecolor|base_color|_base`,
-  предпочитая имя с `bodyName`. В окне: `PackageRoot` — ближайшая папка с материалами,
-  `SourceFbx` только `.fbx/.obj`. Готово, когда `gates.ps1 -Task T-009 -SkipUnity` зелёный.»
-- Размер: ~120 строк в четырёх файлах.
+  2. Регрессия мага: прогон `red_warlord` / `WizardBody` с `-packageRoot Assets/WizardPBR` →
+     `verdict.json`: `"albedo": true`, `"materials_ok": true`, `"ok": true`; префаб ссылается
+     на материал с `_BaseMap` = `AlbedoWizardBody.png`, а не на `M_lambert1`.
+  3. Ошибочная папка: `-packageRoot Assets/Art/Characters/Generated` → ошибка **до** сборки префаба
+     с подсказкой про папку с `.mat`.
+  4. Плоское тело: пакет без изображений → `AllowFlatColour: true` в записи, валидатор не бросает;
+     проверяется живым прогоном в T-007 (в T-009 — только код и строка в отчёте).
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-009`; CLI-прогоны из критериев.
+- Промпт для gemma: «Сделай одно определение `HasAlbedo` в `ArtMaterialUtility` (свойства
+  `_BaseMap`, `_MainTex`, `_BaseColorMap`, `_Albedo`) и используй его в
+  `MobVisualSettings.ValidateMaterials`, `MobBodyImport`, `BodyImportWindow`; приватный
+  `HasAlbedo` в `MobBodyImport` удали. Добавь в `MobVisualSettings.Entry` поле
+  `public bool AllowFlatColour;` (по умолчанию false); импорт ставит его true, если в папке
+  пакета нет файлов изображений. Валидатор: тело годно при альбедо ИЛИ при
+  `AllowFlatColour` и цвете ≠ белом. В `AssignPackageAlbedo` поднимайся вверх до папки с `.mat`
+  (не глубже 3 уровней), иначе бросай исключение ДО сборки префаба. Фолбэк: искать текстуру
+  по ключевым словам `albedo|diffuse|basecolor|base_color|_base`. В окне: только `.fbx/.obj`,
+  папка пакета — ближайшая вверх папка с материалами. Готово, когда
+  `gates.ps1 -Task T-009 -SkipUnity` зелёный.»
+- Размер: ~150 строк в четырёх файлах.
 - Зависимости: T-004/T-005 (готово).

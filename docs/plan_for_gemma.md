@@ -615,7 +615,9 @@ namespace Albion.Editor
             }
 
             var parsed = MiniJson.Parse(File.ReadAllText(SetsPath)) as Dictionary<string, object>;
-            if (parsed == null || !(parsed["sets"] is List<object> list))
+            if (parsed == null
+                || !parsed.TryGetValue("sets", out var setsValue)
+                || !(setsValue is List<object> list))
             {
                 return Array.Empty<string>();
             }
@@ -640,13 +642,13 @@ namespace Albion.Editor
             EditorGUILayout.HelpBox(
                 "Окно только вызывает MobBodyImport.ImportBody: префаб, контроллер и запись "
                 + "в MobVisuals.asset делает он.",
-                MessageType.None);
+                UnityEditor.MessageType.None);
 
             if (mobKeys.Length == 0)
             {
                 EditorGUILayout.HelpBox(
                     "В MobVisuals.asset нет ни одного моба — импорт недоступен.",
-                    MessageType.Warning);
+                    UnityEditor.MessageType.Warning);
             }
 
             mobIndex = EditorGUILayout.Popup("Моб (ключ)", mobIndex, mobKeys);
@@ -672,7 +674,7 @@ namespace Albion.Editor
             height = EditorGUILayout.FloatField("Высота", height);
             EditorGUILayout.HelpBox(
                 "Подгонка под collisionRadius: см. Jobs, WizardBody = 2.45.",
-                MessageType.None);
+                UnityEditor.MessageType.None);
 
             using (new EditorGUI.DisabledScope(mobKeys.Length == 0 || sourceFbx == null))
             {
@@ -787,6 +789,12 @@ namespace Albion.Editor
   4. `MiniJson.Parse` возвращает `Dictionary<string, object>`; ключи наборов лежат в массиве
      `sets` (`parsed["sets"] as List<object>`), у элемента поле `key`.
   5. Класс — в namespace `Albion.Editor` (как `MobBodyImport`), `MobVisualSettings` — в `Albion.Client`.
+  6. **`MessageType` писать только как `UnityEditor.MessageType`** (замер 22.11.2026, CS0104):
+     в проекте есть `Shared.MessageType`, поэтому `using Shared;` (нужен для `MiniJson`) делает
+     неквалифицированное `MessageType` неоднозначным и Unity-компиляция падает. `dotnet build`
+     этого не видит — клиент Unity в решение не входит, — поэтому «build зелёный» здесь ничего не значит.
+  7. `parsed["sets"]` не индексировать напрямую: `Reload()` вызывается из `OnEnable`, и при
+     отсутствии ключа `KeyNotFoundException` не даст открыть окно. Только `TryGetValue`.
 - Ограничения: `MobBodyImport` не править; `Jobs` не трогать; конфиги не менять; AssetDatabase
   операции делает `ImportBody`/вызывающий, окно только передаёт аргументы; не добавлять
   собственных проверок материалов.

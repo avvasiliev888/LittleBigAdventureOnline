@@ -18,6 +18,7 @@ param(
     [string]$Task = "gate",
     [switch]$SkipUnity,
     [switch]$SkipTests,
+    [switch]$SkipCoverage,
     [switch]$SkipArch,
     [switch]$AsObject,
     [int]$BuildTimeoutMin = 10,
@@ -167,9 +168,19 @@ else {
 if (-not $failed -and -not $SkipTests) {
     $step = "test"
     $log = Join-Path $logRoot "$Task-$step.log"
-    $r = Invoke-Logged -Exe "dotnet" `
-        -ArgLine "test `"$root\src\Tests\Tests.csproj`" --no-build -c Release" `
-        -LogPath $log -TimeoutMin $TestTimeoutMin
+    # Те же флаги, что в .github/workflows/ci.yml: иначе локальный зелёный гейт
+    # расходится с CI (замер 22.11.2026: локальные тесты зелёные, покрытие не
+    # проверялось вообще). -SkipCoverage оставляет быстрый прогон для отладки.
+    $testArgs = "test `"$root\src\Tests\Tests.csproj`" --no-build -c Release"
+    if (-not $SkipCoverage) {
+        $testArgs += ' --logger "console;verbosity=normal"' +
+            ' /p:CollectCoverage=true' +
+            ' /p:CoverletOutputFormat=json' +
+            ' /p:Include="[Simulation.Core]Simulation.Core.Simulation"' +
+            ' /p:Threshold=100' +
+            ' /p:ThresholdType=line'
+    }
+    $r = Invoke-Logged -Exe "dotnet" -ArgLine $testArgs -LogPath $log -TimeoutMin $TestTimeoutMin
     if ($r.TimedOut) {
         Write-Step $step "fail" "таймаут $TestTimeoutMin мин" $r.Seconds
         $failed = $step; $tail = Get-Tail $log $TailLines
@@ -179,7 +190,8 @@ if (-not $failed -and -not $SkipTests) {
         $failed = $step; $tail = Get-Tail $log $TailLines
     }
     else {
-        Write-Step $step "pass" "exit 0" $r.Seconds
+        $detail = if ($SkipCoverage) { "exit 0 (покрытие не проверялось)" } else { "exit 0, покрытие 100%" }
+        Write-Step $step "pass" $detail $r.Seconds
     }
 }
 elseif (-not $failed) {

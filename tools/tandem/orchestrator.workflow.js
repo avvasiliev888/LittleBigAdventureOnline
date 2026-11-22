@@ -321,8 +321,15 @@ if (!stopped) {
         "Платные вызовы этого прогона (журнал конвейера):",
         JSON.stringify(callLog, null, 2),
         "",
+        // Имя файла отчёта: только [0-9a-zа-яё-], иначе NTFS/WSL падают на ':' и '('
+        // (замер 22.11.2026: имя с двоеточием → EINVAL, отчёт записался с урезанным именем).
         "Напиши отчёт по шаблону docs/reports/_template.md в файл docs/reports/" +
-          (cfg.feature || "feature").replace(/\s+/g, "-").toLowerCase() + ".md",
+          (cfg.feature || "feature")
+            .toLowerCase()
+            .replace(/[^0-9a-zа-яё]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 60)
+            .replace(/-+$/g, "") + ".md",
         "Обнови чекбоксы задач в docs/plan_for_gemma.md на [x] для задач со статусом pass.",
         "Допиши в .agent/spend.jsonl ПО СТРОКЕ НА КАЖДЫЙ вызов из журнала выше.",
         "Точных токенов у тебя нет — ставь \"estimated\": true и usd как оценку по .agent/config.json;",

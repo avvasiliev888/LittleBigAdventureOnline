@@ -99,7 +99,10 @@ function Get-Tail {
 function Get-UnityError {
     param([string]$Path)
     if (-not (Test-Path $Path)) { return "" }
-    $hits = Select-String -Path $Path -Pattern "error CS|Compilation failed|Scripts have compiler errors|Exception:" -ErrorAction SilentlyContinue |
+    # Только настоящие ошибки компиляции. Широкий шаблон `Exception:` даёт ложный
+    # FAIL: Unity при выключении пишет «System.IO.IOException: Pipe is broken»,
+    # «Input System module state changed», mono abort_threads — при exit code 0.
+    $hits = Select-String -Path $Path -Pattern "error CS\d{4}|Compilation failed|Scripts have compiler errors|Aborting batchmode due to failure" -ErrorAction SilentlyContinue |
         Select-Object -First 15
     if (-not $hits) { return "" }
     return (($hits | ForEach-Object { $_.Line.Trim() }) -join "`n")

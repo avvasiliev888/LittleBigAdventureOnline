@@ -1150,7 +1150,16 @@ namespace Albion.Editor
 - Зависимости: T-007 (ветка `agent/T-007`), T-009 (готово).
 ## T-013 — Импорт не должен оставлять битую ссылку на префаб (моб одевал процедурного волка)
 
-- [ ] статус: ожидает; найдено по жалобе заказчика 23.11.2026 («в синей зоне волки вместо Warrior»)
+- [x] статус: сделано 23.11.2026, ждёт «принято» (ветка `agent/T-013`, коммит `e2fee42`).
+  Написано архитектором: исполнитель gemma не сделал ни одной записи в файлы за 15 минут,
+  прогон снят по правилу сторожа (`stopped: executor-timeout`). Код: `RebindEntryOnDisk`
+  перечитывает `MobVisuals` с диска и присваивает записи `Prefab` из
+  `AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath)`, затем сохраняет ассет;
+  `ValidateReferences` падает с `stale prefab reference for mob key …`, если у записи пустой
+  префаб или в префабе нет `CharacterVisuals`/`SkinnedMeshRenderer`. Замеры: два прогона CLI
+  подряд (`ImportFromCommandLine` с пакетом `Assets/asoliddev - Low Poly Fantasy Warrior`) —
+  оба `ok: true`, `states: 6`, `materials_ok: true`; `mob-visuals-check.ps1` после каждого
+  прогона даёт три `Ref: ok`. Гейты: build 2.4 с, test 4.6 с (100 %), arch/boundaries, Unity 10.7 с.
 - Замеры 23.11.2026 (новый лог клиента, билд 00:48):
   ```
   [mob] actor=101 key=blue_scavenger expected=<none> -> primitive fallback, zone=blue

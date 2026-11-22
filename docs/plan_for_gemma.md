@@ -310,40 +310,213 @@ public void StaggeredZones_CoveredByTwoZonesInStrip()
 
 ## T-005 — CLI-вход и файл вердикта; новых мобов не создаём
 
-- [ ] статус: ожидает
+- [ ] статус: провал 22.11.2026 — Unity не компилирует (`MobBodyImport.cs`: CS1061
+  `RuntimeAnimatorController.layers`, CS0117 `MiniJson.Serialize`); `[MenuItem]` уехал
+  с `Run()` на `ImportFromCommandLine`. CLI-прогоны не выполнялись, ПК-билд не собран.
+  Отчёт: `docs/reports/t-005-cli-импорт-и-вердикт.md`
 - Цель: в batchmode одной командой импортируется одно тело, а результат пишется в
   `docs/imports/<body>/verdict.json` и определяет код выхода.
 - Файлы: `unity-client/Assets/Editor/MobBodyImport.cs` (единственный файл; `ImportBody` из T-004)
 - Контекст: `ImportBody` (T-004), `settings.Entries` (`MobVisualSettings.Entry.MobKey`),
   `settings.ValidateMaterials()`, существующий batchmode-перехват в `Run()` (строки 117–129:
   при исключении `EditorApplication.Exit(1)`).
-- Что сделать:
-  1. `public static void ImportFromCommandLine()` — читает `Environment.GetCommandLineArgs()`:
-     `-mobKey`, `-sourceFbx`, `-packageRoot`, `-bodyName`, `-set`, `-height`; всё, кроме
-     `-packageRoot` (по умолчанию — папка FBX), обязательно; отсутствие аргумента → `Exit(2)`
-     с внятным текстом.
-  2. **Отказ новым мобам**: если `mobKey` отсутствует в `settings.Entries`, бросить
-     `InvalidOperationException("Ключ моба '<key>' не найден в MobVisuals.asset: инструмент
-     только привязывает тело к существующему мобу.")` — новых мобов не заводим (решение
-     заказчика 22.11.2026).
-  3. Файл вердикта: `docs/imports/<bodyName>/verdict.json` (корень репозитория получить от
-     `Application.dataPath`: `unity-client/Assets` → два уровня вверх; в batchmode
-     относительные пути не работают — замер 21.11.2026, см. комментарий к `SetsPath`, строки 31–36).
-     Поля: `body`, `mobKey`, `set`, `prefab` (путь), `controller` (путь), `states` (число
-     состояний), `albedo` (bool), `materials_ok` (bool), `ok` (bool), `error` (строка или null).
-  4. Код выхода: `ok=true` → `Exit(0)`, иначе `Exit(1)`.
+- Что сделать: добавить `using System.Globalization;` в шапку файла и вставить в **конец класса**
+  (перед закрывающей `}`) два члена — метод и хелпер. `Run()`, его атрибут и `ImportBody` не трогать.
+  Готовый код (вставлять как есть; сверить с «Фактами провала» ниже):
+
+```csharp
+        /// <summary>
+        /// Batchmode-вход: -executeMethod Albion.Editor.MobBodyImport.ImportFromCommandLine
+        /// с аргументами -mobKey -sourceFbx -packageRoot -bodyName -set -height.
+        /// </summary>
+        public static void ImportFromCommandLine()
+        {
+            var args = Environment.GetCommandLineArgs();
+            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i].StartsWith("-", StringComparison.Ordinal))
+                {
+                    values[args[i].TrimStart('-')] = args[i + 1];
+                }
+            }
+
+            string Required(string name)
+            {
+                if (values.TryGetValue(name, out var value) && !string.IsNullOrEmpty(value))
+                {
+                    return value;
+                }
+
+                Debug.Log("MISSING ARGUMENT: -" + name);
+                EditorApplication.Exit(2);
+                return null;
+            }
+
+            var mobKey = Required("mobKey");
+            var sourceFbx = Required("sourceFbx");
+            var bodyName = Required("bodyName");
+            var setKey = Required("set");
+            var heightText = Required("height");
+            if (mobKey == null || sourceFbx == null || bodyName == null || setKey == null || heightText == null)
+            {
+                return;
+            }
+
+            if (!float.TryParse(heightText, NumberStyles.Float, CultureInfo.InvariantCulture, out var height))
+            {
+                Debug.Log("BAD ARGUMENT: -height must be a number, got '" + heightText + "'");
+                EditorApplication.Exit(2);
+                return;
+            }
+
+            var packageRoot = values.TryGetValue("packageRoot", out var root) && !string.IsNullOrEmpty(root)
+                ? root
+                : Path.GetDirectoryName(sourceFbx);
+
+            var report = new System.Text.StringBuilder();
+            report.AppendLine("########## MOB IMPORT CLI ##########");
+            var prefabPath = "";
+            var controllerPath = "";
+            var states = 0;
+            var albedo = false;
+            var materialsOk = false;
+            var ok = false;
+            string error = null;
+
+            try
+            {
+                var settings = AssetDatabase.LoadAssetAtPath<MobVisualSettings>(MobVisualsPath);
+                if (settings == null)
+                {
+                    throw new InvalidOperationException("MobVisuals.asset not found: " + MobVisualsPath);
+                }
+
+                if (settings.Entries == null || !settings.Entries.Any(entry => entry.MobKey == mobKey))
+                {
+                    throw new InvalidOperationException("Ключ моба '" + mobKey
+                        + "' не найден в MobVisuals.asset: инструмент только привязывает тело к существующему мобу.");
+                }
+
+                var entries = settings.Entries.ToList();
+                if (!ImportBody(mobKey, sourceFbx, packageRoot, bodyName, setKey, height, report, entries, out var prefab))
+                {
+                    throw new InvalidOperationException("ImportBody вернул false, см. отчёт выше.");
+                }
+
+                settings.Entries = entries.ToArray();
+                EditorUtility.SetDirty(settings);
+                AssetDatabase.SaveAssets();
+
+                settings.ValidateMaterials();
+                materialsOk = true;
+
+                prefabPath = AssetDatabase.GetAssetPath(prefab);
+                var animator = prefab.GetComponent<Animator>();
+                var controller = animator != null ? animator.runtimeAnimatorController as AnimatorController : null;
+                if (controller != null)
+                {
+                    controllerPath = AssetDatabase.GetAssetPath(controller);
+                    if (controller.layers.Length > 0)
+                    {
+                        states = controller.layers[0].stateMachine.states.Length;
+                    }
+                }
+
+                // Тело — это SkinnedMeshRenderer; накладки вроде M_Glow без текстуры законны.
+                var body = prefab.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                albedo = body != null && body.sharedMaterials.Any(material => material != null && HasAlbedo(material));
+                ok = true;
+            }
+            catch (Exception exception)
+            {
+                error = exception.GetType().Name + ": " + exception.Message;
+                report.AppendLine("FAILED: " + error);
+            }
+
+            var repoRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
+            var verdictDir = Path.Combine(repoRoot, "docs", "imports", bodyName);
+            Directory.CreateDirectory(verdictDir);
+            var verdictPath = Path.Combine(verdictDir, "verdict.json");
+            var json = new System.Text.StringBuilder();
+            json.Append("{\n");
+            json.Append("  \"body\": ").Append(JsonString(bodyName)).Append(",\n");
+            json.Append("  \"mobKey\": ").Append(JsonString(mobKey)).Append(",\n");
+            json.Append("  \"set\": ").Append(JsonString(setKey)).Append(",\n");
+            json.Append("  \"prefab\": ").Append(JsonString(prefabPath)).Append(",\n");
+            json.Append("  \"controller\": ").Append(JsonString(controllerPath)).Append(",\n");
+            json.Append("  \"states\": ").Append(states).Append(",\n");
+            json.Append("  \"albedo\": ").Append(albedo ? "true" : "false").Append(",\n");
+            json.Append("  \"materials_ok\": ").Append(materialsOk ? "true" : "false").Append(",\n");
+            json.Append("  \"ok\": ").Append(ok ? "true" : "false").Append(",\n");
+            json.Append("  \"error\": ").Append(error == null ? "null" : JsonString(error)).Append("\n");
+            json.Append("}\n");
+            File.WriteAllText(verdictPath, json.ToString());
+            report.AppendLine("verdict: " + verdictPath + " ok=" + ok);
+            Debug.Log(report.ToString());
+            EditorApplication.Exit(ok ? 0 : 1);
+        }
+
+        /// <summary>Строка JSON в кавычках: экранирование \ " и переводов строк.</summary>
+        private static string JsonString(string value)
+        {
+            if (value == null)
+            {
+                return "null";
+            }
+
+            var builder = new System.Text.StringBuilder(value.Length + 2);
+            builder.Append('"');
+            foreach (var character in value)
+            {
+                switch (character)
+                {
+                    case '\\': builder.Append("\\\\"); break;
+                    case '"': builder.Append("\\\""); break;
+                    case '\n': builder.Append("\\n"); break;
+                    case '\r': builder.Append("\\r"); break;
+                    case '\t': builder.Append("\\t"); break;
+                    default: builder.Append(character); break;
+                }
+            }
+
+            builder.Append('"');
+            return builder.ToString();
+        }
+```
+
+- Факты провала 22.11.2026 (эти шесть ошибок уже были — не повторять):
+  1. `MiniJson` умеет **только** `Parse` (`src/Shared/MiniJson.cs`), `Serialize` не существует (CS0117);
+     ADR-011 запрещает `System.Text.Json` в `Shared`/`Simulation.Core`. JSON собирается строкой — `JsonString`.
+  2. `[MenuItem("Albion/Mobs/Import Bodies From Sets")]` обязан остаться на `Run()`. В провальной
+     попытке атрибут уехал на CLI-метод — пункт меню в редакторе стал бы вызывать batchmode-вход.
+  3. `Animator.runtimeAnimatorController` — тип `RuntimeAnimatorController`, у него нет `layers` (CS1061);
+     нужен `as AnimatorController` (`using UnityEditor.Animations;` в файле уже есть).
+  4. `hasAlbedo = true` константой даёт ложный PASS. Альбедо спрашивается с тела (`SkinnedMeshRenderer`)
+     через существующий `HasAlbedo(Material)` (строка ~475), а не с имени материала.
+  5. После `EditorApplication.Exit(2)` нужен `return`: в редакторе (не batchmode) `Exit` не прерывает
+     выполнение, и метод пошёл бы дальше с null-аргументами.
+  6. Форматирование `Run()` не трогать: в провальной попытке тело CLI-метода вставили на месте атрибута,
+     и файл поехал. Новый код — только после `Run()`.
+
 - Ограничения: не создавать новых `MobVisualSettings.Entry`; не править `config/*.json`;
-  не менять `Jobs` и тексты отчёта пункта меню; вердикт — в `docs/imports/`, не в `Assets/`.
-- Критерии приёмки: прогон на `red_warlord` (тело `WizardBody`) в batchmode → `EXIT=0`,
-  `verdict.json` с `"ok": true`, `"states": 6`; прогон с ключом `ghost_mob` → `EXIT=1`,
-  сообщение про ненайденный ключ, файла вердикта с `"ok": true` нет.
-- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-005`; CLI-прогоны выше.
-- Промпт для gemma: «Добавь в `MobBodyImport` метод `ImportFromCommandLine()` для
-  `-executeMethod` в batchmode: аргументы `-mobKey -sourceFbx -packageRoot -bodyName -set -height`,
-  вызов `ImportBody`, отказ, если ключа моба нет в `MobVisuals.asset`, запись
-  `docs/imports/<body>/verdict.json` с полями из плана и `EditorApplication.Exit(0|1)`.
-  Новых мобов не создавать, конфиги не трогать.»
-- Размер: ~60 строк в одном файле.
+  не менять `Jobs`, `Run()`, `ImportBody` и тексты отчёта пункта меню; вердикт — в `docs/imports/`,
+  не в `Assets/`; не добавлять пакетов и не менять `Protocol.Version`.
+- Критерии приёмки: `gates.ps1 -Task T-005` → `ok=true` (Unity-компиляция зелёная); batchmode-прогон
+  `-executeMethod Albion.Editor.MobBodyImport.ImportFromCommandLine -mobKey red_warlord
+  -sourceFbx Assets/WizardPBR/Mesh/WizardBodyMesh.fbx -packageRoot Assets/WizardPBR
+  -bodyName WizardBody -set magic -height 2.45 -quit -logFile -` → `EXIT=0`,
+  `docs/imports/WizardBody/verdict.json` с `"ok": true`, `"states": 6`, `"albedo": true`;
+  прогон с `-mobKey ghost_mob` → `EXIT=1` и `"error"` про ненайденный ключ.
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-005`; CLI-прогоны выше (Unity batchmode ~40–60 с каждый).
+- Промпт для gemma: «Прочитай `## T-005` в `docs/plan_for_gemma.md` целиком, включая «Факты провала».
+  Первая попытка уже провалилась на компиляции Unity — готовый код и шесть ошибок описаны в плане.
+  Добавь `using System.Globalization;` в шапку `unity-client/Assets/Editor/MobBodyImport.cs` и вставь
+  в конец класса `ImportFromCommandLine()` и `JsonString(string)` дословно из плана. `Run()` с его
+  атрибутом `[MenuItem(...)]`, `Jobs` и `ImportBody` не меняй. Проверь гейтом
+  `pwsh -File tools/tandem/gates.ps1 -Task T-005 -SkipUnity`, затем (если Unity свободен) прогони
+  batchmode для `red_warlord` и для `ghost_mob` и покажи коды выхода.»
+- Размер: ~130 строк в одном файле (готовый код в плане).
 - Зависимости: T-004.
 
 ## T-006 — Окно импорта: поля и кнопка «Импорт»

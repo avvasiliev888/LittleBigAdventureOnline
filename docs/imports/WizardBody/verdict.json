@@ -1,0 +1,12 @@
+{
+  "body": "WizardBody",
+  "mobKey": "red_warlord",
+  "set": "magic",
+  "prefab": "Assets/Art/Characters/Generated/WizardBody.prefab",
+  "controller": "Assets/Art/Characters/Generated/WizardBodyController.controller",
+  "states": 6,
+  "albedo": true,
+  "materials_ok": true,
+  "ok": true,
+  "error": null
+}

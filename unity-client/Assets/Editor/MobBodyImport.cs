@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -660,5 +661,165 @@ namespace Albion.Editor
                 GroundOffset = 0f,
             });
         }
+
+        /// <summary>
+        /// Batchmode-вход: -executeMethod Albion.Editor.MobBodyImport.ImportFromCommandLine
+        /// с аргументами -mobKey -sourceFbx -packageRoot -bodyName -set -height.
+        /// </summary>
+        public static void ImportFromCommandLine()
+        {
+            var args = Environment.GetCommandLineArgs();
+            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i].StartsWith("-", StringComparison.Ordinal))
+                {
+                    values[args[i].TrimStart('-')] = args[i + 1];
+                }
+            }
+
+            string Required(string name)
+            {
+                if (values.TryGetValue(name, out var value) && !string.IsNullOrEmpty(value))
+                {
+                    return value;
+                }
+
+                Debug.Log("MISSING ARGUMENT: -" + name);
+                EditorApplication.Exit(2);
+                return null;
+            }
+
+            var mobKey = Required("mobKey");
+            var sourceFbx = Required("sourceFbx");
+            var bodyName = Required("bodyName");
+            var setKey = Required("set");
+            var heightText = Required("height");
+            if (mobKey == null || sourceFbx == null || bodyName == null || setKey == null || heightText == null)
+            {
+                return;
+            }
+
+            if (!float.TryParse(heightText, NumberStyles.Float, CultureInfo.InvariantCulture, out var height))
+            {
+                Debug.Log("BAD ARGUMENT: -height must be a number, got '" + heightText + "'");
+                EditorApplication.Exit(2);
+                return;
+            }
+
+            var packageRoot = values.TryGetValue("packageRoot", out var root) && !string.IsNullOrEmpty(root)
+                ? root
+                : Path.GetDirectoryName(sourceFbx);
+
+            var report = new System.Text.StringBuilder();
+            report.AppendLine("########## MOB IMPORT CLI ##########");
+            var prefabPath = "";
+            var controllerPath = "";
+            var states = 0;
+            var albedo = false;
+            var materialsOk = false;
+            var ok = false;
+            string error = null;
+
+            try
+            {
+                var settings = AssetDatabase.LoadAssetAtPath<MobVisualSettings>(MobVisualsPath);
+                if (settings == null)
+                {
+                    throw new InvalidOperationException("MobVisuals.asset not found: " + MobVisualsPath);
+                }
+
+                if (settings.Entries == null || !settings.Entries.Any(entry => entry.MobKey == mobKey))
+                {
+                    throw new InvalidOperationException("Ключ моба '" + mobKey
+                        + "' не найден в MobVisuals.asset: инструмент только привязывает тело к существующему мобу.");
+                }
+
+                var entries = settings.Entries.ToList();
+                if (!ImportBody(mobKey, sourceFbx, packageRoot, bodyName, setKey, height, report, entries, out var prefab))
+                {
+                    throw new InvalidOperationException("ImportBody вернул false, см. отчёт выше.");
+                }
+
+                settings.Entries = entries.ToArray();
+                EditorUtility.SetDirty(settings);
+                AssetDatabase.SaveAssets();
+
+                settings.ValidateMaterials();
+                materialsOk = true;
+
+                prefabPath = AssetDatabase.GetAssetPath(prefab);
+                var animator = prefab.GetComponent<Animator>();
+                var controller = animator != null ? animator.runtimeAnimatorController as AnimatorController : null;
+                if (controller != null)
+                {
+                    controllerPath = AssetDatabase.GetAssetPath(controller);
+                    if (controller.layers.Length > 0)
+                    {
+                        states = controller.layers[0].stateMachine.states.Length;
+                    }
+                }
+
+                // Тело — это SkinnedMeshRenderer; накладки вроде M_Glow без текстуры законны.
+                var body = prefab.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                albedo = body != null && body.sharedMaterials.Any(material => material != null && HasAlbedo(material));
+                ok = true;
+            }
+            catch (Exception exception)
+            {
+                error = exception.GetType().Name + ": " + exception.Message;
+                report.AppendLine("FAILED: " + error);
+            }
+
+            var repoRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
+            var verdictDir = Path.Combine(repoRoot, "docs", "imports", bodyName);
+            Directory.CreateDirectory(verdictDir);
+            var verdictPath = Path.Combine(verdictDir, "verdict.json");
+            var json = new System.Text.StringBuilder();
+            json.Append("{\n");
+            json.Append("  \"body\": ").Append(JsonString(bodyName)).Append(",\n");
+            json.Append("  \"mobKey\": ").Append(JsonString(mobKey)).Append(",\n");
+            json.Append("  \"set\": ").Append(JsonString(setKey)).Append(",\n");
+            json.Append("  \"prefab\": ").Append(JsonString(prefabPath)).Append(",\n");
+            json.Append("  \"controller\": ").Append(JsonString(controllerPath)).Append(",\n");
+            json.Append("  \"states\": ").Append(states).Append(",\n");
+            json.Append("  \"albedo\": ").Append(albedo ? "true" : "false").Append(",\n");
+            json.Append("  \"materials_ok\": ").Append(materialsOk ? "true" : "false").Append(",\n");
+            json.Append("  \"ok\": ").Append(ok ? "true" : "false").Append(",\n");
+            json.Append("  \"error\": ").Append(error == null ? "null" : JsonString(error)).Append("\n");
+            json.Append("}\n");
+            File.WriteAllText(verdictPath, json.ToString());
+            report.AppendLine("verdict: " + verdictPath + " ok=" + ok);
+            Debug.Log(report.ToString());
+            EditorApplication.Exit(ok ? 0 : 1);
+        }
+
+        /// <summary>Строка JSON в кавычках: экранирование \ " и переводов строк.</summary>
+        private static string JsonString(string value)
+        {
+            if (value == null)
+            {
+                return "null";
+            }
+
+            var builder = new System.Text.StringBuilder(value.Length + 2);
+            builder.Append('"');
+            foreach (var character in value)
+            {
+                switch (character)
+                {
+                    case '\\': builder.Append("\\\\"); break;
+                    case '"': builder.Append("\\\""); break;
+                    case '\n': builder.Append("\\n"); break;
+                    case '\r': builder.Append("\\r"); break;
+                    case '\t': builder.Append("\\t"); break;
+                    default: builder.Append(character); break;
+                }
+            }
+
+            builder.Append('"');
+            return builder.ToString();
+        }
+
     }
 }

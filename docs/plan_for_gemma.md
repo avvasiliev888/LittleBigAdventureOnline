@@ -310,9 +310,14 @@ public void StaggeredZones_CoveredByTwoZonesInStrip()
 
 ## T-005 — CLI-вход и файл вердикта; новых мобов не создаём
 
-- [ ] статус: провал 22.11.2026 — Unity не компилирует (`MobBodyImport.cs`: CS1061
-  `RuntimeAnimatorController.layers`, CS0117 `MiniJson.Serialize`); `[MenuItem]` уехал
-  с `Run()` на `ImportFromCommandLine`. CLI-прогоны не выполнялись, ПК-билд не собран.
+- [x] статус: сделано 22.11.2026, ждёт «принято». Две попытки конвейера провалились:
+  (1) Unity CS0117 `MiniJson.Serialize` + CS1061 `RuntimeAnimatorController.layers` + атрибут
+  `[MenuItem]` уехал на CLI-метод; (2) код закрыл все шесть замечаний, но правка удалила две
+  последние скобки файла (`CS1513`). Скобки дописаны вручную (баланс 92/92), полный
+  `gates.ps1 -Task T-005` → `ok=true`, Unity-компиляция 19,4 с. CLI проверен замерами:
+  `red_warlord` → `EXIT=0`, `docs/imports/WizardBody/verdict.json` (`ok=true, states=6,
+  albedo=true, materials_ok=true`); `ghost_mob` → `EXIT=1` с ошибкой про ненайденный ключ.
+  Ассеты `WizardBody` после прогона откачены: задача про код, тело вернётся при T-007.
   Отчёт: `docs/reports/t-005-cli-импорт-и-вердикт.md`
 - Цель: в batchmode одной командой импортируется одно тело, а результат пишется в
   `docs/imports/<body>/verdict.json` и определяет код выхода.

@@ -27,6 +27,14 @@ Thumbs.db
 __pycache__/
 *.pyc
 
+# ---- конвейер «Тандем» ----
+.agent/telegram.json
+.agent/away
+reports/*.log
+reports/logs/
+docs/reports/*.log
+docs/reports/logs/
+
 # ---- мусор Unity, который не коммитим никогда ----
 # Кеш сборки Gradle/ninja (2,1 МБ), автовосстановление Unity,
 # карты зон в unity-client/1/ (8 МБ PNG, код их не использует).

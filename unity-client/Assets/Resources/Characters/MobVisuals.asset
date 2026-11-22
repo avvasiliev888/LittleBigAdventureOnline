@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Albion.Client.MobVisualSettings
   Entries:
   - MobKey: blue_scavenger
-    Prefab: {fileID: 5204452140323384066, guid: 092f3bb8ddf18ee4c90c1cc7ad5e1f66, type: 3}
+    Prefab: {fileID: 5291887348217133432, guid: 092f3bb8ddf18ee4c90c1cc7ad5e1f66, type: 3}
     Height: 2.45
     Yaw: 0
     GroundOffset: 0

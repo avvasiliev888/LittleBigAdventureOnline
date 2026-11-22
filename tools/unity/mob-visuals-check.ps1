@@ -35,7 +35,10 @@ foreach ($line in $lines) {
         continue
     }
     if (-not $current) { continue }
-    if ($line -match 'Prefab:\s*\{fileID:\s*\d+,\s*guid:\s*([0-9a-f]{32})') { $current.Guid = $matches[1] }
+    if ($line -match 'Prefab:\s*\{fileID:\s*(\d+),\s*guid:\s*([0-9a-f]{32})') {
+        $current.FileId = $matches[1]
+        $current.Guid = $matches[2]
+    }
     if ($line -match '^\s*Height:\s*(\S+)') { $current.Height = $matches[1] }
     if ($line -match '^\s*AllowFlatColour:\s*(\S+)') { $current.Flat = $matches[1] }
 }
@@ -43,10 +46,14 @@ if ($current) { $entries += $current }
 
 $rows = foreach ($e in $entries) {
     $prefab = Resolve-Guid $e.Guid
-    $mesh = "<-"; $avatar = "<-"
+    $mesh = "<-"; $avatar = "<-"; $refOk = "<-"
     $prefabFull = if ($prefab -and $prefab -notlike '<*') { Join-Path $root $prefab } else { $null }
     if ($prefabFull -and (Test-Path $prefabFull)) {
         $text = Get-Content $prefabFull
+        # Ссылка вида fileID+guid валидна только если такой объект в префабе есть: после
+        # повторного сохранения префаба корневой id меняется, ссылка тихо становится null,
+        # и клиент уходит на процедурного волка вместо тела моба (случай blue_scavenger).
+        $refOk = if ($e.FileId -and ($text | Select-String -Pattern ('&' + $e.FileId) -SimpleMatch)) { "ok" } else { "БИТАЯ (fileID $($e.FileId) нет в префабе)" }
         $meshLine = $text | Select-String -Pattern 'm_Mesh:\s*\{fileID:\s*\d+,\s*guid:\s*([0-9a-f]{32})' | Select-Object -First 1
         if ($meshLine) { $mesh = Resolve-Guid $meshLine.Matches[0].Groups[1].Value }
         $avatarLine = $text | Select-String -Pattern 'm_Avatar:\s*\{fileID:\s*\d+,\s*guid:\s*([0-9a-f]{32})' | Select-Object -First 1
@@ -55,6 +62,7 @@ $rows = foreach ($e in $entries) {
     [pscustomobject]@{
         Key = $e.Key
         Prefab = $prefab
+        Ref = $refOk
         Height = $e.Height
         FlatColour = $e.Flat
         Mesh = $mesh

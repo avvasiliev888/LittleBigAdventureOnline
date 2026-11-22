@@ -37,3 +37,4 @@
 {"ts":"2026-11-22T23:44:56+03:00","task":"T-011","role":"gate","model":"deepseek-v4-flash","usd":0.003,"estimated":true,"note":"T-011 unity-gates: токены не измерены, вызов n=37"}
 {"ts":"2026-11-22T23:44:56+03:00","task":"T-011","role":"gate","model":"deepseek-v4-flash","usd":0.003,"estimated":true,"note":"build-windows: токены не измерены, вызов n=38"}
 {"ts":"2026-11-22T23:44:56+03:00","task":"T-011","role":"architect","model":"deepseek-v4-flash","usd":0.004,"estimated":true,"note":"report: токены не измерены, вызов n=39"}
+{"ts":"2026-11-23T00:27:19+03:00","task":"T-010","role":"reviewer","model":"deepseek-v4-flash","usd":0.004,"estimated":true,"note":"T-010 reviewer: вызов висел 14 мин без записи, снят по правилу сторожа"}

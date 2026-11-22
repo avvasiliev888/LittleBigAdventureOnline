@@ -197,6 +197,7 @@ for (const t of tasks) {
         if (!budgetOk()) { stopped = "budget"; decide(t.id, "stop:budget"); break; }
         paidCall("debugger", `${t.id} debugger`);
         phase(`Отладка ${t.id}`);
+        log(`[${new Date(Date.now()).toISOString()}] start debugger ${t.id}`);
         const dbg = await agent(
           [
             rolePrompt("debugger"),
@@ -215,6 +216,7 @@ for (const t of tasks) {
           ].join("\n"),
           { model: plannerModel, provider: provider, label: `${t.id} debugger` }
         );
+        log(`[${new Date(Date.now()).toISOString()}] done debugger ${t.id}`);
         diagnosis = dbg || "";
         settled = { status: "needs-human-debug", attempts: attempts, exec: lastExec, review: lastReview, diagnosis: diagnosis };
         stopped = "debug";
@@ -231,12 +233,14 @@ for (const t of tasks) {
     attempts++;
     log(`${t.id}: попытка ${attempts}`);
 
+    log(`[${new Date(Date.now()).toISOString()}] start executor #${attempts} ${t.id}`);
     const exec = await agent(execPrompt(t, attempts, mustFix, diagnosis), {
       model: executorModel,
       provider: provider,
       label: `${t.id} executor #${attempts}`,
       schema: EXEC_SCHEMA,
     });
+    log(`[${new Date(Date.now()).toISOString()}] done executor #${attempts} ${t.id}`);
     executorCalls++;
 
     if (!exec) {
@@ -258,38 +262,45 @@ for (const t of tasks) {
     }
 
     // --- ревью ---
-    if (!budgetOk()) { stopped = "budget"; decide(t.id, "stop:budget"); break; }
-    paidCall("reviewer", `${t.id} reviewer`);
-    phase(`Ревью ${t.id}`);
-    const review = await agent(
-      [
-        rolePrompt("reviewer"),
-        "Ты ревьюер конвейера «Тандем». Ответ строго JSON по схеме.",
-        "",
-        "=== ЗАДАЧА ===",
-        taskBlock(t),
-        "",
-        "=== ЧТО СДЕЛАЛ ИСПОЛНИТЕЛЬ ===",
-        JSON.stringify(lastExec, null, 2),
-        "",
-        `Сам получи diff: git diff ${cfg.baseBranch || "main"} -- <файлы задачи> (или git diff --stat). Ветка сейчас agent/${t.id}.`,
-        "Проверь по списку из своей роли. Ответ — только JSON по схеме.",
-      ].join("\n"),
-      { model: plannerModel, provider: provider, label: `${t.id} reviewer`, schema: REVIEW_SCHEMA }
-    );
-    lastReview = review;
+    if (t.review === false || cfg.skipReview === true) {
+      decide(t.id, "review:skipped");
+      lastReview = { verdict: "PASS", must_fix: [], risk: "low", notes: "skipped by config" };
+    } else {
+      if (!budgetOk()) { stopped = "budget"; decide(t.id, "stop:budget"); break; }
+      paidCall("reviewer", `${t.id} reviewer`);
+      phase(`Ревью ${t.id}`);
+      const review = await agent(
+        [
+          rolePrompt("reviewer"),
+          "Ты ревьюер конвейера «Тандем». Ответ строго ОДНИМ JSON-сообщением.",
+          "",
+          "=== ЗАДАЧА ===",
+          taskBlock(t),
+          "",
+          "=== ЧТО СДЕЛАЛ ИСПОЛНИТЕЛЬ ===",
+          JSON.stringify(lastExec, null, 2),
+          "",
+          `Сам получи diff: git diff ${cfg.baseBranch || "main"} -- <файлы задачи> (или git diff --stat). Ветка сейчас agent/${t.id}.`,
+          "ЗАПРЕТ: не запускать гейты, Unity и сборки. Читай только diff и логи.",
+          "Если что-то не проверил — поставь verdict: \"PASS\", risk: \"medium\" и перечисли непроверенное в notes.",
+          "Ответ — только JSON по схеме.",
+        ].join("\n"),
+        { model: plannerModel, provider: provider, label: `${t.id} reviewer`, schema: REVIEW_SCHEMA }
+      );
+      lastReview = review;
 
-    if (!review) {
-      settled = { status: "review-error", attempts: attempts, exec: lastExec };
-      stopped = "review-error";
-      decide(t.id, "stop:review-error", { attempt: attempts });
-      break;
-    }
+      if (!review) {
+        settled = { status: "review-error", attempts: attempts, exec: lastExec };
+        stopped = "review-error";
+        decide(t.id, "stop:review-error", { attempt: attempts });
+        break;
+      }
 
-    if (review.verdict === "FAIL") {
-      mustFix = review.must_fix || [];
-      decide(t.id, "retry:review-fail", { attempt: attempts, must_fix: mustFix });
-      continue; // повтор исполнителя ВНУТРИ цикла задачи
+      if (review.verdict === "FAIL") {
+        mustFix = review.must_fix || [];
+        decide(t.id, "retry:review-fail", { attempt: attempts, must_fix: mustFix });
+        continue; // повтор исполнителя ВНУТРИ цикла задачи
+      }
     }
 
     // --- PASS по ревью: полный гейт с Unity ---

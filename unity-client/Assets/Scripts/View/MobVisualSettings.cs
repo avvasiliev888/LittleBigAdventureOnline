@@ -25,6 +25,7 @@ namespace Albion.Client
             [Min(0.1f)] public float Height = 1.8f;
             public float Yaw;
             public float GroundOffset;
+            public bool AllowFlatColour;
         }
 
         public Entry[] Entries = Array.Empty<Entry>();
@@ -95,7 +96,7 @@ namespace Albion.Client
 
                         hasBody = true;
 
-                        if (material.HasProperty("_BaseMap") && material.GetTexture("_BaseMap") != null)
+                        if (HasAlbedo(material))
                         {
                             hasAlbedo = true;
                         }
@@ -115,6 +116,20 @@ namespace Albion.Client
                                     + material.name);
                             }
                         }
+                        
+                        if (!hasAlbedo && entry.AllowFlatColour)
+                        {
+                            var color = material.HasProperty("_BaseColor") 
+                                ? material.GetColor("_BaseColor") 
+                                : material.HasProperty("_Color") 
+                                    ? material.GetColor("_Color") 
+                                    : Color.white;
+                            
+                            if (color.r < 0.99f || color.g < 0.99f || color.b < 0.99f)
+                            {
+                                hasAlbedo = true;
+                            }
+                        }
                     }
                 }
 
@@ -130,7 +145,8 @@ namespace Albion.Client
                 if (!hasAlbedo)
                 {
                     throw new InvalidOperationException(
-                        "Mob prefab has no textured body material: " + entry.Prefab.name);
+                        "Mob prefab has no textured body material: " + entry.Prefab.name + 
+                        (entry.AllowFlatColour ? " (check AllowFlatColour settings)" : ""));
                 }
             }
         }
@@ -168,5 +184,15 @@ namespace Albion.Client
             }
             return null;
         }
+    private static bool HasAlbedo(Material material)
+    {
+        if (material == null) return false;
+        string[] props = { "_BaseMap", "_MainTex", "_BaseColorMap", "_Albedo" };
+        foreach (var prop in props)
+        {
+            if (material.HasProperty(prop) && material.GetTexture(prop) != null) return true;
+        }
+        return false;
     }
+}
 }

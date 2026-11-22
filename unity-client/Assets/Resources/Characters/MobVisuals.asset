@@ -18,13 +18,16 @@ MonoBehaviour:
     Height: 1.55
     Yaw: 0
     GroundOffset: 0
+    AllowFlatColour: 0
   - MobKey: yellow_bandit
     Prefab: {fileID: 7014205000545698338, guid: 12d192f8ee1ba40479c8a2e977d7065e, type: 3}
     Height: 1.95
     Yaw: 0
     GroundOffset: 0
+    AllowFlatColour: 0
   - MobKey: red_warlord
-    Prefab: {fileID: 9073948943377559581, guid: 2cf6a466b3e1f0447a4b9d164584a5fd, type: 3}
+    Prefab: {fileID: 5990088983646062280, guid: 2cf6a466b3e1f0447a4b9d164584a5fd, type: 3}
     Height: 2.45
     Yaw: 0
     GroundOffset: 0
+    AllowFlatColour: 0

@@ -15,7 +15,19 @@ namespace Albion.Editor
     {
         private const string UrpLit = "Universal Render Pipeline/Lit";
 
-        private static readonly string[] AlbedoProperties = { "_BaseMap", "_MainTex", "_BaseColorMap", "_Albedo" };
+        public static readonly string[] AlbedoProperties = { "_BaseMap", "_MainTex", "_BaseColorMap", "_Albedo" };
+
+        /// <summary>Checks if the material has an assigned albedo texture map.</summary>
+        public static bool HasAlbedo(Material material)
+        {
+            if (material == null) return false;
+            foreach (var prop in AlbedoProperties)
+            {
+                if (material.HasProperty(prop) && material.GetTexture(prop) != null) return true;
+            }
+            return false;
+        }
+
         private static readonly string[] NormalProperties = { "_BumpMap", "_NormalMap", "_Normal" };
         private static readonly string[] MetallicProperties = { "_MetallicGlossMap", "_MaskMap", "_MetallicSmoothness" };
         private static readonly string[] OcclusionProperties = { "_OcclusionMap", "_AO", "_AmbientOcclusion" };

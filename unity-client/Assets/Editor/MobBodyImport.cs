@@ -142,6 +142,21 @@ namespace Albion.Editor
                 return false;
             }
 
+            // T-009: check for flat colour body (no image files in package root)
+            bool allowFlat = true;
+            if (!string.IsNullOrEmpty(packageRoot) && AssetDatabase.IsValidFolder(packageRoot))
+            {
+                var files = System.IO.Directory.GetFiles(packageRoot, "*.*", System.IO.SearchOption.AllDirectories);
+                bool hasImages = files.Any(f => 
+                    f.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || 
+                    f.EndsWith(".tga", StringComparison.OrdinalIgnoreCase) || 
+                    f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || 
+                    f.EndsWith(".psd", StringComparison.OrdinalIgnoreCase));
+                
+                if (hasImages) allowFlat = false;
+            }
+            report.AppendLine("flat colour body: " + allowFlat);
+
             var clips = CollectSetClips(set, artFbx, report);
             prefab = BuildPrefab(artFbx, packageRoot, bodyName, clips, mobKey, report);
             if (prefab == null)
@@ -150,7 +165,8 @@ namespace Albion.Editor
                 return false;
             }
 
-            UpsertEntry(entries, mobKey, prefab, height);
+            var entry = UpsertEntry(entries, mobKey, prefab, height);
+            if (entry != null) entry.AllowFlatColour = allowFlat;
             return true;
         }
 
@@ -412,19 +428,52 @@ namespace Albion.Editor
         /// The match is by name, and only replaces a material that has no albedo, so a pack whose
         /// FBX already carries textured materials is left untouched.
         /// </summary>
+        /// <summary>
+        /// True when the folder itself holds the package materials: a direct "Materials" subfolder
+        /// or .mat files. A recursive search is deliberately not used: walking up from a generated
+        /// folder would find materials anywhere under Art and silently bind a stranger's material.
+        /// </summary>
+        private static bool HasMaterialsHere(string folder)
+        {
+            if (string.IsNullOrEmpty(folder) || !AssetDatabase.IsValidFolder(folder))
+            {
+                return false;
+            }
+
+            if (AssetDatabase.IsValidFolder(folder + "/Materials"))
+            {
+                return true;
+            }
+
+            var full = Path.GetFullPath(folder);
+            return System.IO.Directory.Exists(full) && System.IO.Directory.GetFiles(full, "*.mat").Length > 0;
+        }
+
         private static void AssignPackageAlbedo(
             GameObject instance,
             string packageRoot,
             string bodyName,
             System.Text.StringBuilder report)
         {
-            if (string.IsNullOrEmpty(packageRoot) || !AssetDatabase.IsValidFolder(packageRoot))
+            var currentRoot = packageRoot;
+            for (var depth = 0; depth < 3 && !HasMaterialsHere(currentRoot); depth++)
             {
-                return;
+                currentRoot = Path.GetDirectoryName(currentRoot);
+                if (string.IsNullOrEmpty(currentRoot))
+                {
+                    break;
+                }
+            }
+
+            if (!HasMaterialsHere(currentRoot))
+            {
+                throw new InvalidOperationException(
+                    "в папке пакета нет материалов: " + packageRoot +
+                    "; укажите папку с .mat или папку, где лежит Materials (папка Generated не подходит)");
             }
 
             var candidates = new List<Material>();
-            foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { packageRoot }))
+            foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { currentRoot }))
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
                 var material = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -433,8 +482,7 @@ namespace Albion.Editor
 
             if (candidates.Count == 0)
             {
-                report.AppendLine("package has no materials: " + packageRoot);
-                return;
+                throw new InvalidOperationException("No authored materials found in package root: " + currentRoot);
             }
 
             // Prefer the material named after the body; fall back to any material that actually
@@ -442,15 +490,62 @@ namespace Albion.Editor
             var authored = candidates.FirstOrDefault(m =>
                     string.Equals(m.name, bodyName, StringComparison.OrdinalIgnoreCase))
                 ?? candidates.FirstOrDefault(m => m.name.StartsWith(bodyName, StringComparison.OrdinalIgnoreCase))
-                ?? candidates.FirstOrDefault(m => HasAlbedo(m) && m.name.IndexOf("staff", StringComparison.OrdinalIgnoreCase) < 0);
+                ?? candidates.FirstOrDefault(m => Albion.Editor.ArtMaterialUtility.HasAlbedo(m) && m.name.IndexOf("staff", StringComparison.OrdinalIgnoreCase) < 0);
 
             if (authored == null)
             {
-                report.AppendLine("no authored body material found in " + packageRoot);
+                // Fallback: search for textures and assign them as albedo
+                var textures = new List<Texture2D>();
+                foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { currentRoot }))
+                {
+                    var path = AssetDatabase.GUIDToAssetPath(guid);
+                    var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                    if (texture != null) textures.Add(texture);
+                }
+
+                var albedoTexture = textures.FirstOrDefault(t => 
+                    t.name.IndexOf(bodyName, StringComparison.OrdinalIgnoreCase) >= 0 && 
+                    (t.name.IndexOf("albedo", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                     t.name.IndexOf("diffuse", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                     t.name.IndexOf("basecolor", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                     t.name.IndexOf("base_color", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                     t.name.IndexOf("base", StringComparison.OrdinalIgnoreCase) >= 0))
+                    ?? textures.FirstOrDefault(t => 
+                        t.name.IndexOf("albedo", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                        t.name.IndexOf("diffuse", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                        t.name.IndexOf("basecolor", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                        t.name.IndexOf("base_color", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                        t.name.IndexOf("base", StringComparison.OrdinalIgnoreCase) >= 0);
+
+                if (albedoTexture != null)
+                {
+                    var assignedFallback = 0;
+                    foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
+                    {
+                        if (!(renderer is SkinnedMeshRenderer)) continue;
+                        var materials = renderer.sharedMaterials;
+                        for (var i = 0; i < materials.Length; i++)
+                        {
+                            if (materials[i] == null) continue;
+                            if (Albion.Editor.ArtMaterialUtility.HasAlbedo(materials[i])) continue;
+
+                            if (materials[i].HasProperty("_BaseMap")) materials[i].SetTexture("_BaseMap", albedoTexture);
+                            if (materials[i].HasProperty("_MainTex")) materials[i].SetTexture("_MainTex", albedoTexture);
+                            assignedFallback++;
+                        }
+
+                        renderer.sharedMaterials = materials;
+                    }
+
+                    report.AppendLine("renderers given fallback texture: " + assignedFallback);
+                    return;
+                }
+                
+                report.AppendLine("no authored body material found in " + currentRoot);
                 return;
             }
 
-            report.AppendLine("authored material: " + authored.name + " albedo=" + HasAlbedo(authored));
+            report.AppendLine("authored material: " + authored.name + " albedo=" + Albion.Editor.ArtMaterialUtility.HasAlbedo(authored));
 
             var assigned = 0;
             foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
@@ -461,7 +556,7 @@ namespace Albion.Editor
                 for (var i = 0; i < materials.Length; i++)
                 {
                     if (materials[i] == null) continue;
-                    if (HasAlbedo(materials[i])) continue;
+                    if (Albion.Editor.ArtMaterialUtility.HasAlbedo(materials[i])) continue;
 
                     materials[i] = authored;
                     assigned++;
@@ -473,13 +568,7 @@ namespace Albion.Editor
             report.AppendLine("renderers given authored material: " + assigned);
         }
 
-        private static bool HasAlbedo(Material material)
-        {
-            if (material == null) return false;
-            return material.GetTexture("_BaseMap") != null
-                || material.GetTexture("_MainTex") != null
-                || material.GetTexture("_BaseColorMap") != null;
-        }
+
 
         /// <summary>
         /// Removes children that are not part of the body. The wizard package ships three staffs
@@ -635,8 +724,7 @@ namespace Albion.Editor
             transition.duration = 0.1f;
         }
 
-        /// <summary>Replaces the entry for a mob, or appends it. Duplicates are what the validator rejects.</summary>
-        private static void UpsertEntry(
+        public static MobVisualSettings.Entry UpsertEntry(
             List<MobVisualSettings.Entry> entries,
             string mobKey,
             GameObject prefab,
@@ -648,18 +736,20 @@ namespace Albion.Editor
                 {
                     entries[i].Prefab = prefab;
                     entries[i].Height = height;
-                    return;
+                    return entries[i];
                 }
             }
 
-            entries.Add(new MobVisualSettings.Entry
+            var entry = new MobVisualSettings.Entry
             {
                 MobKey = mobKey,
                 Prefab = prefab,
                 Height = height,
                 Yaw = 0f,
                 GroundOffset = 0f,
-            });
+            };
+            entries.Add(entry);
+            return entry;
         }
 
         /// <summary>
@@ -762,7 +852,7 @@ namespace Albion.Editor
 
                 // Тело — это SkinnedMeshRenderer; накладки вроде M_Glow без текстуры законны.
                 var body = prefab.GetComponentInChildren<SkinnedMeshRenderer>(true);
-                albedo = body != null && body.sharedMaterials.Any(material => material != null && HasAlbedo(material));
+                albedo = body != null && body.sharedMaterials.Any(material => material != null && ArtMaterialUtility.HasAlbedo(material));
                 ok = true;
             }
             catch (Exception exception)

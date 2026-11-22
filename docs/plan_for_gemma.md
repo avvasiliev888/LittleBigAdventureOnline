@@ -277,3 +277,139 @@ public void StaggeredZones_CoveredByTwoZonesInStrip()
   Допуск не расширять, ничего другого не менять.»
 - Размер: ~35 строк в `ValidateCoverage` + 2 теста.
 - Зависимости: нет.
+
+## T-004 — Импорт одного тела как публичный метод (подготовка окна)
+
+- [ ] статус: ожидает
+- Цель: `MobBodyImport.ImportBody(...)` импортирует одно тело и возвращает результат;
+  пункт меню `Albion/Mobs/Import Bodies From Sets` делает то же, что раньше, через этот метод.
+- Файлы: `unity-client/Assets/Editor/MobBodyImport.cs` (единственный файл)
+- Контекст: `Jobs` — массив из одной записи `("red_warlord", "Assets/WizardPBR/Mesh/WizardBodyMesh.fbx",
+  "Assets/WizardPBR", "WizardBody", "magic", 2.45f)` (строка 50); цикл `Run()` (55–133):
+  `CopyIntoArt` → `BuildPrefab` → `UpsertEntry` → `settings.ValidateMaterials()` (111).
+  Все эти методы уже есть — вызовы не переписывать, только вынести в новый метод.
+- Что сделать: добавить `public static bool ImportBody(string mobKey, string sourceFbx,
+  string packageRoot, string bodyName, string set, float height, System.Text.StringBuilder report,
+  List<MobVisualSettings.Entry> entries, out GameObject prefab)`. Тело цикла из `Run()` (копирование,
+  сборка префаба, `UpsertEntry`) перенести туда без изменения порядка и текстов отчёта; в `Run()`
+  остаётся цикл по `Jobs`, вызывающий `ImportBody`. Поведение и отчёт — байт в байт прежние.
+- Ограничения: не менять `BuildPrefab`, `AssignPackageAlbedo`, `UpsertEntry`, `LoadSets`;
+  не менять `Jobs`; не трогать `ValidateMaterials`; не менять формат отчёта (`entry set: ...`, `SKIP ...`).
+- Критерии приёмки: `Unity.exe -batchmode -executeMethod Albion.Editor.MobBodyImport.Run -quit -logFile -`
+  завершается с `EXIT=0`, в логе `entry set: red_warlord -> WizardBody h=2.45` и `ValidateMaterials: OK`;
+  запись `red_warlord` в `MobVisuals.asset` остаётся одна (повторный прогон не плодит дубли).
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-004` (Unity-компиляция ловит ошибки CS).
+- Промпт для gemma: «В `unity-client/Assets/Editor/MobBodyImport.cs` вынеси тело цикла из `Run()`
+  (строки 55–133) в новый публичный метод `ImportBody(mobKey, sourceFbx, packageRoot, bodyName, set,
+  height, report, entries, out prefab)` того же класса. `Run()` оставь циклом по массиву `Jobs`,
+  который вызывает `ImportBody` и печатает те же строки отчёта. Ничего другого не меняй: ни `Jobs`,
+  ни `BuildPrefab`, ни `AssignPackageAlbedo`, ни `UpsertEntry`, ни `ValidateMaterials`, ни тексты
+  отчёта.»
+- Размер: ~40 строк переноса внутри одного файла.
+- Зависимости: нет.
+
+## T-005 — CLI-вход и файл вердикта; новых мобов не создаём
+
+- [ ] статус: ожидает
+- Цель: в batchmode одной командой импортируется одно тело, а результат пишется в
+  `docs/imports/<body>/verdict.json` и определяет код выхода.
+- Файлы: `unity-client/Assets/Editor/MobBodyImport.cs` (единственный файл; `ImportBody` из T-004)
+- Контекст: `ImportBody` (T-004), `settings.Entries` (`MobVisualSettings.Entry.MobKey`),
+  `settings.ValidateMaterials()`, существующий batchmode-перехват в `Run()` (строки 117–129:
+  при исключении `EditorApplication.Exit(1)`).
+- Что сделать:
+  1. `public static void ImportFromCommandLine()` — читает `Environment.GetCommandLineArgs()`:
+     `-mobKey`, `-sourceFbx`, `-packageRoot`, `-bodyName`, `-set`, `-height`; всё, кроме
+     `-packageRoot` (по умолчанию — папка FBX), обязательно; отсутствие аргумента → `Exit(2)`
+     с внятным текстом.
+  2. **Отказ новым мобам**: если `mobKey` отсутствует в `settings.Entries`, бросить
+     `InvalidOperationException("Ключ моба '<key>' не найден в MobVisuals.asset: инструмент
+     только привязывает тело к существующему мобу.")` — новых мобов не заводим (решение
+     заказчика 22.11.2026).
+  3. Файл вердикта: `docs/imports/<bodyName>/verdict.json` (корень репозитория получить от
+     `Application.dataPath`: `unity-client/Assets` → два уровня вверх; в batchmode
+     относительные пути не работают — замер 21.11.2026, см. комментарий к `SetsPath`, строки 31–36).
+     Поля: `body`, `mobKey`, `set`, `prefab` (путь), `controller` (путь), `states` (число
+     состояний), `albedo` (bool), `materials_ok` (bool), `ok` (bool), `error` (строка или null).
+  4. Код выхода: `ok=true` → `Exit(0)`, иначе `Exit(1)`.
+- Ограничения: не создавать новых `MobVisualSettings.Entry`; не править `config/*.json`;
+  не менять `Jobs` и тексты отчёта пункта меню; вердикт — в `docs/imports/`, не в `Assets/`.
+- Критерии приёмки: прогон на `red_warlord` (тело `WizardBody`) в batchmode → `EXIT=0`,
+  `verdict.json` с `"ok": true`, `"states": 6`; прогон с ключом `ghost_mob` → `EXIT=1`,
+  сообщение про ненайденный ключ, файла вердикта с `"ok": true` нет.
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-005`; CLI-прогоны выше.
+- Промпт для gemma: «Добавь в `MobBodyImport` метод `ImportFromCommandLine()` для
+  `-executeMethod` в batchmode: аргументы `-mobKey -sourceFbx -packageRoot -bodyName -set -height`,
+  вызов `ImportBody`, отказ, если ключа моба нет в `MobVisuals.asset`, запись
+  `docs/imports/<body>/verdict.json` с полями из плана и `EditorApplication.Exit(0|1)`.
+  Новых мобов не создавать, конфиги не трогать.»
+- Размер: ~60 строк в одном файле.
+- Зависимости: T-004.
+
+## T-006 — Окно импорта: поля и кнопка «Импорт»
+
+- [ ] статус: ожидает
+- Цель: `Albion/Mobs/Import Body (Wizard)` открывает окно, в котором выбор тела и нажатие
+  «Импорт» дают готовый префаб, контроллер и запись в `MobVisuals.asset` без правки кода.
+- Файлы: `unity-client/Assets/Editor/BodyImportWindow.cs` (новый, единственный файл задачи
+  помимо вызова `MobBodyImport.ImportBody` из T-004)
+- Контекст: `MobBodyImport.ImportBody` (T-004), `MobVisualSettings.Entries`
+  (`Assets/Resources/Characters/MobVisuals.asset`), `Assets/StreamingAssets/Config/animation-sets.json`
+  (ключи: `unarmed`, `sword_1h`, `sword_2h`, `bow`, `magic`), существующий `BodyGallery.cs`
+  как образец EditorWindow в этом проекте.
+- Что сделать: `EditorWindow` с полями — `MobKey` (`PopupField` из ключей существующих записей
+  `MobVisuals.asset`; пустой реестр → предупреждение «сначала импортируйте моба»), `BodyName`
+  (string, по умолчанию — имя FBX без расширения), `SourceFbx` (`ObjectField` типа
+  `GameObject`, перетаскивание FBX), `PackageRoot` (string, по умолчанию — папка FBX),
+  `Set` (`PopupField` из ключей `animation-sets.json`), `Height` (float, подпись
+  «подгонка под collisionRadius, см. Jobs: WizardBody = 2.45»). Кнопка «Импорт» вызывает
+  `ImportBody`, показывает отчёт в `EditorGUILayout.TextArea` и итог PASS/FAIL; при FAIL —
+  текст ошибки, при PASS — путь к префабу. Меню `[MenuItem("Albion/Mobs/Import Body (Wizard)")]`.
+- Ограничения: не дублировать логику импорта в окне — только вызов T-004; не править
+  `MobBodyImport` (кроме чтения публичных членов); не трогать конфиги; AssetDatabase
+  операции — уже внутри `ImportBody`.
+- Критерии приёмки: Unity компилирует проект без ошибок; меню `Albion/Mobs/Import Body (Wizard)`
+  существует (проверяется компиляцией атрибута); заполнение полей и «Импорт» для тела
+  `WizardBody` даёт тот же результат, что пункт меню `Import Bodies From Sets` (одна запись
+  `red_warlord`, повтор не плодит дублей).
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-006` (Unity-компиляция).
+- Промпт для gemma: «Создай `unity-client/Assets/Editor/BodyImportWindow.cs`: EditorWindow
+  с меню `Albion/Mobs/Import Body (Wizard)`, полями MobKey (popup из записей MobVisuals.asset),
+  BodyName, SourceFbx (ObjectField), PackageRoot, Set (popup из animation-sets.json), Height,
+  кнопкой «Импорт», вызывающей `MobBodyImport.ImportBody` из T-004, и выводом отчёта с
+  PASS/FAIL. Никакой своей логики импорта, конфиги не трогать.»
+- Размер: ~120 строк, один новый файл.
+- Зависимости: T-004.
+
+## T-007 — Первый прогон: Low Poly Warrior на существующем мобе
+
+- [ ] статус: ожидает; решено заказчиком 22.11.2026: ключ `blue_scavenger`, набор `sword_1h`,
+  Height `2.45`
+- Цель: тело `Low Poly Warrior` из пака `Assets/asoliddev - Low Poly Fantasy Warrior/` проходит
+  A–F одной командой CLI и получает вердикт `ok=true`.
+- Файлы: генерируемые ассеты (`Assets/Art/Characters/...`, `.../Generated/*.prefab`,
+  `*.controller`, `*.mat`), `docs/imports/lowpoly-warrior/` (вердикт, снимки, отчёт).
+  Код не меняется — только прогон T-005.
+- Факты: `docs/imports/bodies/bodies.json` — `{"file": "Low Poly Warrior", "path":
+  "Assets/asoliddev - Low Poly Fantasy Warrior/Models/Low Poly Warrior.fbx", "rig": "humanoid"}`;
+  тело в проект уже импортировано, но префаба у него нет (`docs/mob-ranged-magic.md`: «остальные
+  тела … не импортированы»). Набор — `sword_1h` (мечник; решение заказчика 22.11.2026),
+  ключ — `blue_scavenger` (в `config/mobs.json` у него `weaponType: sword_1h`,
+  `collisionRadius: 0.6`), Height `2.45` — по образцу записи мага.
+- Что сделать: запустить `Unity.exe -batchmode -executeMethod Albion.Editor.MobBodyImport.ImportFromCommandLine
+  -mobKey blue_scavenger -sourceFbx "Assets/asoliddev - Low Poly Fantasy Warrior/Models/Low Poly Warrior.fbx"
+  -bodyName LowPolyWarrior -set sword_1h -height 2.45 -quit -logFile -`; затем
+  `Albion/Mobs/Render Mob Portraits` для снимков; записать `docs/imports/lowpoly-warrior/report.md`
+  с путями префаба, контроллера, числом состояний, вердиктом и снимками.
+- Ограничения: не править код; не создавать новых мобов и не править `config/mobs.json`;
+  не менять тела других мобов; при FAIL — `blocked` с полным текстом ошибки, а не подмена тела.
+- Критерии приёмки: `verdict.json` с `"ok": true`, `"states": 6`; в `MobVisuals.asset`
+  обновлена ровно одна запись выбранного ключа; префаб лежит в `Assets/Art/Characters/Generated/`;
+  `Albion → Art → Validate Imported Art` не находит ошибок; снимки 4 поз в `docs/imports/lowpoly-warrior/`.
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-007`.
+- Промпт для gemma: «Не пиши код. Прогони batchmode-импорт тела Low Poly Warrior по параметрам
+  из этой задачи, затем `Render Mob Portraits`, и запиши `docs/imports/lowpoly-warrior/report.md`
+  с путями, числом состояний и вердиктом. Если импорт упал — верни status=blocked и полный текст
+  ошибки.»
+- Размер: 0 строк кода, прогон + отчёт.
+- Зависимости: T-005 (и T-004).

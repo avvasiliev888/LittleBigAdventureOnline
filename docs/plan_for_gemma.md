@@ -535,28 +535,273 @@ public void StaggeredZones_CoveredByTwoZonesInStrip()
   (`Assets/Resources/Characters/MobVisuals.asset`), `Assets/StreamingAssets/Config/animation-sets.json`
   (ключи: `unarmed`, `sword_1h`, `sword_2h`, `bow`, `magic`), существующий `BodyGallery.cs`
   как образец EditorWindow в этом проекте.
-- Что сделать: `EditorWindow` с полями — `MobKey` (`PopupField` из ключей существующих записей
-  `MobVisuals.asset`; пустой реестр → предупреждение «сначала импортируйте моба»), `BodyName`
-  (string, по умолчанию — имя FBX без расширения), `SourceFbx` (`ObjectField` типа
-  `GameObject`, перетаскивание FBX), `PackageRoot` (string, по умолчанию — папка FBX),
-  `Set` (`PopupField` из ключей `animation-sets.json`), `Height` (float, подпись
-  «подгонка под collisionRadius, см. Jobs: WizardBody = 2.45»). Кнопка «Импорт» вызывает
-  `ImportBody`, показывает отчёт в `EditorGUILayout.TextArea` и итог PASS/FAIL; при FAIL —
-  текст ошибки, при PASS — путь к префабу. Меню `[MenuItem("Albion/Mobs/Import Body (Wizard)")]`.
-- Ограничения: не дублировать логику импорта в окне — только вызов T-004; не править
-  `MobBodyImport` (кроме чтения публичных членов); не трогать конфиги; AssetDatabase
-  операции — уже внутри `ImportBody`.
-- Критерии приёмки: Unity компилирует проект без ошибок; меню `Albion/Mobs/Import Body (Wizard)`
-  существует (проверяется компиляцией атрибута); заполнение полей и «Импорт» для тела
-  `WizardBody` даёт тот же результат, что пункт меню `Import Bodies From Sets` (одна запись
-  `red_warlord`, повтор не плодит дублей).
-- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-006` (Unity-компиляция).
-- Промпт для gemma: «Создай `unity-client/Assets/Editor/BodyImportWindow.cs`: EditorWindow
-  с меню `Albion/Mobs/Import Body (Wizard)`, полями MobKey (popup из записей MobVisuals.asset),
-  BodyName, SourceFbx (ObjectField), PackageRoot, Set (popup из animation-sets.json), Height,
-  кнопкой «Импорт», вызывающей `MobBodyImport.ImportBody` из T-004, и выводом отчёта с
-  PASS/FAIL. Никакой своей логики импорта, конфиги не трогать.»
-- Размер: ~120 строк, один новый файл.
+- Что сделать: создать один новый файл `unity-client/Assets/Editor/BodyImportWindow.cs` —
+  код ниже вставляется целиком. `MobBodyImport` НЕ правится: все нужные члены уже публичные
+  или читаются напрямую (`MobVisualSettings.Entries`, `MiniJson`, путь к `animation-sets.json`).
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using Albion.Client;
+using Shared;
+using UnityEditor;
+using UnityEngine;
+
+namespace Albion.Editor
+{
+    /// <summary>
+    /// Albion/Mobs/Import Body (Wizard): одно окно — один импорт. Своей логики импорта здесь нет:
+    /// окно собирает аргументы и вызывает MobBodyImport.ImportBody (T-004).
+    /// </summary>
+    public sealed class BodyImportWindow : EditorWindow
+    {
+        private const string MobVisualsPath = "Assets/Resources/Characters/MobVisuals.asset";
+        private const string SetsPath = "Assets/StreamingAssets/Config/animation-sets.json";
+
+        private string[] mobKeys = Array.Empty<string>();
+        private string[] setKeys = Array.Empty<string>();
+        private int mobIndex;
+        private int setIndex;
+        private string bodyName = "";
+        private GameObject sourceFbx;
+        private string packageRoot = "";
+        private float height = 2.45f;
+        private string report = "";
+        private Vector2 scroll;
+
+        [MenuItem("Albion/Mobs/Import Body (Wizard)")]
+        private static void Open()
+        {
+            var window = GetWindow<BodyImportWindow>(false, "Импорт тела", true);
+            window.minSize = new Vector2(460f, 440f);
+            window.Reload();
+            window.Show();
+        }
+
+        private void OnEnable()
+        {
+            Reload();
+        }
+
+        private static MobVisualSettings LoadSettings()
+        {
+            return AssetDatabase.LoadAssetAtPath<MobVisualSettings>(MobVisualsPath);
+        }
+
+        private void Reload()
+        {
+            var settings = LoadSettings();
+            mobKeys = settings != null && settings.Entries != null
+                ? settings.Entries
+                    .Select(entry => entry.MobKey)
+                    .Where(key => !string.IsNullOrEmpty(key))
+                    .ToArray()
+                : Array.Empty<string>();
+            mobIndex = Mathf.Clamp(mobIndex, 0, Mathf.Max(0, mobKeys.Length - 1));
+
+            setKeys = ReadSetKeys();
+            setIndex = Mathf.Clamp(setIndex, 0, Mathf.Max(0, setKeys.Length - 1));
+        }
+
+        /// <summary>Ключи наборов анимаций: тот же файл, что читает MobBodyImport.LoadSets.</summary>
+        private static string[] ReadSetKeys()
+        {
+            if (!File.Exists(SetsPath))
+            {
+                return Array.Empty<string>();
+            }
+
+            var parsed = MiniJson.Parse(File.ReadAllText(SetsPath)) as Dictionary<string, object>;
+            if (parsed == null || !(parsed["sets"] is List<object> list))
+            {
+                return Array.Empty<string>();
+            }
+
+            var keys = new List<string>();
+            foreach (var item in list)
+            {
+                if (item is Dictionary<string, object> entry
+                    && entry.TryGetValue("key", out var key)
+                    && key is string name)
+                {
+                    keys.Add(name);
+                }
+            }
+
+            return keys.ToArray();
+        }
+
+        private void OnGUI()
+        {
+            EditorGUILayout.LabelField("Импорт тела моба", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Окно только вызывает MobBodyImport.ImportBody: префаб, контроллер и запись "
+                + "в MobVisuals.asset делает он.",
+                MessageType.None);
+
+            if (mobKeys.Length == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "В MobVisuals.asset нет ни одного моба — импорт недоступен.",
+                    MessageType.Warning);
+            }
+
+            mobIndex = EditorGUILayout.Popup("Моб (ключ)", mobIndex, mobKeys);
+            sourceFbx = (GameObject)EditorGUILayout.ObjectField("FBX тела", sourceFbx, typeof(GameObject), false);
+
+            if (sourceFbx != null)
+            {
+                var fbxPath = AssetDatabase.GetAssetPath(sourceFbx);
+                if (string.IsNullOrEmpty(bodyName))
+                {
+                    bodyName = Path.GetFileNameWithoutExtension(fbxPath);
+                }
+
+                if (string.IsNullOrEmpty(packageRoot))
+                {
+                    packageRoot = Path.GetDirectoryName(fbxPath);
+                }
+            }
+
+            bodyName = EditorGUILayout.TextField("Имя тела", bodyName);
+            packageRoot = EditorGUILayout.TextField("Папка пакета", packageRoot);
+            setIndex = EditorGUILayout.Popup("Набор анимаций", setIndex, setKeys);
+            height = EditorGUILayout.FloatField("Высота", height);
+            EditorGUILayout.HelpBox(
+                "Подгонка под collisionRadius: см. Jobs, WizardBody = 2.45.",
+                MessageType.None);
+
+            using (new EditorGUI.DisabledScope(mobKeys.Length == 0 || sourceFbx == null))
+            {
+                if (GUILayout.Button("Импорт", GUILayout.Height(28f)))
+                {
+                    RunImport();
+                }
+            }
+
+            EditorGUILayout.Space();
+            scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.MinHeight(180f));
+            EditorGUILayout.TextArea(report, GUILayout.ExpandHeight(true));
+            EditorGUILayout.EndScrollView();
+        }
+
+        private void RunImport()
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("########## MOB IMPORT (WINDOW) ##########");
+
+            try
+            {
+                var settings = LoadSettings();
+                if (settings == null)
+                {
+                    throw new InvalidOperationException("MobVisuals.asset not found: " + MobVisualsPath);
+                }
+
+                if (mobKeys.Length == 0)
+                {
+                    throw new InvalidOperationException(
+                        "В MobVisuals.asset нет мобов: сначала импортируйте моба.");
+                }
+
+                if (sourceFbx == null)
+                {
+                    throw new InvalidOperationException("Не выбран FBX тела.");
+                }
+
+                if (string.IsNullOrEmpty(bodyName))
+                {
+                    throw new InvalidOperationException("Не задано имя тела.");
+                }
+
+                if (string.IsNullOrEmpty(packageRoot))
+                {
+                    throw new InvalidOperationException("Не задана папка пакета.");
+                }
+
+                var setKey = setKeys.Length > 0 ? setKeys[setIndex] : "";
+                if (string.IsNullOrEmpty(setKey))
+                {
+                    throw new InvalidOperationException("Не выбран набор анимаций.");
+                }
+
+                var mobKey = mobKeys[mobIndex];
+                builder.AppendLine("mob=" + mobKey + " set=" + setKey + " height=" + height);
+
+                var entries = settings.Entries != null
+                    ? settings.Entries.ToList()
+                    : new List<MobVisualSettings.Entry>();
+
+                if (!MobBodyImport.ImportBody(
+                        mobKey,
+                        AssetDatabase.GetAssetPath(sourceFbx),
+                        packageRoot,
+                        bodyName,
+                        setKey,
+                        height,
+                        builder,
+                        entries,
+                        out var prefab))
+                {
+                    throw new InvalidOperationException("ImportBody вернул false, см. отчёт выше.");
+                }
+
+                // Тот же порядок, что в MobBodyImport.Run (T-004): записать реестр, сохранить,
+                // затем провалидировать материалы — валидатор ловит белый emission и отсутствие альбедо.
+                settings.Entries = entries.ToArray();
+                EditorUtility.SetDirty(settings);
+                AssetDatabase.SaveAssets();
+                settings.ValidateMaterials();
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+
+                builder.AppendLine("PASS: prefab "
+                    + (prefab != null ? AssetDatabase.GetAssetPath(prefab) : "?"));
+            }
+            catch (Exception exception)
+            {
+                builder.AppendLine("FAILED: " + exception.GetType().Name + ": " + exception.Message);
+            }
+
+            report = builder.ToString();
+            Reload();
+            Repaint();
+        }
+    }
+}
+```
+
+- Факты (сверено по коду 22.11.2026, не менять на «как кажется»):
+  1. `ImportBody` — публичный статический, порядок аргументов:
+     `(string mobKey, string sourceFbx, string packageRoot, string bodyName, string setKey,
+     float height, StringBuilder report, List<MobVisualSettings.Entry> entries, out GameObject prefab)`,
+     возвращает `bool`; при неизвестном наборе бросает `InvalidOperationException`.
+  2. Реестр сохраняет **вызывающий**: `settings.Entries = entries.ToArray(); SetDirty; SaveAssets;
+     ValidateMaterials();` — ровно как в `MobBodyImport.Run()` (строки 89–100).
+  3. `MobVisualsPath` и `LoadSets()` в `MobBodyImport` **приватные** — окно берёт путь своей
+     константой и читает `animation-sets.json` через `MiniJson.Parse` (только чтение, логику
+     импорта не дублирует).
+  4. `MiniJson.Parse` возвращает `Dictionary<string, object>`; ключи наборов лежат в массиве
+     `sets` (`parsed["sets"] as List<object>`), у элемента поле `key`.
+  5. Класс — в namespace `Albion.Editor` (как `MobBodyImport`), `MobVisualSettings` — в `Albion.Client`.
+- Ограничения: `MobBodyImport` не править; `Jobs` не трогать; конфиги не менять; AssetDatabase
+  операции делает `ImportBody`/вызывающий, окно только передаёт аргументы; не добавлять
+  собственных проверок материалов.
+- Критерии приёмки: `gates.ps1 -Task T-006` → `ok=true` (Unity-компиляция нового файла);
+  файл `BodyImportWindow.cs` содержит `[MenuItem("Albion/Mobs/Import Body (Wizard)")]` и вызов
+  `MobBodyImport.ImportBody(`; окно не содержит копии логики импорта (нет `CopyIntoArt`,
+  `BuildPrefab`, `CollectSetClips`).
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-006`.
+- Промпт для gemma: «Создай новый файл `unity-client/Assets/Editor/BodyImportWindow.cs` —
+  вставь дословно готовый C#-код из раздела `## T-006` в `docs/plan_for_gemma.md` (блок
+  ```csharp), ничего не добавляя и не переставляя. Файл должен закончиться строкой `}` и
+  закрывающей `}` класса — проверь, что последние две строки непустые и это `    }` и `}`.
+  `MobBodyImport.cs` не трогай. Готово, когда `pwsh -File tools/tandem/gates.ps1 -Task T-006 -SkipUnity`
+  не даёт ошибок компиляции C# (Unity-компиляцию запустит конвейер).»
+- Размер: ~200 строк, один новый файл (код в плане).
 - Зависимости: T-004.
 
 ## T-007 — Первый прогон: Low Poly Warrior на существующем мобе
@@ -594,7 +839,7 @@ public void StaggeredZones_CoveredByTwoZonesInStrip()
 
 ## T-008 — Конвейер не должен терять вердикты и бить ПК при провале (приоритет №1)
 
-- [x] статус: сделано 22.11.2026, ждёт «принято»; **приоритет №1** перед T-006/T-007.
+- [x] статус: принято 22.11.2026, слито в main (`15a321e`); приоритет №1 был до T-006/T-007.
   Причина найдена стендом `tools/tandem/probe-orchestrator.js`: блок ревью стоял после
   `while`-цикла попыток, поэтому `continue` при FAIL уходил во внешний цикл по задачам —
   задача терялась (`tasks: []`), `stopped` оставался `null`, `if (!stopped)` запускал ПК-билд,

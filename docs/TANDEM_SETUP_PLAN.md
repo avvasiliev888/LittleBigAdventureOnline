@@ -187,3 +187,41 @@ AGENTS.md            # раздел «ПРОТОКОЛ ТАНДЕМА» в ко�
 - gemma «плывёт» на tool calling → fallback из 9.1.
 - Долгие сборки → логи в `reports/logs/`, хвост не терять.
 - `.agent/away` конфликтует с git → держать в `.gitignore`.
+
+## 12. Статус установки — факт (22.11.2026)
+
+| Критерий | Факт |
+|---|---|
+| Файлы раздела 2 | есть, ветка `setup/tandem` запушена |
+| `main` не изменён | да: `main` остался на `99b12ae` |
+| `gates.ps1` зелёный | да: build 3,6 с · test 3,2 с · arch 0 с · boundaries 0 с · Unity 13,4 с |
+| Unity compile | 6000.3.28f1, `N:\Program Files\Unity Hub\Editor\...`, batchmode, `error CS` нет |
+| exe собирается | `unity-client/Builds/desktop/AlbionPrototype.exe`, 121 МБ, Unity exit 0 |
+| Telegram-тест | доставлен в `@BlazeTestChanel` (node, 1,4 с) |
+| `notify.ps1` без `.agent/away` | молчит и логирует `skip`, exit 0 |
+| Пилот T-001 | план → код → гейты → ревью PASS → отчёт → билд, 1 попытка gemma, ~10 мин |
+| Чекбокс и `spend.jsonl` | чекбокс `[x]` в плане; 4 строки в журнале (`/60` вызовов) |
+| Инструкция пользователю | выдана в чате (≤1 экран) |
+
+### Поправки к плану, найденные по факту
+
+1. **Workflow-скрипт не имеет fs/shell** — план, git и гейты выполняют агенты;
+   промпты передаются путями (`promptFiles`), а не текстом (§5).
+2. **Схемы `agent()` требуют `type` у `enum`** — иначе рантайм отвергает вызов
+   до первого шага (первая попытка пилота упала именно так).
+3. **bash на этом хосте** — только Git Bash; WSL-заглушка `WindowsApps\bash.exe`
+   не годится (пути `/mnt/f`, `set -o pipefail` падает). Добавлено правило
+   `*.sh text eol=lf` в `.gitattributes`.
+4. **Unity пишет «Exception:» и при успехе** — детектор ошибок сужен до
+   `error CS####` / `Compilation failed` / `Scripts have compiler errors`.
+5. **`api.telegram.org` не отвечает из curl/IRM на этом хосте**, работает node —
+   порядок доставки: node → curl → IRM.
+6. **ADR нумеруются до 025**, поэтому новый — ADR-026 (в плане было «с 013»).
+7. **CI строже локального гейта**: в `.github/workflows/ci.yml` тест идёт с
+   `Threshold=100` по покрытию `Simulation.Core.Simulation`. В `gates.ps1`
+   покрытие не проверяется — расхождение известно и не устранено.
+
+### Что осталось на решение пользователя
+
+- «принято» на мерж `agent/T-001` (и `setup/tandem`) в `main`.
+- Выравнивать ли покрытие локального гейта с CI (`-Coverage` в `gates.ps1`).

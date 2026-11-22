@@ -77,27 +77,11 @@ namespace Albion.Editor
                 {
                     report.AppendLine("--- " + job.MobKey + " <- " + job.SourceFbx + " set=" + job.Set);
 
-                    if (!sets.TryGetValue(job.Set, out var set))
+                    if (!ImportBody(job.MobKey, job.SourceFbx, job.PackageRoot, job.BodyName, job.Set, job.Height, report, entries, out var prefab))
                     {
-                        throw new InvalidOperationException("Animation set not found: " + job.Set);
-                    }
-
-                    var artFbx = CopyIntoArt(job.SourceFbx, job.BodyName, report);
-                    if (artFbx == null)
-                    {
-                        report.AppendLine("SKIP body not found: " + job.SourceFbx);
                         continue;
                     }
 
-                    var clips = CollectSetClips(set, artFbx, report);
-                    var prefab = BuildPrefab(artFbx, job.PackageRoot, job.BodyName, clips, job.MobKey, report);
-                    if (prefab == null)
-                    {
-                        report.AppendLine("SKIP prefab failed for " + job.MobKey);
-                        continue;
-                    }
-
-                    UpsertEntry(entries, job.MobKey, prefab, job.Height);
                     report.AppendLine("entry set: " + job.MobKey + " -> " + prefab.name + " h=" + job.Height);
                 }
 
@@ -130,6 +114,43 @@ namespace Albion.Editor
 
             report.AppendLine("########## MOB IMPORT END ##########");
             Debug.Log(report.ToString());
+        }
+
+        public static bool ImportBody(
+            string mobKey,
+            string sourceFbx,
+            string packageRoot,
+            string bodyName,
+            string setKey,
+            float height,
+            System.Text.StringBuilder report,
+            List<MobVisualSettings.Entry> entries,
+            out GameObject prefab)
+        {
+            prefab = null;
+            var sets = LoadSets();
+            if (!sets.TryGetValue(setKey, out var set))
+            {
+                throw new InvalidOperationException("Animation set not found: " + setKey);
+            }
+
+            var artFbx = CopyIntoArt(sourceFbx, bodyName, report);
+            if (artFbx == null)
+            {
+                report.AppendLine("SKIP body not found: " + sourceFbx);
+                return false;
+            }
+
+            var clips = CollectSetClips(set, artFbx, report);
+            prefab = BuildPrefab(artFbx, packageRoot, bodyName, clips, mobKey, report);
+            if (prefab == null)
+            {
+                report.AppendLine("SKIP prefab failed for " + mobKey);
+                return false;
+            }
+
+            UpsertEntry(entries, mobKey, prefab, height);
+            return true;
         }
 
         /// <summary>

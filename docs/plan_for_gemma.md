@@ -280,7 +280,7 @@ public void StaggeredZones_CoveredByTwoZonesInStrip()
 
 ## T-004 — Импорт одного тела как публичный метод (подготовка окна)
 
-- [ ] статус: ожидает
+- [x] статус: сделано конвейером (22.11.2026, 1 попытка, PASS ревью, риск low, ветка `agent/T-004`, ждёт «принято»)
 - Цель: `MobBodyImport.ImportBody(...)` импортирует одно тело и возвращает результат;
   пункт меню `Albion/Mobs/Import Bodies From Sets` делает то же, что раньше, через этот метод.
 - Файлы: `unity-client/Assets/Editor/MobBodyImport.cs` (единственный файл)

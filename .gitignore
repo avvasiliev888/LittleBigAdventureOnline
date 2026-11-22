@@ -42,3 +42,7 @@ docs/reports/logs/
 /unity-client/Assets/_Recovery/
 /unity-client/1/
 
+
+# Unity пересоздаёт эти материалы при импорте FBX (materialLocation = external); префабы их не используют
+/unity-client/Assets/Art/Characters/*/Materials/*.mat
+!/unity-client/Assets/Art/Characters/*/Materials/M_*.mat

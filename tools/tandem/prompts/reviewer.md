@@ -16,6 +16,9 @@
 6. **Соответствие AGENTS.md.** Слои (`Simulation.Core` без Unity), числа в конфигах,
    `MiniJson` вместо `System.Text.Json`, `Protocol.Version` не тронут.
 7. **Scope.** Diff не выходит за файлы задачи. Лишние файлы — must-fix.
+   Исключение: `unity-client/ProjectSettings/ProjectSettings.asset`, изменённый
+   Unity batchmode (иконки платформ и т.п.) — скажи о нём в `notes`, но scope
+   не нарушай: это побочный эффект запуска редактора, а не правка задачи.
 8. **Тесты.** Проходят; не отключены; не ослаблены.
 
 ## Формат ответа — СТРОГО JSON, без markdown-обёртки и без текста вокруг

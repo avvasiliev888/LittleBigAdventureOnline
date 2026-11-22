@@ -287,6 +287,12 @@ if (-not $failed -and -not $SkipUnity) {
             $project = Join-Path $root "unity-client"
             $unityLog = Join-Path $env:TEMP "tandem-unity-compile.log"
             if (Test-Path $unityLog) { Remove-Item $unityLog -Force -ErrorAction SilentlyContinue }
+            # Побочный эффект batchmode: Unity перезаписывает ProjectSettings.asset
+            # (m_BuildTargetPlatformIcons и т.п.). Правило проекта — ProjectSettings
+            # не трогать, поэтому замечаем изменение и предупреждаем, но НЕ откатываем
+            # молча (иначе откатим и законную правку задачи).
+            $settingsPath = Join-Path $project "ProjectSettings/ProjectSettings.asset"
+            $settingsBefore = if (Test-Path $settingsPath) { (Get-FileHash $settingsPath -Algorithm SHA256).Hash } else { "" }
             $argLine = "-batchmode -quit -projectPath `"$project`" -logFile `"$unityLog`""
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
             $p = Start-Process -FilePath $unity -ArgumentList $argLine -PassThru -NoNewWindow
@@ -300,6 +306,11 @@ if (-not $failed -and -not $SkipUnity) {
             $p.Refresh()
             $code = if ($p.HasExited) { $p.ExitCode } else { -1 }
             if (Test-Path $unityLog) { Copy-Item $unityLog $log -Force }
+
+            $settingsAfter = if (Test-Path $settingsPath) { (Get-FileHash $settingsPath -Algorithm SHA256).Hash } else { "" }
+            if ($settingsAfter -ne $settingsBefore) {
+                Write-Step "unity-settings" "warn" "Unity перезаписала ProjectSettings.asset — откатить: git checkout -- unity-client/ProjectSettings/ProjectSettings.asset" 0
+            }
 
             $unityErr = Get-UnityError $unityLog
             if ($timedOut) {

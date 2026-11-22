@@ -14,6 +14,10 @@
 4. Прогони быстрые гейты: `pwsh -File tools/tandem/gates.ps1 -Task <ID> -SkipUnity`.
    Провал — исправь и прогони снова. Unity-гейт запускает конвейер, не ты.
 5. В конце — список изменённых файлов и что именно изменилось, по строкам.
+6. Если после гейтов `git status` показывает изменённый
+   `unity-client/ProjectSettings/ProjectSettings.asset` — это побочный эффект
+   Unity batchmode, а не твоя правка: откати
+   `git checkout -- unity-client/ProjectSettings/ProjectSettings.asset`.
 
 ## Правила проекта (нарушение = откат)
 

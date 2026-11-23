@@ -346,6 +346,36 @@
    "rig": "humanoid",
    "clips": [
     {
+     "name": "Unarmed_Idle",
+     "length": 1.067,
+     "loop": true
+    },
+    {
+     "name": "Walking_A",
+     "length": 1.067,
+     "loop": true
+    },
+    {
+     "name": "Running_A",
+     "length": 0.8,
+     "loop": true
+    },
+    {
+     "name": "Unarmed_Melee_Attack_Punch_A",
+     "length": 1.467,
+     "loop": false
+    },
+    {
+     "name": "Hit_A",
+     "length": 0.667,
+     "loop": false
+    },
+    {
+     "name": "Death_A",
+     "length": 0.8,
+     "loop": false
+    },
+    {
      "name": "1H_Melee_Attack_Chop",
      "length": 1.067,
      "loop": false
@@ -461,11 +491,6 @@
      "loop": false
     },
     {
-     "name": "Death_A",
-     "length": 0.8,
-     "loop": false
-    },
-    {
      "name": "Death_A_Pose",
      "length": 0.033,
      "loop": false
@@ -513,11 +538,6 @@
     {
      "name": "Dualwield_Melee_Attack_Stab",
      "length": 1.6,
-     "loop": false
-    },
-    {
-     "name": "Hit_A",
-     "length": 0.667,
      "loop": false
     },
     {
@@ -584,11 +604,6 @@
      "name": "PickUp",
      "length": 1.3,
      "loop": false
-    },
-    {
-     "name": "Running_A",
-     "length": 0.8,
-     "loop": true
     },
     {
      "name": "Running_B",
@@ -676,18 +691,8 @@
      "loop": false
     },
     {
-     "name": "Unarmed_Idle",
-     "length": 1.067,
-     "loop": true
-    },
-    {
      "name": "Unarmed_Melee_Attack_Kick",
      "length": 0.933,
-     "loop": false
-    },
-    {
-     "name": "Unarmed_Melee_Attack_Punch_A",
-     "length": 1.467,
      "loop": false
     },
     {
@@ -704,11 +709,6 @@
      "name": "Use_Item",
      "length": 1.6,
      "loop": false
-    },
-    {
-     "name": "Walking_A",
-     "length": 1.067,
-     "loop": true
     },
     {
      "name": "Walking_B",
@@ -2171,6 +2171,846 @@
    ]
   },
   {
+   "path": "Assets/Art/Characters/LowPolyWarrior/LowPolyWarrior.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "low poly warrior pose 1",
+     "length": 0.042,
+     "loop": false
+    },
+    {
+     "name": "low poly warrior pose 2",
+     "length": 0.042,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Art/Characters/Skeleton110/Skeleton110.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|rigAction",
+     "length": 10.375,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Character_Reptile/Animation/Reptile@Attack(1).FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Attack(1)",
+     "length": 1.5,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Character_Reptile/Animation/Reptile@Attack(2).FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Attack(2)",
+     "length": 1,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Character_Reptile/Animation/Reptile@Dead.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Dead",
+     "length": 0.733,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Character_Reptile/Animation/Reptile@Get_Hit.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Get_Hit",
+     "length": 1.167,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Character_Reptile/Animation/Reptile@Idle.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Idle",
+     "length": 14.633,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Character_Reptile/Animation/Reptile@Jump.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Jump",
+     "length": 1.5,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Character_Reptile/Animation/Reptile@Run.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Run",
+     "length": 0.767,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Character_Reptile/Animation/Reptile@Run_Mec.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Run_Mec",
+     "length": 0.767,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Character_Reptile/Animation/Reptile@Walk.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Walk",
+     "length": 1.3,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Character_Reptile/Animation/Reptile@Walk_Mec.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Walk_Mec",
+     "length": 1.3,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Character_Reptile/Mesh/Mesh.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Take 001",
+     "length": 1,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@atack shield.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "atack shield",
+     "length": 3.292,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@atack1.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "atack1",
+     "length": 3.292,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@atack2.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "atack2",
+     "length": 5.375,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@atack3.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "atack3",
+     "length": 5.375,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@battle poze.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "battle poze",
+     "length": 3.708,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@death.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "death",
+     "length": 5.792,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@gethit.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "gethit",
+     "length": 2.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@idle1.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "idle1",
+     "length": 2.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@idle2.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "idle2",
+     "length": 14.125,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@idle3.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "idle3",
+     "length": 8.292,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@jump.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "jump",
+     "length": 2.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@run.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "run",
+     "length": 2.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@side step.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "side step",
+     "length": 2.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/animation/crusadershield@walk.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "walk",
+     "length": 2.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Crusader tank/base mesh/Crusader tank Base mesh.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Take 001",
+     "length": 4.958,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Elven_assassin/Models/elf_1.2.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Default Take",
+     "length": 0.083,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Elven_assassin/Models/platform.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Take 001",
+     "length": 0.033,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Hatogame_new/Catfish/Animation/Catfish@attack1.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "attack1",
+     "length": 1.283,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Hatogame_new/Catfish/Animation/Catfish@attack2.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "attack2",
+     "length": 1.283,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Hatogame_new/Catfish/Animation/Catfish@battleidle.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "battleidle",
+     "length": 0.983,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Hatogame_new/Catfish/Animation/Catfish@die.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "die",
+     "length": 2.5,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Hatogame_new/Catfish/Animation/Catfish@hit.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "hit",
+     "length": 0.817,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Hatogame_new/Catfish/Animation/Catfish@idle.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "idle",
+     "length": 3.317,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Hatogame_new/Catfish/Animation/Catfish@run.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "run",
+     "length": 0.783,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Hatogame_new/Catfish/Animation/Catfish@sturn.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "sturn",
+     "length": 1.65,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Hatogame_new/Catfish/Animation/Catfish@walk.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "walk",
+     "length": 1.25,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Minotaur/animation/Minotaur@Attack.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Attack",
+     "length": 1.167,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Minotaur/animation/Minotaur@Death1.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Death1",
+     "length": 1.333,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Minotaur/animation/Minotaur@Death2.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Death2",
+     "length": 1.333,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Minotaur/animation/Minotaur@Get_Hit.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Get_Hit",
+     "length": 1.167,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Minotaur/animation/Minotaur@Idle.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Idle",
+     "length": 8.633,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Minotaur/animation/Minotaur@Jump.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Jump",
+     "length": 1.5,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Minotaur/animation/Minotaur@Run.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Run",
+     "length": 0.8,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Minotaur/animation/Minotaur@Run_Mec.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Run_Mec",
+     "length": 0.8,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Minotaur/animation/Minotaur@Shout.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Shout",
+     "length": 2.167,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Minotaur/animation/Minotaur@Walk.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Walk",
+     "length": 1.133,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Minotaur/animation/Minotaur@Walk_Mec.FBX",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Walk_Mec",
+     "length": 1.133,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/RedDragon 1.2/Assets/Mesh/RedDragon1.2.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "BattleStance",
+     "length": 4.872,
+     "loop": true
+    },
+    {
+     "name": "Bite",
+     "length": 1.835,
+     "loop": false
+    },
+    {
+     "name": "Die",
+     "length": 3.003,
+     "loop": false
+    },
+    {
+     "name": "Drakaris",
+     "length": 2.836,
+     "loop": false
+    },
+    {
+     "name": "Flying FWD",
+     "length": 1.134,
+     "loop": true
+    },
+    {
+     "name": "FlyingAttack",
+     "length": 8.909,
+     "loop": false
+    },
+    {
+     "name": "Hover",
+     "length": 1.735,
+     "loop": true
+    },
+    {
+     "name": "IdleAgressive",
+     "length": 4.004,
+     "loop": true
+    },
+    {
+     "name": "IdleRestless",
+     "length": 4.004,
+     "loop": true
+    },
+    {
+     "name": "IdleSimple",
+     "length": 4.004,
+     "loop": true
+    },
+    {
+     "name": "Lands",
+     "length": 4.605,
+     "loop": false
+    },
+    {
+     "name": "Pose",
+     "length": 0.033,
+     "loop": false
+    },
+    {
+     "name": "TakeOff",
+     "length": 5.639,
+     "loop": false
+    },
+    {
+     "name": "Walk",
+     "length": 1.401,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/RootMotion/Skeleton_run_forward_RM.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|run forward RM",
+     "length": 0.75,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/RootMotion/Skeleton_walk_forward_RM.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|walk forward RM",
+     "length": 0.8,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_death.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|death",
+     "length": 1.4,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_fall.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|Fall",
+     "length": 0.933,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_idle.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|combat idle ",
+     "length": 1.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_jump.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|jump",
+     "length": 1.067,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_revive.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|revive",
+     "length": 5.067,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_run_forward.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|run",
+     "length": 0.75,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_scream.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|scream",
+     "length": 1.133,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_slash01.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|slash01",
+     "length": 1.133,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_slash02.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|slash 02",
+     "length": 1.133,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_spawn.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|spawn",
+     "length": 1.333,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_stab.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|stab",
+     "length": 1.633,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_take_damage.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|Take Damage",
+     "length": 0.667,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_throw_projectiles.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|throw projectile",
+     "length": 1,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_turn_left_90.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|Turn Left 90 Degrees",
+     "length": 1.067,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_turn_right_90.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|Turn Right 90 Degrees",
+     "length": 1.333,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_underground.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|underground",
+     "length": 0.933,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/SazenGames/Skeleton/Art/Animations/Skeleton_walk_forward.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "root|walk forward ",
+     "length": 0.8,
+     "loop": true
+    }
+   ]
+  },
+  {
    "path": "Assets/WizardPBR/Animations/Attack01.fbx",
    "rig": "humanoid",
    "clips": [
@@ -2530,6 +3370,836 @@
      "name": "WalkForward",
      "length": 1.333,
      "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zacxophone/Birds/Meshes/01Bird.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "Fly",
+     "length": 0.667,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zacxophone/Birds/Meshes/03Birds.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "03BirdsFly",
+     "length": 0.667,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zacxophone/Birds/Meshes/05Birds.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "05BirdsFly",
+     "length": 0.667,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zacxophone/Birds/Meshes/10Birds.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "10BirdsFly",
+     "length": 0.667,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zacxophone/Birds/Meshes/15Birds.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "15BirdsFly",
+     "length": 0.667,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Animation/zombie@atack1.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "atack1",
+     "length": 2.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Animation/zombie@atack2.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "atack2",
+     "length": 4.958,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Animation/zombie@atack3.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "atack3",
+     "length": 4.958,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Animation/zombie@atack4.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "atack4",
+     "length": 8.292,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Animation/zombie@death1.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "death1",
+     "length": 6.625,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Animation/zombie@death2.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "death2",
+     "length": 4.958,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Animation/zombie@gethit.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "gethit",
+     "length": 2.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Animation/zombie@idle1.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "idle1",
+     "length": 2.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Animation/zombie@idle2.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "idle2",
+     "length": 9.958,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Animation/zombie@roar.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "roar",
+     "length": 7.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Animation/zombie@run.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "run",
+     "length": 2.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Animation/zombie@walk.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "walk",
+     "length": 2.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/Zombie/Base mesh/Base mesh fbx.fbx",
+   "rig": "generic",
+   "clips": [
+    {
+     "name": "Take 001",
+     "length": 2.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Mesh/DemonGirlMesh.FBX",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "IdleBasic",
+     "length": 3.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@Attack01.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "Attack01",
+     "length": 1.25,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@Attack02.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "Attack02",
+     "length": 0.833,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@Attack03.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "Attack03",
+     "length": 2.083,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@AttackSpecial.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "AttackSpecial",
+     "length": 2.083,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@CombatIdle.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "CombatIdle",
+     "length": 4.167,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@Cover.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "Cover",
+     "length": 2.083,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@Die.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "Die",
+     "length": 2.917,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@FallDown.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "FallDown",
+     "length": 0.833,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@GetHit01.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "GetHit01",
+     "length": 0.833,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@GetHit02.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "GetHit02",
+     "length": 0.833,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@Idle01.FBX",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "Idle01",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@Idle02.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "Idle02",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@IdletoCombat.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "IdletoCombat",
+     "length": 0.833,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@Jump.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "Jump",
+     "length": 2.708,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@RiseUp.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "RiseUp",
+     "length": 1.458,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@RunCycle.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "RunCycle",
+     "length": 4.208,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@RunForward.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "RunForward",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@WalkCombatCycle.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "WalkCombatCycle",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@WalkCombatForward.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "WalkCombatForward",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@WalkCycle.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "WalkCycle",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/Generic/Humanoid@WalkForward.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "WalkForward",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@attack00.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "attack00",
+     "length": 1.667,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@attack01.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "attack01",
+     "length": 1,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@attack02.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "attack02",
+     "length": 2.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@cover00.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "cover00",
+     "length": 2,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@die00.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "die00",
+     "length": 3,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@fall&riseup00.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "fall&riseup00",
+     "length": 3,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@hit00.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "hit00",
+     "length": 1,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@hit01.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "hit01",
+     "length": 1,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@idle00.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "idle00",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@idle01.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "idle01",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@idle02.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "idle02",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@idlecombat00.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "idlecombat00",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@jump00.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "jump00",
+     "length": 3.333,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@jump01.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "jump01",
+     "length": 1.667,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@run00.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "run00",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@walk00.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "walk00",
+     "length": 4.167,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/_DLNK/Characters/Demon Girl/Source/Motion/demonGirl@walk01.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "walk01",
+     "length": 1.667,
+     "loop": true
+    }
+   ]
+  },
+  {
+   "path": "Assets/asoliddev - Low Poly Fantasy Warrior/Models/Low Poly Warrior.fbx",
+   "rig": "humanoid",
+   "clips": [
+    {
+     "name": "low poly warrior pose 1",
+     "length": 0.042,
+     "loop": false
+    },
+    {
+     "name": "low poly warrior pose 2",
+     "length": 0.042,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@attack1.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "attack1",
+     "length": 1.542,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@attack2.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "attack2",
+     "length": 1.792,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@attack3.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "attack3",
+     "length": 1.917,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@attack4_kick.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "attack4_kick",
+     "length": 2.208,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@attack5_kick.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "attack5_kick",
+     "length": 1.583,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@death.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "death",
+     "length": 2.333,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@hit_1.FBX",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "hit_1",
+     "length": 1,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@hit_2.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "hit_2",
+     "length": 0.833,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@idle.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "idle",
+     "length": 2.625,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@run.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "run",
+     "length": 0.792,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@run_strafe_left45.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "run_strafe_left45",
+     "length": 0.792,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@run_strafe_right45.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "run_strafe_right45",
+     "length": 0.792,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@walk_back.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "walk_back",
+     "length": 1.167,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@walk_forward.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "walk_forward",
+     "length": 1.875,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@walk_forward2.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "walk_forward2",
+     "length": 1,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@walk_strafe_left45.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "walk_strafe_left45",
+     "length": 1,
+     "loop": false
+    }
+   ]
+  },
+  {
+   "path": "Assets/minotaur1/Animations/minotaur1@walk_strafe_right45.fbx",
+   "rig": "none",
+   "clips": [
+    {
+     "name": "walk_strafe_right45",
+     "length": 1,
+     "loop": false
     }
    ]
   }

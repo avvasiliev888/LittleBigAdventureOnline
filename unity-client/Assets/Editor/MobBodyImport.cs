@@ -751,6 +751,65 @@ namespace Albion.Editor
             transition.duration = 0.1f;
         }
 
+        /// <summary>
+        /// Re-points the mob's entry at the prefab as it exists on disk and saves the asset again.
+        /// A prefab saved a second time gets a new root fileID, and a reference to the old id
+        /// deserialises as null without a word — the client then silently takes its procedural
+        /// fallback and the mob wears the wrong body (measured 23.11.2026: procedural wolf).
+        /// </summary>
+        private static void RebindEntryOnDisk(string mobKey, string prefabPath, float height)
+        {
+            var reloaded = AssetDatabase.LoadAssetAtPath<MobVisualSettings>(MobVisualsPath);
+            var fresh = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            if (reloaded == null || reloaded.Entries == null || fresh == null)
+            {
+                throw new InvalidOperationException("stale prefab reference for mob key " + mobKey
+                    + ": MobVisuals или префаб не читаются с диска после сохранения — перезапишите ассет");
+            }
+
+            var entry = reloaded.Entries.FirstOrDefault(e => e != null && e.MobKey == mobKey);
+            if (entry == null)
+            {
+                throw new InvalidOperationException("stale prefab reference for mob key " + mobKey
+                    + ": запись не найдена в MobVisuals после сохранения — перезапишите ассет");
+            }
+
+            entry.Prefab = fresh;
+            entry.Height = height;
+            EditorUtility.SetDirty(reloaded);
+            AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>
+        /// Fails when an entry serialised on disk lost its prefab. In the game the only symptom is
+        /// a wrong-looking body, so the import must refuse to report success.
+        /// </summary>
+        private static void ValidateReferences(MobVisualSettings settings, string mobKey)
+        {
+            if (settings.Entries == null || settings.Entries.Length == 0)
+            {
+                throw new InvalidOperationException("stale prefab reference for mob key " + mobKey
+                    + ": в MobVisuals нет записей — перезапишите ассет");
+            }
+
+            foreach (var entry in settings.Entries)
+            {
+                if (entry == null) continue;
+                if (entry.Prefab == null)
+                {
+                    throw new InvalidOperationException("stale prefab reference for mob key " + entry.MobKey
+                        + ": ссылка на префаб пустая — перезапишите MobVisuals");
+                }
+
+                if (entry.Prefab.GetComponentInChildren<CharacterVisuals>(true) == null
+                    || entry.Prefab.GetComponentInChildren<SkinnedMeshRenderer>(true) == null)
+                {
+                    throw new InvalidOperationException("stale prefab reference for mob key " + entry.MobKey
+                        + ": у префаба " + entry.Prefab.name + " нет CharacterVisuals или SkinnedMeshRenderer");
+                }
+            }
+        }
+
         public static MobVisualSettings.Entry UpsertEntry(
             List<MobVisualSettings.Entry> entries,
             string mobKey,
@@ -862,10 +921,23 @@ namespace Albion.Editor
                 EditorUtility.SetDirty(settings);
                 AssetDatabase.SaveAssets();
 
+                // A prefab that is saved again gets a NEW root fileID, and Unity reads a reference
+                // to the old id as null without any message. Measured 23.11.2026: the blue mob wore
+                // the procedural wolf because MobVisuals still pointed at the previous root id, so
+                // the entry is re-pointed at the prefab as it is loaded from disk after the save.
+                prefabPath = AssetDatabase.GetAssetPath(prefab);
+                RebindEntryOnDisk(mobKey, prefabPath, height);
+
+                settings = AssetDatabase.LoadAssetAtPath<MobVisualSettings>(MobVisualsPath);
+                if (settings == null)
+                {
+                    throw new InvalidOperationException("MobVisuals.asset not found after save: " + MobVisualsPath);
+                }
+
+                ValidateReferences(settings, mobKey);
                 settings.ValidateMaterials();
                 materialsOk = true;
 
-                prefabPath = AssetDatabase.GetAssetPath(prefab);
                 var animator = prefab.GetComponent<Animator>();
                 var controller = animator != null ? animator.runtimeAnimatorController as AnimatorController : null;
                 if (controller != null)

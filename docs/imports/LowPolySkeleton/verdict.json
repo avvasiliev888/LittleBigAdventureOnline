@@ -1,0 +1,12 @@
+{
+  "body": "LowPolySkeleton",
+  "mobKey": "yellow_bandit",
+  "set": "sword_1h",
+  "prefab": "Assets/Art/Characters/Generated/LowPolySkeleton.prefab",
+  "controller": "Assets/Art/Characters/Generated/LowPolySkeletonController.controller",
+  "states": 6,
+  "albedo": true,
+  "materials_ok": true,
+  "ok": true,
+  "error": null
+}

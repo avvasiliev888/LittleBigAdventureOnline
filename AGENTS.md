@@ -225,7 +225,7 @@ python tools/unity/asset-map.py --lfs           # бинарник вне LFS
 | Роль | Модель | Что делает | Пишет код |
 |---|---|---|---|
 | Архитектор | `deepseek-v4-flash` | интервью, план задач, ADR, отчёт | нет |
-| Исполнитель | `ois-gemma-4-26B` | правки строго по задаче | да |
+| Исполнитель | `deepseek-v4-flash` (временно, gemma занята) | правки строго по задаче | да |
 | Ревьюер | `deepseek-v4-flash` | diff + логи → JSON-вердикт | нет |
 | Отладчик | `deepseek-v4-flash` | диагноз после провала попыток | ≤15 строк |
 | Гейты | `tools/tandem/gates.ps1` | build → test → arch → Unity compile | — |

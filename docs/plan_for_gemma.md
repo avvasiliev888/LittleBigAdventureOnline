@@ -1225,7 +1225,9 @@ namespace Albion.Editor
 - Постоянная защита — задача T-013 (импортёр перечитывает запись с диска и падает на битой ссылке).
 ## T-014 — Модульный скелет из Polytope: импортёр не должен срезать скрытые меши
 
-- [ ] статус: ожидает; фича заказчика 23.11.2026 «заменить мобов жёлтой зоны на скелетов»
+- [x] статус: сделано конвейером (23.11.2026, 1 попытка, PASS ревью, риск medium, ветка
+  `agent/T-014`, отчёт `docs/reports/t-014-skeleton-yellow-zone.md`, ждёт «принято»); фича
+  заказчика 23.11.2026 «заменить мобов жёлтой зоны на скелетов»
 - Ответы заказчика (интервью 23.11.2026): пакет `Assets/Polytope Studio/Lowpoly_Characters`,
   рост **1.95** (как у прежнего Разбойника), набор анимаций **sword_1h**, числа моба в
   `config/mobs.json` **не меняются**.
@@ -1280,3 +1282,36 @@ namespace Albion.Editor
   LowPolyWarrior по-прежнему даёт `ok: true` и `props stripped: 1`.»
 - Размер: ~25 строк в одном файле.
 - Зависимости: T-013 (готово).
+## T-015 — Подбор набора анимаций для тела Polytope (скелет в жёлтой зоне)
+
+- [ ] статус: ожидает; заказчик выбрал вариант «B» 23.11.2026 (оставить модель, подобрать клипы)
+- Замеры 23.11.2026:
+  - аватар тела **валиден и смаплен**: `[rig] avatar=LowPolySkeletonAvatar valid=True human=True
+    Hips=PT_Hips Spine=PT_Spine2 Head=PT_Head LeftFoot=PT_LeftFoot RightFoot=PT_RightFoot
+    LeftHand=PT_LeftHand RightHand=PT_RightHand` — значит дело не в риге;
+  - своих клипов в пакете Polytope **нет** (`takeName` пустой у всех 11 FBX, `PT_Peasant_Pose_02.fbx`
+    — статичная поза), поэтому тело танцует чужими клипами;
+  - меч/щит/сумка **вшиты в меш** (3 `SkinnedMeshRenderer`, 0 `MeshRenderer`), срезать их нельзя;
+  - наборы в `config/animation-sets.json`: `unarmed`, `sword_1h`, `sword_2h`, `bow` →
+    `Assets/Art/Characters/KayKit`; `magic` → `Assets/WizardPBR/Animations`.
+- Гипотеза (проверяется этой задачей): поза «скелет бьёт головой» — свойство клипа
+  `1H_Melee_Attack_Chop` на чужом риге. Тогда `unarmed` (удар кулаком) даст более внятную стойку.
+- Файлы: артефакты импорта (`Assets/Art/Characters/Generated/LowPolySkeleton*`,
+  `Assets/Art/Characters/LowPolySkeleton/`), `Assets/Resources/Characters/MobVisuals.asset`,
+  `docs/imports/LowPolySkeleton/verdict.json`. Код не меняется.
+- Что сделать: прогнать CLI с набором **unarmed** и теми же прочими аргументами, что в T-014:
+  `-mobKey yellow_bandit -sourceFbx "Assets/Polytope Studio/Lowpoly_Characters/Sources/Modular_NPC/Meshes/Skeleton/PT_Skeleton_Male_Modular.fbx" -packageRoot "Assets/Polytope Studio/Lowpoly_Characters/Sources/Modular_NPC" -bodyName LowPolySkeleton -set unarmed -height 1.95`.
+- Критерии приёмки:
+  1. `docs/imports/LowPolySkeleton/verdict.json`: `ok: true`, `materials_ok: true`, `states: 6`,
+     `set: "unarmed"`.
+  2. `pwsh -File tools/unity/mob-visuals-check.ps1` → `Ref: ok` у всех трёх записей,
+     `yellow_bandit` → `Generated\LowPolySkeleton.prefab`, Height 1.95.
+  3. `pwsh -File tools/tandem/gates.ps1 -Task T-015` → `ok=true`; ПК-билд собран.
+  4. Заказчик смотрит в игре: стойка скелета и удар — приемлемо (или даёт замечания → следующий
+     кандидат `sword_2h` / `magic`).
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-015`
+- Промпт для gemma: «Перегенерируй тело LowPolySkeleton с набором клипов unarmed (команда из
+  блока «Что сделать»), проверь verdict.json и mob-visuals-check.ps1, закоммить артефакты в ветку.
+  Код не трогай: Unity-гейт и ПК-билд запустит конвейер.»
+- Размер: 0 строк кода, только прогон и артефакты.
+- Зависимости: T-014 (импорт модульного скелета).

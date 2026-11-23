@@ -3,5 +3,7 @@
   "price_out": 1.0,
   "price_cache_in": 0.025,
   "monthly_cap_usd": 8,
-  "monthly_cap_calls": 300
+  "monthly_cap_calls": 300,
+  "executor_model": "deepseek-v4-flash",
+  "executor_model_default": "ois-gemma-4-26B"
 }

@@ -605,21 +605,28 @@ namespace Albion.Editor
         {
             var keep = new[] { "WizardBody", "Body", "Mesh", "Character" };
             var removed = 0;
+            var keptSkinned = 0;
 
             foreach (var child in instance.GetComponentsInChildren<Transform>(true))
             {
                 if (child == instance.transform) continue;
 
                 var name = child.name;
-                if (keep.Any(k => name.IndexOf(k, StringComparison.OrdinalIgnoreCase) >= 0))
+                var smr = child.GetComponent<SkinnedMeshRenderer>();
+                if (smr != null)
+                {
+                    report.AppendLine("kept skinned mesh: " + name);
+                    keptSkinned++;
+                    continue;
+                }
+
+                var renderer = child.GetComponent<Renderer>();
+                if (renderer == null)
                 {
                     continue;
                 }
 
-                // Only strip a subtree that has geometry of its own; a bare transform node often
-                // carries the skeleton, and removing it would break the rig.
-                if (child.GetComponent<Renderer>() == null
-                    && child.GetComponent<SkinnedMeshRenderer>() == null)
+                if (keep.Any(k => name.IndexOf(k, StringComparison.OrdinalIgnoreCase) >= 0))
                 {
                     continue;
                 }
@@ -630,6 +637,10 @@ namespace Albion.Editor
             }
 
             report.AppendLine("props stripped: " + removed);
+            if (keptSkinned > 0)
+            {
+                report.AppendLine("skinned meshes kept: " + keptSkinned);
+            }
         }
 
         /// <summary>

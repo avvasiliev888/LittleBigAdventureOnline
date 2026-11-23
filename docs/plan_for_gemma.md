@@ -1223,3 +1223,60 @@ namespace Albion.Editor
 - Чем проверено: `pwsh -File tools/unity/mob-visuals-check.ps1` → три `Ref: ok`; лог клиента
   билда 00:57; заказчик подтвердил «Воины на месте, всё работает».
 - Постоянная защита — задача T-013 (импортёр перечитывает запись с диска и падает на битой ссылке).
+## T-014 — Модульный скелет из Polytope: импортёр не должен срезать скрытые меши
+
+- [ ] статус: ожидает; фича заказчика 23.11.2026 «заменить мобов жёлтой зоны на скелетов»
+- Ответы заказчика (интервью 23.11.2026): пакет `Assets/Polytope Studio/Lowpoly_Characters`,
+  рост **1.95** (как у прежнего Разбойника), набор анимаций **sword_1h**, числа моба в
+  `config/mobs.json` **не меняются**.
+- Замеры 23.11.2026 (пакет Polytope Studio, Lowpoly_Characters):
+  - тело: `Sources/Modular_NPC/Meshes/Skeleton/PT_Skeleton_Male_Modular.fbx`;
+  - его префаб `Prefabs/Modular_NPC/Skeleton/PT_Skeleton_Male_Modular.prefab` — 3 `SkinnedMeshRenderer`;
+  - реквизит: `Sources/Modular_NPC/Materials/PT_NPC_Mat.mat`, материал собран на **built-in**
+    шейдере `Polytope Studio/ PT_Medieval Modular NPC Shader PBR` (Amplify, URP-включений нет) —
+    в URP такой материал рисуется розовым, поэтому путь «материалы из префаба пакета» для этого
+    пакета запрещён; правильный путь — текстуры пакета
+    (`Sources/Modular_NPC/Textures/PT_Modular_NPC_Texture_Base_01.png`) в URP-материалы тела;
+  - rig: `animationType: 3` (humanoid), `avatarSetup: 1`;
+  - текстуры в пакете: 11 PNG; `hasImages` → `flat colour body: False`.
+- Замеренный провал прогона CLI (23.11.2026, тело `LowPolySkeleton`, packageRoot
+  `.../Sources/Modular_NPC`): отчёт `flat colour body: False`, `renderers given fallback texture: 1`,
+  **`props stripped: 3`**, контроллер `states=6` собран, префаб сохранён — и на проверке
+  `InvalidOperationException: stale prefab reference for mob key yellow_bandit: у префаба
+  LowPolySkeleton нет CharacterVisuals или SkinnedMeshRenderer`. Причина в `StripProps`
+  (`MobBodyImport.cs`, ~строка 640): «оставлять» разрешено только поддеревьям, в имени которых
+  есть `WizardBody|Body|Mesh|Character`; меши Polytope называются `PT_*`, поэтому все три скина
+  срезаны как «реквизит», и тело остаётся без геометрии.
+- Файлы: `unity-client/Assets/Editor/MobBodyImport.cs` (один файл)
+- Что сделать:
+  1. В `StripProps` срезать **только** тот объект, у которого собственный рендерер — обычный
+     `MeshRenderer` (топор, посох, щит — реквизит). Объект со `SkinnedMeshRenderer` не срезать
+     никогда: скин — это и есть тело, а имя пакета не обязано содержать слово «Body».
+  2. Список `keep` по именам оставить только для обычных `MeshRenderer` (чтобы не срезать
+     мелочь вроде `Body_Chain`), и писать в отчёт и срезанные, и сохранённые имена:
+     `stripped prop: <имя>` / `kept skinned mesh: <имя>`.
+  3. Ничего не менять в поиске материалов, конвертации текстур и `ValidateReferences`.
+- Критерии приёмки:
+  1. Прогон CLI для скелета (`-mobKey yellow_bandit -sourceFbx
+     "Assets/Polytope Studio/Lowpoly_Characters/Sources/Modular_NPC/Meshes/Skeleton/PT_Skeleton_Male_Modular.fbx"
+     -packageRoot "Assets/Polytope Studio/Lowpoly_Characters/Sources/Modular_NPC"
+     -bodyName LowPolySkeleton -set sword_1h -height 1.95`) даёт `verdict.json` с `ok: true`,
+     `materials_ok: true`, `states: 6`, и в отчёте `props stripped: 0` (все три скина сохранены).
+  2. В `Assets/Art/Characters/Generated/LowPolySkeleton.prefab` есть **≥3** `SkinnedMeshRenderer`,
+     у каждого материала непустая albedo-текстура (`_BaseMap` или `_MainTex`).
+  3. `pwsh -File tools/unity/mob-visuals-check.ps1` → `Ref: ok` у всех трёх записей,
+     `yellow_bandit` → `Generated\LowPolySkeleton.prefab`, `Height 1.95`.
+  4. Регрессия по прежнему пакету: прогон CLI для `LowPolyWarrior`
+     (`-packageRoot "Assets/asoliddev - Low Poly Fantasy Warrior"`, `-height 2.45`) снова даёт
+     `ok: true` и `props stripped: 1` (топор срезан, скин сохранён).
+  5. `pwsh -File tools/tandem/gates.ps1 -Task T-014` → `ok=true`.
+- Гейты: `pwsh -File tools/tandem/gates.ps1 -Task T-014`
+- Промпт для gemma: «В `MobBodyImport.StripProps` срезай только объекты с обычным `MeshRenderer`
+  (реквизит), а объекты со `SkinnedMeshRenderer` не срезай никогда — у модульных пакетов тело
+  состоит из нескольких скинов с именами вида `PT_*`, и прежнее правило по именам
+  (`WizardBody|Body|Mesh|Character`) удаляло всё тело. В отчёт пиши `stripped prop: <имя>` и
+  `kept skinned mesh: <имя>`. Готово, когда прогон CLI для LowPolySkeleton даёт `ok: true`,
+  `props stripped: 0`, в префабе ≥3 SkinnedMeshRenderer с albedo-текстурой, а прогон для
+  LowPolyWarrior по-прежнему даёт `ok: true` и `props stripped: 1`.»
+- Размер: ~25 строк в одном файле.
+- Зависимости: T-013 (готово).

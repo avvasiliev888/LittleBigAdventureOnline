@@ -1284,7 +1284,10 @@ namespace Albion.Editor
 - Зависимости: T-013 (готово).
 ## T-015 — Подбор набора анимаций для тела Polytope (скелет в жёлтой зоне)
 
-- [ ] статус: ожидает; заказчик выбрал вариант «B» 23.11.2026 (оставить модель, подобрать клипы)
+- [x] статус: сделано конвейером (23.11.2026, 1 попытка, PASS ревью, риск medium, ветка
+  `agent/T-015`, коммит `7e9c6e1`, отчёт `docs/reports/t-015-unarmed-clips-skeleton.md`, ждёт
+  «принято»; в игре стойка/удар ещё не проверены заказчиком); заказчик выбрал вариант «B»
+  23.11.2026 (оставить модель, подобрать клипы)
 - Замеры 23.11.2026:
   - аватар тела **валиден и смаплен**: `[rig] avatar=LowPolySkeletonAvatar valid=True human=True
     Hips=PT_Hips Spine=PT_Spine2 Head=PT_Head LeftFoot=PT_LeftFoot RightFoot=PT_RightFoot
@@ -1315,3 +1318,50 @@ namespace Albion.Editor
   Код не трогай: Unity-гейт и ПК-билд запустит конвейер.»
 - Размер: 0 строк кода, только прогон и артефакты.
 - Зависимости: T-014 (импорт модульного скелета).
+## T-016 — Тело скелета SazenGames + свой набор клипов
+
+- [ ] статус: ожидает; решение заказчика 23.11.2026: брать «Stylized Low Poly Skeleton» (SazenGames)
+- Замеры 23.11.2026 по пакету `Assets/SazenGames/Skeleton`:
+  - тело `Art/Meshes/Skeleton_Model_110.fbx` (humanoid, `humanName` смаплены), префаб-вариант
+    `Prefabs/Skeleton_110.prefab`; материалы `Art/Materials/Skeleton_Mat.mat` (URP Lit: `_BaseMap` есть,
+    `_BaseColor` белый 1,1,1, включён `_EMISSION` с `_EmissionMap`), оружие `Prefabs/Falchion_01.prefab`;
+  - **свои клипы**: `Art/Animations/*.fbx` (idle, walk, run, slash01, slash02, stab, take_damage,
+    death, spawn, revive, jump, fall, scream, throw_projectiles, turn_*, underground);
+  - точные имена клипов для индекса Unity (из `clipAnimations.name`): `root|combat idle ` (пробел в конце),
+    `root|walk forward ` (пробел в конце), `root|run`, `root|slash01`, `root|Take Damage`, `root|death`.
+- Файлы: `config/animation-sets.json` + артефакты импорта.
+- Что сделать:
+  1. Добавить в `config/animation-sets.json` набор:
+     `key: skeleton_sazen`, `label: "Стилизованный скелет SazenGames — свои клипы"`,
+     `source: "Assets/SazenGames/Skeleton/Art/Animations"`, `idle: "root|combat idle "`,
+     `walk: "root|walk forward "`, `run: "root|run"`, `attack: "root|slash01"`,
+     `death: "root|death"`, `hit: "root|Take Damage"` (пробелы в конце двух имён сохранить!).
+  2. Прогнать CLI:
+     `-mobKey yellow_bandit -sourceFbx "Assets/SazenGames/Skeleton/Art/Meshes/Skeleton_Model_110.fbx" -packageRoot "Assets/SazenGames/Skeleton/Art" -bodyName Skeleton110 -set skeleton_sazen -height 1.95`
+  3. Убедиться, что в логе импорта **нет** строк `MISSING clip`; если есть — имена в наборе не
+     совпали с индексом, выписать точные имена и вернуть `blocked` с ними.
+- Критерии приёмки: `verdict.json` `ok: true`, `materials_ok: true`, `states: 6`, `set: "skeleton_sazen"`;
+  `mob-visuals-check.ps1` → три `Ref: ok`, `yellow_bandit` → `Generated\Skeleton110.prefab`, Height 1.95;
+  `gates.ps1 -Task T-016` → `ok=true`.
+- Размер: 10 строк в конфиге + артефакты.
+
+## T-017 — Оружие мобу: меч в руке через WeaponBinding
+
+- [ ] статус: ожидает; заказчик 23.11.2026 выбрал «меч sword_1handed, как у игрока»
+- Замер 23.11.2026: механизм монтажа есть (`CharacterVisuals.Weapons` + `Equip(WeaponKind)`),
+  но у всех мобов `weapons: []` — оружие прописано только игроку в `WarriorVisual.asset`:
+  `Kind: 1` (Sword), шаблон `Assets/Art/Weapons/Generated/sword_1handed.prefab`
+  (`{fileID: 5819914424028908077, guid: b96ce2810d0c9c34f994bb8e289d7ce9}`),
+  `LocalPosition (-0.01,-0.14,-0.04)`, `LocalEuler (0,0,90)`, `LocalScale (1,1,1)`.
+  `MobVisualSettings.Create` собирает `CharacterVisualSettings` и не передаёт оружие.
+- Файлы: `unity-client/Assets/Scripts/View/MobVisualSettings.cs`, `Assets/Resources/Characters/MobVisuals.asset`
+- Что сделать:
+  1. В `MobVisualSettings.Entry` добавить поля `Weapons` (`CharacterVisuals.WeaponBinding[]`) и
+     `Equipped` (`WeaponKind`), по умолчанию пустой массив и `WeaponKind.Sword`.
+  2. В `Create` передать их в `CharacterVisualSettings` (`settings.Weapons = entry.Weapons ?? пустой`)
+     и после создания вызвать `Equip(entry.Equipped)` у компонента `CharacterVisuals` полученного корня.
+  3. В `MobVisuals.asset` у записи `yellow_bandit` прописать оружие: `Weapons` из одного элемента
+     (`Kind: 1`, префаб меча как у игрока, калибровка из замера) и `Equipped: 1`.
+- Критерии приёмки: `MobVisuals.asset` содержит у `yellow_bandit` непустой `Weapons` с живым guid меча;
+  `gates.ps1 -Task T-017` → `ok=true`; в игре меч в правой руке скелета.
+- Размер: ~20 строк в одном файле + ассет.

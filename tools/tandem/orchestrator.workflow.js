@@ -18,7 +18,7 @@
 //   provider  : "openai" (opt)
 //   maxAttempts : number (opt, по умолч. 3) — попыток исполнителя до эскалации
 //   spend     : {calls:number} (opt) — сколько платных вызовов уже потрачено в этом месяце
-//   capCalls  : number (opt, по умолч. 60) — жёсткий лимит платных вызовов
+//   capCalls  : number (opt, по умолч. 300) — жёсткий лимит платных вызовов
 //   mode      : "tools" | "patch" (opt) — patch = gemma только генерирует патч
 //
 // Возврат: {done, stopped, reason, tasks:[...], decisions:[...], build, report}
@@ -37,7 +37,7 @@ const plannerModel = (cfg.model && cfg.model.planner) || "deepseek-v4-flash";
 const executorModel = (cfg.model && cfg.model.executor) || "ois-gemma-4-26B";
 const provider = cfg.provider || "openai";
 const maxAttempts = cfg.maxAttempts || 3;
-const capCalls = cfg.capCalls || 60;
+const capCalls = cfg.capCalls || 300;
 const mode = cfg.mode || "tools";
 
 let paidCalls = (cfg.spend && cfg.spend.calls) || 0;

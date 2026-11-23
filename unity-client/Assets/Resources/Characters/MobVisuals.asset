@@ -20,7 +20,7 @@ MonoBehaviour:
     GroundOffset: 0
     AllowFlatColour: 1
   - MobKey: yellow_bandit
-    Prefab: {fileID: 8157674842014774623, guid: 18596de84d76fc44f9fa22b513e4a619, type: 3}
+    Prefab: {fileID: 5055403840397662726, guid: cf4a1b580a66bf146a9ed13fa69bb21a, type: 3}
     Height: 1.95
     Yaw: 0
     GroundOffset: 0

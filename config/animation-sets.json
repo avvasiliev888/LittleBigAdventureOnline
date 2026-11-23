@@ -57,6 +57,17 @@
       "attack": "Attack04",
       "death": "Die",
       "hit": "GetHit"
+    },
+    {
+      "key": "skeleton_sazen",
+      "label": "Стилизованный скелет SazenGames — свои клипы",
+      "source": "Assets/SazenGames/Skeleton/Art/Animations",
+      "idle": "root|combat idle ",
+      "walk": "root|walk forward ",
+      "run": "root|run",
+      "attack": "root|slash01",
+      "death": "root|death",
+      "hit": "root|Take Damage"
     }
   ]
 }

@@ -1,0 +1,12 @@
+{
+  "body": "Skeleton110",
+  "mobKey": "yellow_bandit",
+  "set": "skeleton_sazen",
+  "prefab": "Assets/Art/Characters/Generated/Skeleton110.prefab",
+  "controller": "Assets/Art/Characters/Generated/Skeleton110Controller.controller",
+  "states": 6,
+  "albedo": true,
+  "materials_ok": true,
+  "ok": true,
+  "error": null
+}

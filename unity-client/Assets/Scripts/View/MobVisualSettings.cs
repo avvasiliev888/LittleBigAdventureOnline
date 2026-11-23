@@ -25,6 +25,15 @@ namespace Albion.Client
             [Min(0.1f)] public float Height = 1.8f;
             public float Yaw;
             public float GroundOffset;
+
+            /// <summary>
+            /// Authored weapon prefabs for this mob body. Left empty the mob stays unarmed; a mob
+            /// holds the weapon it is given, not the one its rig happens to ship inside the FBX.
+            /// </summary>
+            public CharacterVisuals.WeaponBinding[] Weapons = Array.Empty<CharacterVisuals.WeaponBinding>();
+
+            /// <summary>Weapon switched on right after the body is built, from the list above.</summary>
+            public WeaponKind Equipped = WeaponKind.Sword;
             public bool AllowFlatColour;
         }
 
@@ -170,7 +179,21 @@ namespace Albion.Client
                 settings.Height = entry.Height;
                 settings.Yaw = entry.Yaw;
                 settings.GroundOffset = entry.GroundOffset;
-                return settings.Create(parent, entityId);
+                var weapons = entry.Weapons ?? Array.Empty<CharacterVisuals.WeaponBinding>();
+                settings.Weapons = weapons;
+                var root = settings.Create(parent, entityId);
+
+                // The weapon is switched on here, after the body exists (Equip needs the sockets
+                // resolved by Initialize) and before the settings object is destroyed in finally.
+                // An entry that authored no prefabs stays unarmed instead of warning on every
+                // spawn: Equip logs "no authored binding" for a kind it cannot place in a hand.
+                var character = root != null ? root.GetComponentInChildren<CharacterVisuals>(true) : null;
+                if (character != null && weapons.Length > 0)
+                {
+                    character.Equip(entry.Equipped);
+                }
+
+                return root;
             }
             finally
             {

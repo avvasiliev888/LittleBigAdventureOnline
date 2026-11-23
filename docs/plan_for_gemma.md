@@ -1320,7 +1320,10 @@ namespace Albion.Editor
 - Зависимости: T-014 (импорт модульного скелета).
 ## T-016 — Тело скелета SazenGames + свой набор клипов
 
-- [ ] статус: ожидает; решение заказчика 23.11.2026: брать «Stylized Low Poly Skeleton» (SazenGames)
+- [x] статус: сделано конвейером (23.11.2026, 1 попытка, PASS ревью, риск medium, ветка
+  `agent/T-016`, коммит `a2c2393`, отчёт `docs/reports/t-016-sazen-skeleton-with-sword.md`, ждёт
+  «принято»; в игре тело/стойка ещё не проверены заказчиком); решение заказчика 23.11.2026:
+  брать «Stylized Low Poly Skeleton» (SazenGames)
 - Замеры 23.11.2026 по пакету `Assets/SazenGames/Skeleton`:
   - тело `Art/Meshes/Skeleton_Model_110.fbx` (humanoid, `humanName` смаплены), префаб-вариант
     `Prefabs/Skeleton_110.prefab`; материалы `Art/Materials/Skeleton_Mat.mat` (URP Lit: `_BaseMap` есть,
@@ -1347,7 +1350,10 @@ namespace Albion.Editor
 
 ## T-017 — Оружие мобу: меч в руке через WeaponBinding
 
-- [ ] статус: ожидает; заказчик 23.11.2026 выбрал «меч sword_1handed, как у игрока»
+- [x] статус: сделано конвейером (23.11.2026, 1 попытка, PASS ревью, риск medium, ветка
+  `agent/T-017` от `agent/T-016`, коммит `ed6a4ea`, отчёт `docs/reports/t-016-sazen-skeleton-with-sword.md`,
+  ждёт «принято»; посадка меча в игре не проверена — Unity-гейт в задаче был `skip`); заказчик
+  23.11.2026 выбрал «меч sword_1handed, как у игрока»
 - Замер 23.11.2026: механизм монтажа есть (`CharacterVisuals.Weapons` + `Equip(WeaponKind)`),
   но у всех мобов `weapons: []` — оружие прописано только игроку в `WarriorVisual.asset`:
   `Kind: 1` (Sword), шаблон `Assets/Art/Weapons/Generated/sword_1handed.prefab`

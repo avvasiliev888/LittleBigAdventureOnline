@@ -24,6 +24,13 @@ MonoBehaviour:
     Height: 1.95
     Yaw: 0
     GroundOffset: 0
+    Weapons:
+    - Kind: 1
+      Prefab: {fileID: 5819914424028908077, guid: b96ce2810d0c9c34f994bb8e289d7ce9, type: 3}
+      LocalPosition: {x: -0.01, y: -0.14, z: -0.04}
+      LocalEuler: {x: 0, y: 0, z: 90}
+      LocalScale: {x: 1, y: 1, z: 1}
+    Equipped: 1
     AllowFlatColour: 0
   - MobKey: red_warlord
     Prefab: {fileID: 5990088983646062280, guid: 2cf6a466b3e1f0447a4b9d164584a5fd, type: 3}

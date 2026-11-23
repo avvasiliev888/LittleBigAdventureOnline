@@ -14,13 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Albion.Client.MobVisualSettings
   Entries:
   - MobKey: blue_scavenger
-    Prefab: {fileID: 8118623598805248166, guid: 092f3bb8ddf18ee4c90c1cc7ad5e1f66, type: 3}
+    Prefab: {fileID: 4631147735260869685, guid: 092f3bb8ddf18ee4c90c1cc7ad5e1f66, type: 3}
     Height: 2.45
     Yaw: 0
     GroundOffset: 0
     AllowFlatColour: 1
   - MobKey: yellow_bandit
-    Prefab: {fileID: 7014205000545698338, guid: 12d192f8ee1ba40479c8a2e977d7065e, type: 3}
+    Prefab: {fileID: 3284230276326597857, guid: 18596de84d76fc44f9fa22b513e4a619, type: 3}
     Height: 1.95
     Yaw: 0
     GroundOffset: 0
